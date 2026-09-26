@@ -16,12 +16,14 @@ interface WorkflowNode {
 
 interface Item {
   json: Record<string, unknown>;
+  // Index of the item this one was derived from, as n8n records it
+  pairedItem?: { item: number };
 }
 
 const WEBHOOK = "Knowledge Gap Webhook";
 const workflow = JSON.parse(
   readFileSync(join(process.cwd(), "n8n", "knowledge_gap_workflow_v2.json"), "utf-8"),
-) as { nodes: WorkflowNode[] };
+) as { nodes: WorkflowNode[]; connections: Record<string, { main: ({ node: string }[] | null)[] }> };
 
 function node(name: string): WorkflowNode {
   const found = workflow.nodes.find((n) => n.name === name);
@@ -45,11 +47,16 @@ function itemsOf(list: Item[]) {
   return { first: () => list[0], all: () => list, item: list[0] };
 }
 
-// Runs a Code node's JavaScript with n8n's `$` and `$input` stood in for
+// Runs a Code node's JavaScript with n8n's `$` and `$input` stood in for.
+// itemMatching(i) follows input item i's pairedItem back to the named node,
+// which is how n8n traces an item to the one it was derived from.
 function runCode(name: string, input: Item[] = [], upstream: Record<string, Item[]> = {}): Item[] {
   const code = node(name).parameters.jsCode;
   if (!code) throw new Error(`${name} has no code`);
-  const $ = (other: string) => itemsOf(other === WEBHOOK ? [webhookItem] : (upstream[other] ?? []));
+  const $ = (other: string) => {
+    const list = other === WEBHOOK ? [webhookItem] : (upstream[other] ?? []);
+    return { ...itemsOf(list), itemMatching: (i: number) => list[input[i]?.pairedItem?.item ?? i] };
+  };
   const quiet = { log: () => {}, warn: () => {}, error: () => {} };
   const fn = new Function("$", "$input", "console", code) as (...args: unknown[]) => Item[];
   return fn($, itemsOf(input), quiet);
@@ -119,6 +126,61 @@ describe("knowledge gap workflow reads the gap from the webhook body", () => {
     const topLevel = /\$\('Knowledge Gap Webhook'\)\.(?:first\(\)|item)\.json\.(?!body\b)\w+/;
     for (const n of workflow.nodes) {
       expect(JSON.stringify(n.parameters)).not.toMatch(topLevel);
+    }
+  });
+});
+
+// An HTTP Request node with onError "continueErrorOutput" splits its items:
+// successes on output 0, failures on output 1. Both outputs of Fetch Page
+// Content, Extract Knowledge and Store in Knowledge Base were wired into the
+// same next node, so whenever one item failed everything downstream ran twice.
+// On 2026-09-26 (execution 15, gap #77) the first pass ran a full resolution
+// check before anything had been stored. And because the success batch no
+// longer lines up with the node before it, matching items by position put
+// pages under the wrong URL.
+describe("knowledge gap workflow survives partial failures", () => {
+  const page = (words: string) => `<html><body><p>${words} ${"lorem ipsum ".repeat(20)}</p></body></html>`;
+  const dedupe: Item[] = ["https://a.test", "https://b.test", "https://c.test"].map((url) => ({
+    json: { url, search_topic: gap.search_topic },
+  }));
+
+  it("labels each fetched page with its own URL when an earlier fetch failed", () => {
+    // b.test failed, so the success batch holds a.test and c.test only
+    const out = runCode(
+      "Truncate & Clean Content",
+      [
+        { json: { data: page("alpha") }, pairedItem: { item: 0 } },
+        { json: { data: page("gamma") }, pairedItem: { item: 2 } },
+      ],
+      { "Deduplicate Results": dedupe },
+    );
+    expect(out.map((i) => [i.json.url, String(i.json.page_content).slice(0, 5)])).toEqual([
+      ["https://a.test", "alpha"],
+      ["https://c.test", "gamma"],
+    ]);
+  });
+
+  it("keeps each extracted fact with its page's URL when another extraction failed", () => {
+    const truncated: Item[] = [
+      { json: { url: "https://a.test", search_topic: gap.search_topic, page_content: "a" } },
+      { json: { url: "https://c.test", search_topic: gap.search_topic, page_content: "c" } },
+    ];
+    // Extraction for a.test failed, so only c.test's comes through
+    const out = runCode(
+      "Filter Relevant Only",
+      [{ json: { response: "Sandoz runs an MES core based on PAS-X across its sites. ".repeat(2) }, pairedItem: { item: 1 } }],
+      { "Truncate & Clean Content": truncated },
+    );
+    expect(out.map((i) => i.json.url)).toEqual(["https://c.test"]);
+  });
+
+  it("never wires a failure output into the node that handles successes", () => {
+    for (const [from, conn] of Object.entries(workflow.connections)) {
+      const [ok, failed] = conn.main;
+      const okTargets = new Set((ok ?? []).map((c) => c.node));
+      for (const c of failed ?? []) {
+        expect(`${from} failure -> ${c.node}`).not.toBe(okTargets.has(c.node) ? `${from} failure -> ${c.node}` : "");
+      }
     }
   });
 });
