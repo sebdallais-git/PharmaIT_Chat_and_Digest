@@ -20,6 +20,7 @@ import {
 } from "../services/chromadb-store.js";
 import { saveRawDocument } from "../services/raw-documents.js";
 import { ingestTextDocument } from "../services/ingest-text.js";
+import { buildResolutionContext } from "../services/gap-resolution-context.js";
 import { reindexActiveStack } from "../services/reindex.js";
 import { createReindexJobs } from "../services/reindex-jobs.js";
 import { isSupportedFile, getSupportedExtensions, parseBuffer } from "../services/file-parser.js";
@@ -286,11 +287,16 @@ router.get("/gaps/stats", (_req: Request, res: Response): void => {
 
 // POST /api/knowledge/gaps/check-resolution - Re-check if a gap is now resolved
 router.post("/gaps/check-resolution", async (req: Request, res: Response): Promise<void> => {
-  const { gap_id, original_query, search_topic } = req.body as {
+  const { gap_id, original_query, search_topic, sources } = req.body as {
     gap_id?: number;
     original_query?: string;
     search_topic?: string;
+    // Sources the gap-fill loop just stored; their chunks always lead the context
+    sources?: unknown;
   };
+  const storedSources = Array.isArray(sources)
+    ? sources.filter((s): s is string => typeof s === "string" && s.length > 0).slice(0, 20)
+    : [];
 
   if (!gap_id || !original_query) {
     res.status(400).json({ error: "gap_id and original_query are required" });
@@ -305,30 +311,9 @@ router.post("/gaps/check-resolution", async (req: Request, res: Response): Promi
       return;
     }
 
-    // Re-ask through full RAG pipeline: query ChromaDB → build prompt → call Gemma
-    let context = "";
-    try {
-      const chromaAvailable = await isChromaDBAvailable();
-      if (chromaAvailable) {
-        const { searchChromaDB } = await import("../services/chromadb-store.js");
-        const results = await searchChromaDB(original_query, 5);
-        if (results.length > 0) {
-          context = "\n\nRelevant context from the knowledge base:\n" +
-            results.map((r) => `[Source: ${String(r.metadata.source ?? "unknown")}]\n${r.document}`)
-              .join("\n\n---\n\n");
-        }
-      }
-    } catch {
-      // Fall back to in-memory
-    }
-
-    if (!context) {
-      const memResults = await searchKnowledge(original_query, 8);
-      if (memResults.length > 0) {
-        context = "\n\nRelevant context from the knowledge base:\n" +
-          memResults.map((c) => `[Source: ${c.source}]\n${c.content}`).join("\n\n---\n\n");
-      }
-    }
+    // Re-ask through the RAG pipeline: what the loop stored, the top ChromaDB hits,
+    // or the in-memory index when ChromaDB is unavailable
+    const context = await buildResolutionContext(original_query, storedSources);
 
     const systemPrompt = `You are PharmaBot, an expert in pharmaceutical cybersecurity. Use the following context to answer the question accurately and specifically.${context}`;
 

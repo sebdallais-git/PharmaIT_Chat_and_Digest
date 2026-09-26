@@ -223,7 +223,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Summarize the entire workflow run\nconst webhookData = $('Knowledge Gap Webhook').first().json.body;\nconst dedupeItems = $('Deduplicate Results').all();\nconst filteredItems = $('Filter Relevant Only').all();\nconst storedItems = $input.all();\n\nconst totalUrls = dedupeItems.filter(i => !i.json.error).length;\nconst relevantCount = filteredItems.filter(i => !i.json.error).length;\nconst storedCount = storedItems.filter(i => !i.json.error).length;\n\nconst summary = {\n  status: 'completed',\n  gap_id: webhookData.gap_id,\n  search_topic: webhookData.search_topic,\n  original_query: webhookData.original_query,\n  timestamp: new Date().toISOString(),\n  stats: {\n    pages_fetched: totalUrls,\n    relevant_pages: relevantCount,\n    chunks_stored: storedCount\n  }\n};\n\nconsole.log('[N8N Knowledge Gap] ' + JSON.stringify(summary));\n\nreturn [{ json: summary }];"
+        "jsCode": "// Summarize the entire workflow run\nconst webhookData = $('Knowledge Gap Webhook').first().json.body;\nconst dedupeItems = $('Deduplicate Results').all();\nconst filteredItems = $('Filter Relevant Only').all();\nconst storedItems = $input.all();\n\nconst totalUrls = dedupeItems.filter(i => !i.json.error).length;\nconst relevantCount = filteredItems.filter(i => !i.json.error).length;\nconst storedCount = storedItems.filter(i => !i.json.error).length;\n\n// The sources this run stored, labelled as Store in Knowledge Base labels them.\n// The resolution check always includes their chunks: a top-5 search over the\n// whole knowledge base can rank what was just stored out of sight.\nconst storedSources = [...new Set(storedItems\n  .map((item, i) => item.json.error ? null : $('Filter Relevant Only').itemMatching(i))\n  .map((filtered) => filtered && filtered.json.url)\n  // Only real URLs: Filter Relevant Only falls back to 'unknown' when it cannot trace a page\n  .filter((url) => typeof url === 'string' && url.length > 0 && url !== 'unknown')\n  .map((url) => 'n8n-gap|' + url))];\n\nconst summary = {\n  status: 'completed',\n  gap_id: webhookData.gap_id,\n  search_topic: webhookData.search_topic,\n  original_query: webhookData.original_query,\n  stored_sources: storedSources,\n  timestamp: new Date().toISOString(),\n  stats: {\n    pages_fetched: totalUrls,\n    relevant_pages: relevantCount,\n    chunks_stored: storedCount\n  }\n};\n\nconsole.log('[N8N Knowledge Gap] ' + JSON.stringify(summary));\n\nreturn [{ json: summary }];"
       },
       "id": "a1b2c3d4-0011-4000-8000-000000000011",
       "name": "Summary & Log",
@@ -241,7 +241,7 @@
         "url": "http://localhost:3000/api/knowledge/gaps/check-resolution",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ gap_id: $json.gap_id, original_query: $json.original_query, search_topic: $json.search_topic }) }}",
+        "jsonBody": "={{ JSON.stringify({ gap_id: $json.gap_id, original_query: $json.original_query, search_topic: $json.search_topic, sources: $json.stored_sources || [] }) }}",
         "options": {
           "timeout": 120000
         },
