@@ -141,7 +141,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Truncate page content to 8000 chars, strip HTML, filter failed fetches\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  // Skip failed fetches\n  if (item.json.error || !item.json.data) continue;\n\n  let content = String(item.json.data || '');\n\n  // Strip HTML tags, scripts, styles\n  content = content\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n    .replace(/<nav[\\s\\S]*?<\\/nav>/gi, '')\n    .replace(/<header[\\s\\S]*?<\\/header>/gi, '')\n    .replace(/<footer[\\s\\S]*?<\\/footer>/gi, '')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&[a-z]+;/gi, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  // Skip if too short (likely an error page)\n  if (content.length < 100) continue;\n\n  // Truncate to 8000 chars\n  content = content.slice(0, 8000);\n\n  // Get URL from the Deduplicate node's corresponding item\n  const dedupeItems = $('Deduplicate Results').all();\n  const url = dedupeItems[i] ? dedupeItems[i].json.url : 'unknown';\n  const searchTopic = dedupeItems[i] ? dedupeItems[i].json.search_topic : '';\n\n  output.push({\n    json: {\n      page_content: content,\n      url: url,\n      search_topic: searchTopic,\n      content_length: content.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No pages could be fetched successfully' } }];\n}\n\nreturn output;"
+        "jsCode": "// Truncate page content to 8000 chars, strip HTML, filter failed fetches\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  // Skip failed fetches\n  if (item.json.error || !item.json.data) continue;\n\n  let content = String(item.json.data || '');\n\n  // Strip HTML tags, scripts, styles\n  content = content\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n    .replace(/<nav[\\s\\S]*?<\\/nav>/gi, '')\n    .replace(/<header[\\s\\S]*?<\\/header>/gi, '')\n    .replace(/<footer[\\s\\S]*?<\\/footer>/gi, '')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&[a-z]+;/gi, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  // Skip if too short (likely an error page)\n  if (content.length < 100) continue;\n\n  // Truncate to 8000 chars\n  content = content.slice(0, 8000);\n\n  // Trace this page back to the URL it was fetched from. Failed fetches leave\n  // the success batch, so position i is not the i-th deduplicated URL.\n  const source = $('Deduplicate Results').itemMatching(i);\n  const url = source ? source.json.url : 'unknown';\n  const searchTopic = source ? source.json.search_topic : '';\n\n  output.push({\n    json: {\n      page_content: content,\n      url: url,\n      search_topic: searchTopic,\n      content_length: content.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No pages could be fetched successfully' } }];\n}\n\nreturn output;"
       },
       "id": "a1b2c3d4-0007-4000-8000-000000000007",
       "name": "Truncate & Clean Content",
@@ -187,7 +187,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter out NOT_RELEVANT responses and errors\nconst items = $input.all();\nconst truncateItems = $('Truncate & Clean Content').all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const response = String(item.json.response || '').trim();\n\n  // Skip errors and NOT_RELEVANT\n  if (item.json.error) continue;\n  if (response === 'NOT_RELEVANT' || response.startsWith('NOT_RELEVANT')) continue;\n  if (response.length < 50) continue;\n\n  const sourceData = truncateItems[i] || { json: {} };\n\n  output.push({\n    json: {\n      summary: response,\n      url: sourceData.json.url || 'unknown',\n      search_topic: sourceData.json.search_topic || '',\n      summary_length: response.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No relevant content found', relevant_count: 0 } }];\n}\n\nreturn output;"
+        "jsCode": "// Filter out NOT_RELEVANT responses and errors\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const response = String(item.json.response || '').trim();\n\n  // Skip errors and NOT_RELEVANT\n  if (item.json.error) continue;\n  if (response === 'NOT_RELEVANT' || response.startsWith('NOT_RELEVANT')) continue;\n  if (response.length < 50) continue;\n\n  // Trace back to the page this fact came from; failed extractions leave the batch\n  const sourceData = $('Truncate & Clean Content').itemMatching(i) || { json: {} };\n\n  output.push({\n    json: {\n      summary: response,\n      url: sourceData.json.url || 'unknown',\n      search_topic: sourceData.json.search_topic || '',\n      summary_length: response.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No relevant content found', relevant_count: 0 } }];\n}\n\nreturn output;"
       },
       "id": "a1b2c3d4-0009-4000-8000-000000000009",
       "name": "Filter Relevant Only",
@@ -400,13 +400,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Truncate & Clean Content",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Truncate & Clean Content": {
@@ -429,13 +423,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Filter Relevant Only",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Filter Relevant Only": {
@@ -458,13 +446,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Summary & Log",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Summary & Log": {
@@ -487,13 +469,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Resolution Result Log",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     }
   },
