@@ -107,7 +107,8 @@ describe("knowledge gap workflow reads the gap from the webhook body", () => {
     });
     expect(summary.json.gap_id).toBe(71);
     const check = evalJsonBody("Check Gap Resolution", summary.json);
-    expect(check).toEqual({ gap_id: 71, original_query: gap.original_query, search_topic: gap.search_topic });
+    // Nothing was stored in this run, so there are no stored sources to pass on
+    expect(check).toEqual({ gap_id: 71, original_query: gap.original_query, search_topic: gap.search_topic, sources: [] });
   });
 
   it("falls back to the topic when query generation fails", () => {
@@ -182,5 +183,43 @@ describe("knowledge gap workflow survives partial failures", () => {
         expect(`${from} failure -> ${c.node}`).not.toBe(okTargets.has(c.node) ? `${from} failure -> ${c.node}` : "");
       }
     }
+  });
+});
+
+// The resolution check re-answers the question right after the loop stored its
+// findings, but only searched the top 5 of ~9,400 chunks, so on 2026-09-26
+// (gap #77) it never saw what had just been stored. The workflow now tells it
+// which sources it stored.
+describe("knowledge gap workflow hands the resolution check what it stored", () => {
+  const filtered: Item[] = [
+    { json: { url: "https://a.test", summary: "fact a" } },
+    { json: { url: "https://c.test", summary: "fact c" } },
+  ];
+
+  it("names the sources that were actually stored", () => {
+    // Storing a.test failed, so only c.test's response reaches the summary
+    const [summary] = runCode("Summary & Log", [{ json: { added: 1, chromaAdded: 1 }, pairedItem: { item: 1 } }], {
+      "Deduplicate Results": [{ json: { url: "https://a.test" } }, { json: { url: "https://c.test" } }],
+      "Filter Relevant Only": filtered,
+    });
+    expect(summary.json.stored_sources).toEqual(["n8n-gap|https://c.test"]);
+  });
+
+  it("names them exactly as Store in Knowledge Base labels them", () => {
+    const stored = evalJsonBody("Store in Knowledge Base", filtered[1].json);
+    const [summary] = runCode("Summary & Log", [{ json: { added: 1 }, pairedItem: { item: 1 } }], {
+      "Filter Relevant Only": filtered,
+    });
+    expect(summary.json.stored_sources).toEqual([stored.source]);
+  });
+
+  it("sends the stored sources to the resolution check", () => {
+    const check = evalJsonBody("Check Gap Resolution", {
+      gap_id: 71,
+      original_query: gap.original_query,
+      search_topic: gap.search_topic,
+      stored_sources: ["n8n-gap|https://c.test"],
+    });
+    expect(check.sources).toEqual(["n8n-gap|https://c.test"]);
   });
 });
