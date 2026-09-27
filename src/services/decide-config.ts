@@ -27,6 +27,9 @@ export interface DecideConfig {
   // a call to every chat turn, so it is opt-in even once a scorer is installed.
   shadowDetection: boolean;
   thresholds: DecideThresholds;
+  // The gap workflow skips 27B extraction of a fetched page whose relevance
+  // probability is below this (services/page-relevance.ts). Null is off.
+  pageRelevanceSkipBelow: number | null;
 }
 
 // Type guard that distinguishes objects from arrays: typeof handles both as "object".
@@ -82,6 +85,9 @@ export function parseDecideConfig(raw: unknown): DecideConfig {
     // the right default for something that touches every chat turn.
     shadowDetection: raw.shadow_detection === true,
     thresholds: { resolved, unresolved },
+    // Absent means off, for the same reason: it decides which pages are never read
+    pageRelevanceSkipBelow:
+      raw.page_relevance_skip_below === undefined ? null : requireProbability(raw, "page_relevance_skip_below"),
   };
 }
 

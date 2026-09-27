@@ -159,7 +159,7 @@
         "url": "http://localhost:3000/api/llm/complete",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with exactly NOT_RELEVANT and nothing else: no explanation.', stream: false }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with exactly NOT_RELEVANT and nothing else: no explanation.', stream: false, relevance: { topic: $json.search_topic, page: $json.page_content.slice(0, 6000), url: $json.url } }) }}",
         "options": {
           "timeout": 300000
         },

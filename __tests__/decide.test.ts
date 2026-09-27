@@ -16,6 +16,7 @@ function depsReturning(noul: number, seen?: { body?: unknown; url?: string; auth
       model: "jev-latest",
       timeoutMs: 15000,
       shadowDetection: false,
+      pageRelevanceSkipBelow: null,
       thresholds: { resolved: 0.85, unresolved: 0.5 },
     },
     apiKey: "secret-key",

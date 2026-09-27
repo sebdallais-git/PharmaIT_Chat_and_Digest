@@ -24,3 +24,12 @@ thresholds:
 # the user sees. On since 2026-09-27, when open-jev was installed on :8010;
 # read the agreement with: npx tsx scripts/shadow-report.ts
 shadow_detection: true
+
+# Gap workflow page pre-check (src/services/page-relevance.ts): before the 27B
+# extracts facts from a fetched page, the scorer is asked whether the page is
+# about the gap's topic, and a page below this probability is answered
+# NOT_RELEVANT without a 27B call. Measured with scripts/replay-page-relevance.ts
+# on 2026-09-27 over 34 pages from real gap runs: at 0.1 it skips 9 of the 26
+# pages the 27B discarded and none of the 8 it kept (lowest kept: 0.915).
+# Any scorer failure extracts the page as before. Remove the line to turn it off.
+page_relevance_skip_below: 0.1

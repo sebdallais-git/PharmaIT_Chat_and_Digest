@@ -335,3 +335,27 @@ describe("knowledge gap workflow waits for the resolution check", () => {
     expect(options.timeout).toBe(300000);
   });
 });
+
+// Before the 27B reads a page, the app asks the System One scorer whether the
+// page is about the topic at all (services/page-relevance.ts); a page it is
+// nearly certain about comes back NOT_RELEVANT with no 27B call. The workflow
+// only has to send the page along and let its filter drop the answer.
+describe("knowledge gap workflow lets the app skip clearly irrelevant pages", () => {
+  const page = { search_topic: gap.search_topic, page_content: "x".repeat(8000), url: "https://a.test" };
+
+  it("sends the page it wants summarised as relevance, exactly as the prompt shows it", () => {
+    const request = evalJsonBody("Extract Knowledge (Ollama)", page);
+    expect(request.relevance).toEqual({ topic: gap.search_topic, page: "x".repeat(6000), url: "https://a.test" });
+    expect(String(request.prompt)).toContain("x".repeat(6000));
+    expect(String(request.prompt)).not.toContain("x".repeat(6001));
+  });
+
+  it("drops a page the app skipped", () => {
+    const out = runCode(
+      "Filter Relevant Only",
+      [{ json: { response: "NOT_RELEVANT", skipped: true, relevance_probability: 0.01 }, pairedItem: { item: 0 } }],
+      { "Truncate & Clean Content": [{ json: { url: "https://a.test", search_topic: gap.search_topic } }] },
+    );
+    expect(out.filter((i) => !i.json.error)).toHaveLength(0);
+  });
+});

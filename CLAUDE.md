@@ -30,6 +30,7 @@ npx tsx scripts/replay-gap-decisions.ts [--backfill | --question "…" | --detai
 npx tsx scripts/shadow-report.ts               # detection shadow: scorer vs 27B agreement on chat turns
 npx tsx scripts/replay-detection.ts [--backfill [--limit N] [--all] | --question … | --details]
                                                # same for detection: regenerates past answers (27B-labelled, resumable)
+npx tsx scripts/replay-page-relevance.ts        # gap workflow page pre-check vs the 27B's keep/discard in n8n history
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
 ```
 
@@ -75,6 +76,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   The 27B decides resolution (`gap-resolution-verdict.ts`); the System One scorer
   (open-jev in `~/claude/open-jev`, Gemma 3 4B 4-bit on :8010, `config/decide.yaml`) is only
   logged/shadowed (`[Gap Resolution] 27B X, scorer Y`, `[Decide]` for slow/failed calls).
+  It does decide one thing: `/api/llm/complete` with a `relevance` page skips the 27B extraction
+  when the page scores below `page_relevance_skip_below` (`page-relevance.ts`, fail-open).
 - **Watchlist** (`watchlist-*` services, `scripts/watchlist.ts`, `config/watchlist.yaml` is the
   only definition of entities/feeds/topics). Pipeline: adapters (RSS/Atom, Google News, EDGAR)
   → dedupe **before** the model → sequential tagging → SQLite `data/watchlist.db` + ChromaDB.
