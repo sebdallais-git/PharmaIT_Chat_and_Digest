@@ -6,7 +6,7 @@
 
 PharmaITChat watches the IT and security scene around three pharma customers, their competitors and the vendors that shape their tech stack — **71 named entities**, collected nightly, deduplicated across sources, tagged by a 27B model and stored in a knowledge base you can then ask questions of, in a browser or on Telegram.
 
-**Every model call happens on this machine.** Chat, embeddings, nightly tagging, retrieval, storage. No cloud LLM, no API key for the model, no per-token bill — and customer intelligence that never leaves your network. The only traffic going out is the news the system fetches and the Telegram message it sends back.
+**Every model call happens on this machine.** Chat, embeddings, nightly tagging, retrieval, storage. No cloud LLM, no API key for the model, no per-token bill — and no question, answer or document handed to a cloud model. What goes out is the news the system fetches, the web searches it runs (see [Everything local](#everything-local-on-one-machine)) and the Telegram message it sends back.
 
 **Last night, unattended:** 1,165 items fetched, 57 collapsed by cross-source dedupe, 250 tagged and stored, 2 failed feeds, 0 anomalies, 42 minutes — and not a word on Telegram, because nothing went wrong.
 
@@ -27,15 +27,28 @@ PharmaITChat watches the IT and security scene around three pharma customers, th
 [![Hermes Agent](https://img.shields.io/badge/Hermes_Agent-0.21.3-8B5CF6?style=for-the-badge)](#hermes-agent-on-telegram)
 [![Telegram](https://img.shields.io/badge/Telegram-5_scheduled_jobs-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](#hermes-agent-on-telegram)
 [![MCP](https://img.shields.io/badge/MCP-16_tools-D97757?style=for-the-badge)](#the-mcp-server-and-the-model-gateway)
+<br/>
+[![open-jev](https://img.shields.io/badge/open--jev-Gemma_3_4B_%C2%B7_4--bit-1e3a8a?style=for-the-badge)](https://github.com/daseinlabs/open-jev)
+[![System One](https://img.shields.io/badge/System_One-scorer_beside_the_27B-1e3a8a?style=for-the-badge)](#the-system-one-scorer)
+[![n8n](https://img.shields.io/badge/n8n-3_workflows-EA4B71?style=for-the-badge&logo=n8n&logoColor=white)](#workflows)
+<br/>
+[![SearXNG](https://img.shields.io/badge/SearXNG-metasearch-3050FF?style=for-the-badge&logo=searxng&logoColor=white)](#the-self-healing-loop)
+[![Brave Search API](https://img.shields.io/badge/Brave_Search-API-FB542B?style=for-the-badge&logo=brave&logoColor=white)](#the-self-healing-loop)
+[![colima](https://img.shields.io/badge/colima-Neo4j_%C2%B7_SearXNG-2496ED?style=for-the-badge&logo=docker&logoColor=white)](#setup)
+[![SQLite](https://img.shields.io/badge/SQLite-gaps_%C2%B7_watchlist-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](#the-watchlist)
 
-[![Tests](https://img.shields.io/badge/Jest-606_tests_%C2%B7_48_suites-C21325?style=flat-square&logo=jest&logoColor=white)](#testing)
+[![Tests](https://img.shields.io/badge/Jest-1%2C162_tests_%C2%B7_101_suites-C21325?style=flat-square&logo=jest&logoColor=white)](#testing)
+[![Python tests](https://img.shields.io/badge/unittest-27_tests-3776AB?style=flat-square&logo=python&logoColor=white)](#testing)
 [![Stack switch](https://img.shields.io/badge/stack_switch-Ollama_%C2%B7_MLX_%C2%B7_oMLX_%C2%B7_Splash-6E56CF?style=flat-square)](#four-interchangeable-stacks)
 [![UI switch](https://img.shields.io/badge/UI_switch-Telegram_confirmed-26A5E4?style=flat-square)](#switching-from-the-web-ui)
 [![Context](https://img.shields.io/badge/context-64K_all_stacks-064e3b?style=flat-square)](#four-interchangeable-stacks)
 [![Cloud calls](https://img.shields.io/badge/cloud_LLM_calls-0-064e3b?style=flat-square)](#everything-local-on-one-machine)
 [![Nightly run](https://img.shields.io/badge/last_nightly_run-1%2C165_items_%C2%B7_42_min_%C2%B7_0_anomalies-0f766e?style=flat-square)](#the-first-unattended-run)
+[![Resolution agreement](https://img.shields.io/badge/scorer_vs_27B-resolution_91%25-1e3a8a?style=flat-square)](#the-system-one-scorer)
+[![Page pre-check](https://img.shields.io/badge/page_pre--check-35%25_of_wasted_27B_reads_skipped-1e3a8a?style=flat-square)](#the-system-one-scorer)
+[![Autostart](https://img.shields.io/badge/after_reboot-everything_returns-064e3b?style=flat-square)](#hermes-agent-on-telegram)
 
-[Stacks](#four-interchangeable-stacks) · [Benchmarks](#benchmarks) · [Watchlist](#the-watchlist) · [Chat & knowledge base](#chat-retrieval-and-the-knowledge-base) · [Telegram](#hermes-agent-on-telegram) · [Setup](#setup) · [API](#api-reference)
+[Workflows](#workflows) · [Stacks](#four-interchangeable-stacks) · [Benchmarks](#benchmarks) · [Watchlist](#the-watchlist) · [Chat & knowledge base](#chat-retrieval-and-the-knowledge-base) · [System One](#the-system-one-scorer) · [Telegram](#hermes-agent-on-telegram) · [Setup](#setup) · [API](#api-reference)
 
 </div>
 
@@ -52,9 +65,9 @@ The whole system runs on one local box with 48 GB of unified memory — no cloud
 | Nightly entity/domain tagging | The same local chat model, one item at a time |
 | Vector store, item store, graph | ChromaDB, SQLite and Neo4j on localhost |
 | Answer scoring (System One) | Local Gemma 3 4B (4-bit) on open-jev, beside the 27B |
-| Web search (chat and the self-healing loop) | Your own SearXNG instance on localhost, which forwards the **search queries** to public engines and the Brave Search API |
+| Web search | Chat: Google News RSS search. Self-healing loop and Hermes: your own SearXNG on localhost, which forwards the **search queries** to public engines and the Brave Search API |
 
-Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, web search, and Telegram. SearXNG runs locally, but it is a metasearch proxy: the search queries themselves (written by the local model from a chat question, or from a knowledge gap) reach the engines it queries, including Brave's Search API under your own key. Web search can be switched off in the chat UI; the self-healing loop always searches. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
+Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, web search, and Telegram. The search queries themselves leave the machine: chat's optional web search sends the question to Google News RSS, and the self-healing loop's queries (written by the local model from a knowledge gap) go through SearXNG, which runs locally but is a metasearch proxy, to the engines it queries, including Brave's Search API under your own key. Web search can be switched off in the chat UI; the self-healing loop always searches. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
 
 ---
 
@@ -71,11 +84,167 @@ Outbound traffic is limited to what the system goes out to *get* and the one cha
 | 🤖 | **Telegram assistant** | Hermes Agent on the same local model: 16 MCP tools, 5 scheduled jobs, a network-less Docker sandbox |
 | 🧰 | **MCP server** | `pharmaitchat-mcp` exposes the knowledge base to any MCP client over Streamable HTTP, with compacted payloads |
 | 🔌 | **Model gateway** | OpenAI-compatible `/v1` on whichever stack is active, so any agent can borrow the local model |
-| 🩹 | **Self-healing knowledge** | Low-confidence answers trigger an n8n workflow that researches, ingests and re-checks the gap |
-| ⚖️ | **System One scorer** | A local 4B model scores every chat answer and gap resolution beside the 27B, in shadow mode, with replay harnesses to measure it before it is trusted |
+| 🩹 | **Self-healing knowledge** | Low-confidence answers trigger an n8n workflow that researches, ingests and re-checks the gap — every workflow is diagrammed under [Workflows](#workflows) |
+| ⚖️ | **System One scorer** | A local 4B model beside the 27B: skips clearly irrelevant pages before the 27B reads them, and shadows every chat answer and gap resolution, with replay harnesses to measure each use before it is trusted |
 | 🎙️ | **Voice input** | Local speech-to-text with whisper.cpp; HTTPS mode for iPad and phone microphones |
 | ⏱️ | **Built-in benchmark** | Reproducible Ollama vs MLX vs oMLX vs Splash comparison with retrieval overlap and a blind A/B review page |
-| ✅ | **1,159 tests** | 1,132 Jest tests in 99 suites across the app and the MCP server, plus 27 Python tests for the Telegram plugin — every one of them against fakes, none touching a real model server, ChromaDB, Docker, launchd or Telegram |
+| ✅ | **1,189 tests** | 1,162 Jest tests in 101 suites across the app and the MCP server, plus 27 Python tests for the Telegram plugin — every one of them against fakes, none touching a real model server, ChromaDB, Docker, launchd or Telegram |
+
+---
+
+## Workflows
+
+Everything that runs on its own, what starts it, and whether it is live on this machine today.
+
+| Workflow | Started by | Runs in | Status |
+|---|---|---|---|
+| [Chat turn and gap detection](#chat-turn-and-gap-detection) | Every chat message | App | Live |
+| [Gap auto-fill v2](#gap-auto-fill-v2) · `n8n/knowledge_gap_workflow_v2.json` | Webhook from the gap detector | n8n (17 nodes) | **Live**, active |
+| [KB health monitor](#kb-health-monitor) · `n8n/knowledge_qa_workflow.json` | Every 6 hours | n8n (12 nodes) | Imported, **not active** |
+| [Gap auto-fill v1](#gap-auto-fill-v1) · `n8n/knowledge_gap_workflow.json` | Webhook | n8n (13 nodes) | Kept for reference, not imported |
+| [Nightly watchlist ingest](#the-nightly-run) | 02:30 daily | Hermes, script mode | Live |
+| [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 4 jobs | Hermes agent | Live |
+| [Stack switch](#stack-switch) | Web UI request | App + Telegram + Hermes plugin | Live |
+
+### Chat turn and gap detection
+
+The answer streams first; everything after the `done` event runs in the background and never delays the user.
+
+```mermaid
+flowchart LR
+    Q["Chat question"] --> R["Parallel retrieval<br/>ChromaDB · in-memory · Neo4j · news"]
+    R --> A["27B answer<br/>streamed to the user"]
+    A --> BG["After done<br/>background"]
+    BG --> D["Gap detector<br/>27B checkConfidence"]
+    BG -. "shadow_detection" .-> S["System One<br/>same question, recorded only"]
+    S --> DS[("detection_shadow")]
+    D --> RL[("request_log<br/>every turn")]
+    D -- "not confident<br/>2 h cooldown per topic" --> GL[("gap_log")]
+    GL --> WH["n8n webhook<br/>gap_id, topic, question"]
+
+    style A fill:#064e3b,stroke:#22d3ee,color:#e5e7eb
+    style S fill:#1e3a8a,stroke:#60a5fa,color:#e5e7eb
+    style WH fill:#4a1d6b,stroke:#d946ef,color:#e5e7eb
+```
+
+### Gap auto-fill v2
+
+The live self-healing workflow. Every model step calls the app, so it runs on the active stack; the two failure paths fall back instead of stopping.
+
+```mermaid
+flowchart TD
+    W["Knowledge Gap Webhook"] --> G["Generate Search Queries<br/>POST /api/llm/complete"]
+    G -- "ok" --> P["Parse Search Queries<br/>3 queries"]
+    G -- "error" --> GE["Query Error Handler<br/>search the topic itself"]
+    P --> S["Search SearXNG<br/>public engines + Brave API"]
+    GE --> S
+    S -- "error" --> SE["SearXNG Error Handler<br/>log and stop"]
+    S -- "ok" --> DD["Deduplicate Results<br/>top 3 per query"]
+    DD --> F["Fetch Page Content"]
+    F --> T["Truncate and Clean<br/>strip HTML, 8,000 chars"]
+    T --> X["Extract Knowledge<br/>POST /api/llm/complete<br/>page sent as relevance"]
+    X --> PC{"System One pre-check<br/>in the app"}
+    PC -- "p below 0.1" --> NR["NOT_RELEVANT<br/>no 27B call"]
+    PC -- "otherwise or scorer down" --> EX["27B extracts the facts"]
+    NR --> FR["Filter Relevant Only"]
+    EX --> FR
+    FR --> AR{"Anything relevant?"}
+    AR -- "yes" --> ST["Store in Knowledge Base<br/>POST /api/knowledge/ingest-text"]
+    AR -- "no" --> MU["Mark Gap Unresolved<br/>POST /gaps/:id/unresolved"]
+    ST --> SL["Summary and Log<br/>stored sources"]
+    SL --> CR["Check Gap Resolution<br/>re-answer: 27B decides,<br/>scorer verdict logged"]
+    CR --> RR["Resolution Result Log<br/>resolved · unresolved · review"]
+
+    style PC fill:#1e3a8a,stroke:#60a5fa,color:#e5e7eb
+    style EX fill:#064e3b,stroke:#22d3ee,color:#e5e7eb
+    style CR fill:#064e3b,stroke:#22d3ee,color:#e5e7eb
+    style MU fill:#7c2d12,stroke:#fb923c,color:#e5e7eb
+    style SE fill:#7c2d12,stroke:#fb923c,color:#e5e7eb
+```
+
+Deploying a change to the JSON: back up the live workflow, `launchctl bootout` the n8n job, `n8n import:workflow`, `n8n publish:workflow`, `launchctl bootstrap`. Editing the file alone changes nothing.
+
+### KB health monitor
+
+Imported into n8n but **not activated**, so no health reports are produced today; activate it in n8n to start them.
+
+```mermaid
+flowchart LR
+    T["Every 6 hours"] --> KS["Get KB Stats"]
+    T --> DM["Get Dashboard Metrics"]
+    KS --> GQ["Generate Test Queries"]
+    GQ --> RAG["Query RAG Pipeline<br/>POST /api/chat"]
+    RAG --> SC["Score Response Quality<br/>POST /api/llm/complete"]
+    SC --> PS["Parse Quality Scores"]
+    PS --> BR["Build Health Report"]
+    BR --> SR["Store Health Report<br/>POST /api/dashboard/kb-health"]
+    SR --> DG{"Is Degraded?"}
+    DG -- "yes" --> AL["Generate Alert"]
+    DG -- "no" --> OK["Log Healthy"]
+
+    style DG fill:#7c2d12,stroke:#fb923c,color:#e5e7eb
+```
+
+### Gap auto-fill v1
+
+The first version, kept in the repo for reference and never imported here. It stores what it finds but never re-checks the gap and has no "nothing relevant" branch, which is what v2 added.
+
+```mermaid
+flowchart LR
+    W["Webhook"] --> G["Generate queries"] --> P["Parse"] --> S["SearXNG"] --> D["Dedupe"] --> F["Fetch"] --> T["Truncate"] --> X["Extract"] --> FR["Filter"] --> ST["Store"] --> L["Summary and Log"]
+    G -. "error" .-> GE["Query Error Handler"] -.-> S
+    S -. "error" .-> SE["SearXNG Error Handler"]
+```
+
+### Hermes scheduled jobs
+
+Hermes' cron runs these on the local 27B and reports on Telegram. Scheduled runs use a write-limited MCP server (no `start_reindex`, no `add_knowledge`) and get no web, memory, terminal or file tools.
+
+```mermaid
+flowchart LR
+    H["Hermes gateway<br/>cron"] --> WL["02:30 · watchlist ingest<br/>script mode, no agent"]
+    H --> ND["06:00 · news digest"]
+    H --> GR["07:00 · gap resolution"]
+    H --> HW["09:00 and 19:00 · health watch"]
+    H --> FD["Mon 08:00 · feedback digest"]
+    WL --> WI["watchlist ingest script"]
+    ND --> T1["run_news_agent · knowledge_status"]
+    GR --> T2["re-check at most 3 triggered gaps"]
+    HW --> T3["system_health"]
+    FD --> T4["feedback_report"]
+    WI -- "only on failure" --> TG["Telegram"]
+    T1 --> TG
+    T2 --> TG
+    T3 -- "only when unhealthy" --> TG
+    T4 --> TG
+
+    style H fill:#4a1d6b,stroke:#d946ef,color:#e5e7eb
+    style TG fill:#0c4a6e,stroke:#26A5E4,color:#e5e7eb
+```
+
+The nightly ingest itself is diagrammed under [The nightly run](#the-nightly-run).
+
+### Stack switch
+
+A switch requested in the browser only happens after a tap on Telegram.
+
+```mermaid
+sequenceDiagram
+    participant UI as Web UI
+    participant App as PharmaITChat
+    participant TG as Telegram
+    participant H as Hermes plugin
+    UI->>App: POST /api/stack/switch (target stack)
+    App->>App: refuse during a benchmark, reindex or another switch
+    App->>TG: confirm and cancel buttons (one-time token)
+    TG->>H: tap
+    H->>App: POST /api/stack/confirm or /cancel (API token)
+    App->>App: switch-stack.sh starts the target stack, rebuilds its index if stale
+    alt switch fails
+        App->>App: roll back to the previous stack
+    end
+    UI->>App: GET /api/stack/status until done
+```
 
 ---
 
@@ -392,7 +561,10 @@ sequenceDiagram
     App->>N: Webhook with gap_id
     N->>App: POST /api/llm/complete (generate 3 search queries)
     N->>S: Search each query, dedupe, fetch pages
-    N->>App: POST /api/llm/complete (extract relevant facts)
+    loop each fetched page
+        N->>App: POST /api/llm/complete (extract facts, page sent as relevance)
+        App->>App: System One pre-check — clearly off-topic pages answer NOT_RELEVANT with no 27B call
+    end
     alt something relevant found
         N->>App: POST /api/knowledge/ingest-text
         N->>App: POST /api/knowledge/gaps/check-resolution
@@ -403,7 +575,7 @@ sequenceDiagram
     end
 ```
 
-A second workflow runs every 6 hours as a KB health check: it sends test queries through the full RAG pipeline, has the active stack score each answer and flag hallucinations, and posts the report to `/api/dashboard/kb-health` (168 reports kept, 7 days).
+A second workflow is a KB health check meant to run every 6 hours: it sends test queries through the full RAG pipeline, has the active stack score each answer and flag hallucinations, and posts the report to `/api/dashboard/kb-health` (168 reports kept, 7 days). It is imported into n8n but **not activated**; activate it in n8n to start the reports. See [Workflows](#workflows).
 
 | File | Nodes | Purpose |
 |---|---:|---|
@@ -417,7 +589,9 @@ All LLM steps call `POST /api/llm/complete`, so they run on the active stack. Se
 
 Every judgment in the loop above ("did the chat answer the question?", "does the re-answer close the gap?") costs a full 27B call. [open-jev](https://github.com/daseinlabs/open-jev) serves Gemma 3 4B (4-bit, ~3 GB, `127.0.0.1:8010`) as a *System One* scorer: it answers a typed yes/no question with a probability in under a second, and the app reaches it through `/api/decide` (`config/decide.yaml` holds the thresholds, 0.85 and 0.5).
 
-**It decides nothing yet.** In gap resolution the 27B still decides and the scorer's verdict is logged beside it (`[Gap Resolution] 27B X, scorer Y`); on every chat turn, with `shadow_detection: true`, both verdicts go to the `detection_shadow` table. Chat works the same with the scorer down.
+**It decides one thing: which fetched pages are not worth the 27B's time.** Before the gap workflow's 27B extraction, the app asks it whether a page is about the gap's topic; below `page_relevance_skip_below` (0.1) the page is answered `NOT_RELEVANT` with no 27B call. The 27B used to discard about two thirds of the pages it read. On 34 pages from real gap runs, this skips 9 of the 26 the 27B discarded and none of the 8 it kept (lowest kept: 0.915). Any scorer failure extracts the page as before.
+
+**Everywhere else it only watches.** In gap resolution the 27B still decides and the scorer's verdict is logged beside it (`[Gap Resolution] 27B X, scorer Y`); on every chat turn, with `shadow_detection: true`, both verdicts go to the `detection_shadow` table. Chat works the same with the scorer down.
 
 Before a scorer is trusted, it is measured against the 27B:
 
@@ -426,8 +600,9 @@ Before a scorer is trusted, it is measured against the 27B:
 | `scripts/replay-gap-decisions.ts` | The 60 open gaps (mostly non-answers): does the scorer catch a missed answer? |
 | `scripts/replay-detection.ts` | Past confident questions, answers regenerated in benchmark mode: does it raise false alarms on good answers? |
 | `scripts/shadow-report.ts` | Live agreement on real chat turns |
+| `scripts/replay-page-relevance.ts` | Every page in n8n's gap-run history: which discarded pages it skips, and whether it would ever skip one the 27B kept |
 
-Each replay takes `--question candidate.json` to try a new wording without touching production, and `--details` to list every disagreement. The wording matters more than anything else measured so far: on the same 60 gap answers, the first detection question agreed with the 27B 26.8% of the time and the current one 91.2%; the 16-bit model was replaced by the 4-bit one on the same kind of evidence. Setup: [Optional: System One scorer](#setup).
+Each replay takes `--question candidate.json` to try a new wording without touching production, and `--details` to list every disagreement. The wording matters more than anything else measured so far: on the same 60 gap answers, the first detection question agreed with the 27B 26.8% of the time and the current one 91.2%; the 16-bit model was replaced by the 4-bit one on the same kind of evidence. The same replays also showed where it does **not** work: on detection no wording tested both caught non-answers and spared good ones, so detection stays with the 27B. Setup: [Optional: System One scorer](#setup).
 
 > [!NOTE]
 > The standalone news agent (`src/services/news-agent.ts`) no longer scrubs anything. Its 188 topic queries now belong solely to the watchlist ingest, which already fetches every one of them with its own dedupe ladder; running both meant the same articles were embedded into the same collection twice a day. The job, its state file and its tool contract (`POST /api/agent/run`, the MCP `run_news_agent` tool) are kept and now report zero.
