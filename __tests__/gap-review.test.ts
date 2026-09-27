@@ -49,7 +49,12 @@ describe("applyGapVerdict", () => {
 describe("GAP_RESOLVED_QUESTION", () => {
   it("is asked with the id the verdict is read back under", () => {
     expect(GAP_RESOLVED_QUESTION.id).toBe("resolved");
-    expect(GAP_RESOLVED_QUESTION.instructions).toContain("hedging");
+    // The wording measured best by the replay on 2026-09-27 (71.9% agreement with
+    // the 27B, from 34.6%): it fails answers that say the sources lack the
+    // information or fall back on general knowledge, which the first wording passed.
+    expect(GAP_RESOLVED_QUESTION.instructions).toContain("do not contain the information");
+    expect(GAP_RESOLVED_QUESTION.instructions).toContain("general knowledge");
+    expect(GAP_RESOLVED_QUESTION.instructions).toContain("generic background");
   });
 
   it.each([
