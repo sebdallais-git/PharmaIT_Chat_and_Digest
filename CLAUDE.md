@@ -24,6 +24,11 @@ npm --prefix mcp test        # MCP server has its own package + Jest config
 npm --prefix mcp run typecheck
 npm run test:hermes-plugin   # python unittest, hermes/tests
 npm run watchlist -- verify-feeds | ingest [--limit N] [--only id,id] | status
+bash scripts/check-services.sh                 # health of every service, incl. the scorer port from config/decide.yaml
+npx tsx scripts/replay-gap-decisions.ts [--backfill | --question "…" | --details]
+                                               # replay scorer verdicts against data/run/gap-baseline.json (27B baseline)
+npx tsx scripts/shadow-report.ts               # detection shadow: scorer vs 27B agreement on chat turns
+npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
 ```
 
 There is **no lint script and no ESLint config** — do not run `npm run lint`.
@@ -62,6 +67,11 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   and live news in parallel. Low-confidence answers go to `gap-detector.ts`, which triggers an
   n8n self-healing workflow. Graph rebuild (`python/graph_builder.py`) only works on Ollama (409
   otherwise).
+- **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)
+  → extract/check → store (`ingest-text.ts`) or `POST /api/knowledge/gaps/:id/unresolved`.
+  The 27B decides resolution (`gap-resolution-verdict.ts`); the System One scorer
+  (open-jev in `~/claude/open-jev`, Gemma 3 4B 4-bit on :8010, `config/decide.yaml`) is only
+  logged/shadowed (`[Gap Resolution] 27B X, scorer Y`, `[Decide]` for slow/failed calls).
 - **Watchlist** (`watchlist-*` services, `scripts/watchlist.ts`, `config/watchlist.yaml` is the
   only definition of entities/feeds/topics). Pipeline: adapters (RSS/Atom, Google News, EDGAR)
   → dedupe **before** the model → sequential tagging → SQLite `data/watchlist.db` + ChromaDB.
@@ -83,7 +93,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - Env vars read `PHARMAITCHAT_<NAME>` first, then the legacy `PHARMALLM_<NAME>`
   (`src/config/env-names.ts`). Keep the fallback when adding such a variable.
 - There is no `.env`. Tokens live in `data/run/` (mode 600) and reach processes via the
-  environment, never as command-line arguments.
+  environment or stdin (`curl -H @-`), never as command-line arguments.
 
 ## Gotchas
 
@@ -97,6 +107,14 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   `scripts/check-stale-sessions.sh` (read-only; `--quiet` for the verdict only) before and after
   a rename: it lists stale routed sessions, dead-name calls and cron jobs that name the old
   server. Rotate each flagged session from inside its own chat (`/new`), then re-run.
+- The app runs under `tsx watch`: saving a file in `src/` reloads the live app.
+- Neo4j and SearXNG run in **colima**, not Docker Desktop (`scripts/lib/services.sh` starts it).
+- Editing the n8n workflow JSON does nothing until deployed: export a backup → `launchctl bootout`
+  → `n8n import:workflow` → `n8n publish:workflow` → `launchctl bootstrap`.
+- launchd jobs: `com.pharmaitchat.{stack,mcp,n8n,mlx-watchdog,jev}`; their PATH comes from
+  `scripts/lib/launchd.sh` — re-render the plists after changing it.
+- Measure any scorer prompt/model change with the replay harness before shipping: question
+  wording moved agreement 35% → 72%, and 16-bit → 4-bit moved it to 91%; thresholds alone never helped.
 - Keep `OLLAMA_NUM_PARALLEL=1` — each slot allocates its own 64K context.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
