@@ -7,6 +7,17 @@ CHROMA_URL="http://localhost:${CHROMA_PORT}"
 CHROMA_BIN="$PROJECT_DIR/python/venv/bin/chroma"
 CHROMA_DATA="$PROJECT_DIR/.chromadb-data"
 
+# launchd starts the stack with PATH=node/bin:/usr/bin:/bin:/usr/sbin:/sbin, which
+# leaves out Homebrew, where docker and colima live. Without this ensure_containers
+# never found docker at boot and always reported it as not running.
+SERVICES_EXTRA_PATH="${SERVICES_EXTRA_PATH:-/opt/homebrew/bin:/usr/local/bin}"
+IFS=':' read -r -a _extra_dirs <<<"$SERVICES_EXTRA_PATH"
+for _dir in "${_extra_dirs[@]}"; do
+  case ":$PATH:" in *":$_dir:"*) ;; *) PATH="$PATH:$_dir" ;; esac
+done
+unset _dir _extra_dirs
+export PATH
+
 log() {
   printf '[%s] %s\n' "${LOG_PREFIX:-services}" "$*"
 }
@@ -140,9 +151,15 @@ stop_pidfile_process() {
 # plainly if it is not, rather than letting the graph and web search fail later
 # with something that looks unrelated.
 ensure_containers() {
+  # The containers live in colima. Nothing else starts it after a reboot, and
+  # `colima start` is a no-op when it is already running.
+  if ! docker info >/dev/null 2>&1 && command -v colima >/dev/null 2>&1; then
+    log "Docker is not reachable: starting colima..."
+    colima start >/dev/null 2>&1 || log "colima start failed"
+  fi
   if ! docker info >/dev/null 2>&1; then
     log "Docker is not running: Neo4j (graph) and SearXNG (web search) are unavailable."
-    log "  Start Docker Desktop, and tick Settings > General > Start Docker Desktop when you sign in."
+    log "  Start the container runtime: colima start (or Docker Desktop, if that is where the containers are)."
     return 0
   fi
   local name
