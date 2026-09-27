@@ -28,6 +28,8 @@ bash scripts/check-services.sh                 # health of every service, incl. 
 npx tsx scripts/replay-gap-decisions.ts [--backfill | --question "…" | --details]
                                                # replay scorer verdicts against data/run/gap-baseline.json (27B baseline)
 npx tsx scripts/shadow-report.ts               # detection shadow: scorer vs 27B agreement on chat turns
+npx tsx scripts/replay-detection.ts [--backfill [--limit N] [--all] | --question … | --details]
+                                               # same for detection: regenerates past answers (27B-labelled, resumable)
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
 ```
 
