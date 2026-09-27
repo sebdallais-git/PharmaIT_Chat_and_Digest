@@ -81,6 +81,9 @@ export function initGapDB(): void {
 }
 
 interface ConfidenceResult {
+  // False when the 27B's reply could not be read. `confident` is then true by
+  // default, which suits detection (no false gap) but must not close a gap.
+  parsed: boolean;
   confident: boolean;
   reason: string;
   search_topic: string;
@@ -108,7 +111,7 @@ Respond with ONLY a JSON object, no other text:
     // Extract JSON from the response
     const jsonMatch = response.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) {
-      return { confident: true, reason: "Could not parse confidence check", search_topic: "" };
+      return { confident: true, reason: "Could not parse confidence check", search_topic: "", parsed: false };
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
@@ -116,10 +119,11 @@ Respond with ONLY a JSON object, no other text:
       confident: Boolean(parsed.confident),
       reason: String(parsed.reason ?? ""),
       search_topic: String(parsed.search_topic ?? ""),
+      parsed: true,
     };
   } catch {
     // Default to confident=true to avoid false triggers
-    return { confident: true, reason: "Confidence check failed", search_topic: "" };
+    return { confident: true, reason: "Confidence check failed", search_topic: "", parsed: false };
   }
 }
 
