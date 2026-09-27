@@ -400,6 +400,60 @@ describe("hermes/scripts/pharmaitchat-watchlist-ingest.sh", () => {
   });
 });
 
+// hermes-setup.sh and autostart.sh both render the MCP and n8n plists, and
+// each spelled the launchd PATH out itself. autostart.sh gained the Homebrew
+// dirs (for docker and colima) and hermes-setup.sh did not, so running
+// install-services quietly took them back out. Both now call launchd_path()
+// from scripts/lib/launchd.sh.
+describe("launchd PATH is the same whichever script renders a plist", () => {
+  const plistPath = (file: string) =>
+    readFileSync(file, "utf-8").match(/<key>PATH<\/key><string>([^<]*)<\/string>/)?.[1];
+
+  it("renders the MCP plist with the same PATH from hermes-setup.sh and autostart.sh", () => {
+    const box = sandbox();
+    const fromSetup = setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" });
+    expect(fromSetup.status).toBe(0);
+
+    const autostartAgents = join(box.root, "autostart-agents");
+    mkdirSync(autostartAgents);
+    const fromAutostart = spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
+      encoding: "utf-8",
+      env: {
+        PATH: "/usr/bin:/bin",
+        HOME: box.root,
+        LAUNCH_AGENTS_DIR: autostartAgents,
+        LAUNCHCTL_BIN: "/usr/bin/true",
+        NODE_BIN: "/opt/fake/bin/node",
+      },
+    });
+    // `on` exits 1 here only because the sandbox has no Hermes gateway plist to
+    // load; the MCP plist it renders first is what this test compares.
+    expect(fromAutostart.stdout + fromAutostart.stderr).not.toMatch(/no template for com\.pharmaitchat\.mcp/);
+
+    const setupPath = plistPath(join(box.agentsDir, "com.pharmaitchat.mcp.plist"));
+    expect(setupPath).toBeDefined();
+    expect(plistPath(join(autostartAgents, "com.pharmaitchat.mcp.plist"))).toBe(setupPath);
+    expect(setupPath).toContain("/opt/fake/bin");
+    expect(setupPath).toContain("/opt/homebrew/bin");
+  });
+
+  it("gives the jev scorer the shared PATH too", () => {
+    const box = sandbox();
+    installJevFixture(box);
+    expect(setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" }).status).toBe(0);
+    expect(plistPath(join(box.agentsDir, "com.pharmaitchat.jev.plist"))).toContain("/opt/homebrew/bin");
+  });
+
+  it("leaves no script spelling out a launchd PATH of its own", () => {
+    for (const script of ["autostart.sh", "hermes-setup.sh"]) {
+      const text = readFileSync(join(projectDir, "scripts", script), "utf-8");
+      for (const line of text.split("\n").filter((l) => l.includes("s|__PATH__|"))) {
+        expect(line).toContain("$(launchd_path");
+      }
+    }
+  });
+});
+
 describe("hermes-setup.sh install-services", () => {
   it("renders the MCP plist with node's path, loads it and installs the gateway", () => {
     const box = sandbox();
