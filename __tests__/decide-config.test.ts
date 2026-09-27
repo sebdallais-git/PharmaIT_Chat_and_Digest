@@ -80,4 +80,17 @@ describe("parseDecideConfig", () => {
     expect(() => parseDecideConfig({ ...good, timeout_ms: 0 })).toThrow(/timeout_ms/i);
     expect(() => parseDecideConfig({ ...good, timeout_ms: -100 })).toThrow(/timeout_ms/i);
   });
+
+  // The gap workflow's page pre-check skips 27B extraction for pages below
+  // this probability. Off unless spelled out, like shadow_detection: it
+  // decides what knowledge is never read.
+  it("leaves the page relevance pre-check off when page_relevance_skip_below is absent", () => {
+    expect(parseDecideConfig(good).pageRelevanceSkipBelow).toBeNull();
+  });
+
+  it("reads page_relevance_skip_below as a probability", () => {
+    expect(parseDecideConfig({ ...good, page_relevance_skip_below: 0.1 }).pageRelevanceSkipBelow).toBe(0.1);
+    expect(() => parseDecideConfig({ ...good, page_relevance_skip_below: 1.5 })).toThrow(/page_relevance_skip_below/);
+    expect(() => parseDecideConfig({ ...good, page_relevance_skip_below: "0.1" })).toThrow(/page_relevance_skip_below/);
+  });
 });
