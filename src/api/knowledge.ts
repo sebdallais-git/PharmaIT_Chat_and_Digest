@@ -21,6 +21,7 @@ import {
 import { saveRawDocument } from "../services/raw-documents.js";
 import { ingestTextDocument } from "../services/ingest-text.js";
 import { buildResolutionContext } from "../services/gap-resolution-context.js";
+import { markGapUnresolved } from "../services/gap-status.js";
 import { reindexActiveStack } from "../services/reindex.js";
 import { createReindexJobs } from "../services/reindex-jobs.js";
 import { isSupportedFile, getSupportedExtensions, parseBuffer } from "../services/file-parser.js";
@@ -283,6 +284,14 @@ router.get("/gaps/stats", (_req: Request, res: Response): void => {
     const message = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: message });
   }
+});
+
+// POST /api/knowledge/gaps/:id/unresolved - Record a gap-fill run that found nothing relevant,
+// without spending a model re-answer on a question nothing new was stored for
+router.post("/gaps/:id/unresolved", (req: Request, res: Response): void => {
+  const result = markGapUnresolved(String(req.params.id));
+  if (result.status === 200) console.log(`[Gap Resolution] Gap ${req.params.id} marked unresolved: nothing relevant found`);
+  res.status(result.status).json(result.body);
 });
 
 // POST /api/knowledge/gaps/check-resolution - Re-check if a gap is now resolved
