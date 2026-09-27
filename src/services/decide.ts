@@ -13,6 +13,7 @@
 // a false "resolved" closes an open gap, a false "unresolved" burns a retry
 // and re-runs the whole ingest.
 
+import { freemem, totalmem } from "node:os";
 import { isRecord } from "./decide-config.js";
 import type { DecideConfig, Verdict } from "./decide-config.js";
 
@@ -32,7 +33,42 @@ export interface DecideDeps {
   config: DecideConfig;
   apiKey: string | null;
   fetchImpl: typeof fetch;
+  // Timing of each scorer call; defaults to logging the slow and failed ones
+  report?: (timing: ScorerTiming) => void;
+  now?: () => number;
+  memory?: () => { freeMb: number; totalMb: number };
 }
+
+// One scorer call. On 2026-09-27 a resolution check hit the 15 s timeout
+// although the scorer answers in ~0.3 s when called directly; memory pressure
+// is the suspect (free memory fell from 82% to 20% during a check). These
+// fields are the evidence for deciding, rather than guessing, what to change.
+export interface ScorerTiming {
+  ms: number;
+  outcome: "ok" | "unavailable" | "refused" | "error";
+  stateChars: number;
+  freeMb: number;
+  totalMb: number;
+}
+
+const SLOW_SCORER_MS = 2000;
+
+// Shadow mode calls the scorer on every chat turn, so only calls worth reading are logged
+export function shouldLogScorerTiming(t: ScorerTiming): boolean {
+  return t.outcome !== "ok" || t.ms >= SLOW_SCORER_MS;
+}
+
+export function formatScorerTiming(t: ScorerTiming): string {
+  const pct = t.totalMb > 0 ? Math.round((t.freeMb / t.totalMb) * 100) : 0;
+  const what = t.outcome === "ok" ? "slow scorer call" : `scorer call ${t.outcome}`;
+  return `[Decide] ${what} after ${Math.round(t.ms)} ms (state ${t.stateChars} chars, ${t.freeMb} MB of ${t.totalMb} MB free, ${pct}%)`;
+}
+
+function logSlowScorerCall(t: ScorerTiming): void {
+  if (shouldLogScorerTiming(t)) console.log(formatScorerTiming(t));
+}
+
+const systemMemory = () => ({ freeMb: Math.round(freemem() / 1048576), totalMb: Math.round(totalmem() / 1048576) });
 
 export class ScorerUnavailableError extends Error {
   constructor(message: string) {
@@ -81,6 +117,26 @@ export function verdictFor(noul: number, thresholds: DecideConfig["thresholds"])
 }
 
 export async function decide(
+  question: DecisionQuestion,
+  state: string,
+  deps: DecideDeps,
+): Promise<Decision> {
+  const now = deps.now ?? (() => performance.now());
+  const started = now();
+  let outcome: ScorerTiming["outcome"] = "ok";
+  try {
+    return await callScorer(question, state, deps);
+  } catch (err) {
+    outcome =
+      err instanceof ScorerUnavailableError ? "unavailable" : err instanceof ScorerResponseError ? "refused" : "error";
+    throw err;
+  } finally {
+    const memory = (deps.memory ?? systemMemory)();
+    (deps.report ?? logSlowScorerCall)({ ms: now() - started, outcome, stateChars: state.length, ...memory });
+  }
+}
+
+async function callScorer(
   question: DecisionQuestion,
   state: string,
   deps: DecideDeps,
