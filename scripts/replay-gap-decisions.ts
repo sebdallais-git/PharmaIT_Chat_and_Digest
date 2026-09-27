@@ -25,13 +25,17 @@
 //
 // Usage:
 //   npx tsx scripts/replay-gap-decisions.ts --backfill [--limit 63]
-//   npx tsx scripts/replay-gap-decisions.ts [--limit 63]
+//   npx tsx scripts/replay-gap-decisions.ts [--limit 63] [--question candidate.json] [--details]
+// --question measures a candidate wording ({instructions, whenTrue, whenFalse})
+// instead of production's; --details prints each disagreement.
 
 import Database from "better-sqlite3";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkConfidence } from "../src/services/gap-detector.js";
 import { GAP_RESOLVED_QUESTION } from "../src/services/gap-outcome.js";
+import type { DecisionQuestion } from "../src/services/decide.js";
+import { candidateQuestion } from "./lib/candidate-question.js";
 import { buildReplayReport } from "../src/services/replay-report.js";
 import type { ReplayRow } from "../src/services/replay-report.js";
 import { isRecord } from "../src/services/decide-config.js";
@@ -121,7 +125,7 @@ function readBaseline(): Record<string, Label> {
   return labels;
 }
 
-async function replay(limit: number): Promise<void> {
+async function replay(limit: number, question: DecisionQuestion, details: boolean): Promise<void> {
   const baseline = readBaseline();
   const token = readFileSync(join(process.cwd(), "data", "run", "api-token"), "utf8").trim();
   const rows: ReplayRow[] = [];
@@ -140,8 +144,8 @@ async function replay(limit: number): Promise<void> {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         state: `Question: ${row.original_query}\nAnswer: ${row.gemma_response}`,
-        // The same question production asks, imported rather than repeated.
-        question: GAP_RESOLVED_QUESTION,
+        // Production's question unless --question names a candidate to measure
+        question,
       }),
     });
     if (!resp.ok) {
@@ -160,6 +164,9 @@ async function replay(limit: number): Promise<void> {
       continue;
     }
     rows.push({ gapId: row.id, baseline: label, verdict: decision.verdict, probability: decision.probability });
+    if (details && decision.verdict !== label) {
+      console.log(`gap ${row.id}: 27B ${label}, scorer ${decision.verdict} (noul ${decision.probability.toFixed(3)})`);
+    }
   }
 
   const report = buildReplayReport(rows, dropped);
@@ -178,4 +185,8 @@ async function replay(limit: number): Promise<void> {
 const args = process.argv.slice(2);
 const limitArg = args.indexOf("--limit");
 const limit = limitArg === -1 ? 100 : Number(args[limitArg + 1] ?? 100);
-await (args.includes("--backfill") ? backfill(limit) : replay(limit));
+const questionArg = args.indexOf("--question");
+const question =
+  questionArg === -1 ? GAP_RESOLVED_QUESTION : candidateQuestion(JSON.parse(readFileSync(args[questionArg + 1], "utf8")));
+if (questionArg !== -1) console.log(`replaying with the candidate question in ${args[questionArg + 1]}`);
+await (args.includes("--backfill") ? backfill(limit) : replay(limit, question, args.includes("--details")));
