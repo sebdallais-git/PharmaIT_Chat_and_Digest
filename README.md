@@ -563,6 +563,34 @@ The workflows call protected routes with `Authorization: Bearer {{ $env.PHARMALL
 </details>
 
 <details>
+<summary><b>Optional: System One scorer (open-jev)</b></summary>
+
+<br/>
+
+A local Gemma 3 4B scorer that answers typed yes/no questions with a probability. It records its verdict next to the 27B's in gap resolution, and on every chat turn when `shadow_detection` is on in `config/decide.yaml`. It never decides on its own; see `docs/superpowers/specs/2026-09-22-system-one-decision-design.md`. Chat works without it.
+
+```bash
+# 1. Next to this repo, with uv (brew install uv)
+cd .. && git clone https://github.com/daseinlabs/open-jev.git && cd open-jev && make venv
+
+# 2. Accept the Gemma licence at huggingface.co/google/gemma-3-4b-it, then store a Read token
+#    in data/run/hf-token (mode 600) and create the scorer key:
+( umask 077; openssl rand -hex 32 > ../PharmaIT_Chat_and_Digest/data/run/jev-token )
+
+# 3. The 4-bit MLX build: ~3 GB beside the 27B (open-jev's `make setup` fetches the 16-bit 8 GB one)
+HF_TOKEN="$(cat ../PharmaIT_Chat_and_Digest/data/run/hf-token)" .venv/bin/hf download \
+  mlx-community/gemma-3-4b-it-4bit --local-dir models/gemma-3-4b-it-4bit
+
+# 4. Install the launchd job (127.0.0.1:8010) and check it
+cd ../PharmaIT_Chat_and_Digest && scripts/hermes-setup.sh install-services
+scripts/check-services.sh | grep jev
+```
+
+`scripts/run-jev.sh` serves `models/gemma-3-4b-it-4bit` unless `JEV_MODEL` says otherwise. Measure a change of model or question with `scripts/replay-gap-decisions.ts` before relying on it.
+
+</details>
+
+<details>
 <summary><b>Optional: Graph RAG (Neo4j)</b></summary>
 
 <br/>
