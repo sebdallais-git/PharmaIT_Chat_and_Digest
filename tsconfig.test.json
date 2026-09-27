@@ -13,6 +13,7 @@
     "__tests__/**/*",
     "scripts/lib/**/*",
     "scripts/reindex-stack.ts",
+    "scripts/remove-source.ts",
     "scripts/watchlist.ts",
     "scripts/migrate-news-to-raw-documents.ts",
     "scripts/embedding-parity.ts",
