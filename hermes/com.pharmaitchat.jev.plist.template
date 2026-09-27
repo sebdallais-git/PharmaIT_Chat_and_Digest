@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by scripts/hermes-setup.sh install-services; holds no secrets (run-jev.sh reads the token files) -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.pharmaitchat.jev</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__PROJECT_DIR__/scripts/run-jev.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>JEV_DIR</key><string>__JEV_DIR__</string>
+    <key>JEV_HOST</key><string>__JEV_HOST__</string>
+    <key>PATH</key><string>__PATH__</string>
+  </dict>
+  <key>WorkingDirectory</key><string>__PROJECT_DIR__</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>__PROJECT_DIR__/data/logs/jev.log</string>
+  <key>StandardErrorPath</key><string>__PROJECT_DIR__/data/logs/jev.log</string>
+</dict>
+</plist>

@@ -1,9 +1,16 @@
 // Stack-aware health checks: only the active stack's endpoints are probed
 
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import type { StackConfig } from "../config/llm-stacks.js";
 
+// "not_configured" is for an OPTIONAL dependency that was never installed, as
+// opposed to one that is installed and down ("unreachable"). The distinction
+// matters because a probe cannot draw it: a port nobody ever listened on and a
+// service that just crashed look identical from the outside.
 export interface HealthCheck {
-  status: "ok" | "error" | "unreachable";
+  status: "ok" | "error" | "unreachable" | "not_configured";
   latency_ms?: number;
   detail?: string;
 }
@@ -76,7 +83,58 @@ export async function probeUrl(url: string, timeoutMs: number = 3000): Promise<H
 
 export function aggregateHealth(checks: Record<string, HealthCheck>): HealthStatus {
   const entries = Object.entries(checks);
-  if (entries.every(([, check]) => check.status === "ok")) return "healthy";
+  // Critical first, and strictly "ok": nothing excuses a critical check, least
+  // of all a claim that it was never configured.
   const criticalDown = entries.some(([name, check]) => CRITICAL_CHECKS.includes(name) && check.status !== "ok");
-  return criticalDown ? "unhealthy" : "degraded";
+  if (criticalDown) return "unhealthy";
+  // An optional dependency that was never installed is not a fault, so it does
+  // not degrade the app. Anything installed and misbehaving still does.
+  const fine = entries.every(([, check]) => check.status === "ok" || check.status === "not_configured");
+  return fine ? "healthy" : "degraded";
+}
+
+export interface ScorerInstallPaths {
+  plist: string;
+  binary: string;
+}
+
+/**
+ * Where the scorer's two artifacts live, read from the same env vars and the
+ * same defaults as scripts/hermes-setup.sh: the launch agent it renders, and
+ * the open-jev venv it refuses to install without.
+ *
+ * Only the venv decides whether a scorer exists -- see isScorerConfigured.
+ * The plist is derived here because the installer owns it and a future caller
+ * may want to distinguish "launchd runs it" from "it exists".
+ *
+ * Asking about files rather than about a port is what lets /api/health tell
+ * "never installed" from "installed and down": the scorer is optional by
+ * design, and only the second one is a fault. A port nobody ever listened on
+ * and a port that just died look identical from the outside.
+ */
+export function scorerInstallPaths(env: NodeJS.ProcessEnv = process.env): ScorerInstallPaths {
+  const launchAgentsDir = env.LAUNCH_AGENTS_DIR ?? join(homedir(), "Library", "LaunchAgents");
+  const jevDir = env.JEV_DIR ?? resolve(process.cwd(), "..", "open-jev");
+  return {
+    plist: join(launchAgentsDir, "com.pharmaitchat.jev.plist"),
+    binary: join(jevDir, ".venv", "bin", "openjev"),
+  };
+}
+
+/**
+ * True when a scorer exists on this machine, whether or not launchd runs it.
+ *
+ * The VENV is the signal. The plist only records that launchd manages the
+ * process, and scripts/run-jev.sh starts the scorer perfectly well without one
+ * -- which is what someone actually does first: `make serve` by hand, before
+ * committing to a launch agent.
+ *
+ * R1: this deliberately does NOT require the plist. It used to, and the cost
+ * was silent: a hand-run scorer reported "not configured", so /api/health never
+ * probed a service that was genuinely running and up, and shadow detection
+ * (gap-detector.ts) never switched on -- withholding the very evidence shadow
+ * mode exists to collect, in exactly the setup someone tries first.
+ */
+export function isScorerConfigured(paths: ScorerInstallPaths = scorerInstallPaths()): boolean {
+  return existsSync(paths.binary);
 }

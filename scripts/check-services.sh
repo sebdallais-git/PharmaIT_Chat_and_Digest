@@ -2,10 +2,10 @@
 # Read-only status of every moving part, and which of them come back by
 # themselves. Written for the question "did everything survive the reboot?".
 #
-# Only three things are supervised: the MCP service, n8n and the Hermes gateway
-# are launchd jobs with KeepAlive. The app, the MLX servers and ChromaDB are
-# started by scripts/start-services.sh and nothing restarts them -- after a
-# reboot they stay down until someone runs it.
+# Only four things are supervised: the MCP service, n8n, the jev scorer and
+# the Hermes gateway are launchd jobs with KeepAlive. The app, the MLX servers
+# and ChromaDB are started by scripts/start-services.sh and nothing restarts
+# them -- after a reboot they stay down until someone runs it.
 #
 # Usage: scripts/check-services.sh
 set -uo pipefail
@@ -17,6 +17,14 @@ rc=0
 
 green() { printf "  \033[32m%-12s\033[0m %s\n" "$1" "$2"; }
 red()   { printf "  \033[31m%-12s\033[0m %s\n" "$1" "$2"; rc=1; }
+
+# The scorer's port, from the base_url in config/decide.yaml so this cannot
+# drift from what the app calls (it moved from 8000, which is Splash's, to 8010)
+jev_port() {
+  local port
+  port="$(sed -n 's|^base_url:[[:space:]]*https\{0,1\}://[^:/]*:\([0-9][0-9]*\).*|\1|p' "$PROJECT_DIR/config/decide.yaml" 2>/dev/null | head -1)"
+  echo "${port:-8010}"
+}
 
 check_port() {
   if lsof -ti :"$1" >/dev/null 2>&1; then green "up" "$2 (:$1)"; else red "DOWN" "$2 (:$1)$3"; fi
@@ -31,6 +39,7 @@ check_job() {
 echo "launchd services (these restart themselves)"
 check_job com.pharmaitchat.mcp
 check_job com.pharmaitchat.n8n
+check_job com.pharmaitchat.jev
 check_job ai.hermes.gateway
 
 echo
@@ -39,6 +48,7 @@ check_port 3000 "app"        "  -> run scripts/start-services.sh"
 check_port 8080 "MLX chat"   "  -> run scripts/start-services.sh"
 check_port 8081 "MLX embed"  "  -> run scripts/start-services.sh"
 check_port 8100 "ChromaDB"   "  -> run scripts/start-services.sh"
+check_port "$(jev_port)" "jev scorer" "  -> gap decisions degrade; chat is unaffected"
 
 echo
 echo "docker containers (return only if Docker Desktop starts at login)"

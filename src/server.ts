@@ -23,6 +23,7 @@ import graphRouter from "./api/graph.js";
 import benchRouter from "./api/bench.js";
 import stackRouter from "./api/stack.js";
 import llmRouter from "./api/llm.js";
+import decideRouter from "./api/decide.js";
 import exportRouter from "./api/export.js";
 import { createAuthMiddleware } from "./api/auth.js";
 import v1Router from "./api/v1.js";
@@ -57,6 +58,7 @@ app.use("/api/graph", graphRouter);
 app.use("/api/bench", benchRouter);
 app.use("/api/stack", stackRouter);
 app.use("/api/llm", llmRouter);
+app.use("/api/decide", decideRouter);
 app.use("/api/export", exportRouter);
 app.use("/v1", v1Router);
 app.use("/api", dashboardRouter); // /api/health

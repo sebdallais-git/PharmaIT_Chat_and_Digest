@@ -68,6 +68,7 @@ describe("gap tools", () => {
         gaps: [
           { id: 1, status: "resolved" },
           { id: 2, status: "triggered" },
+          { id: 3, status: "review" },
         ],
       })
     );
@@ -82,6 +83,18 @@ describe("gap tools", () => {
     expect(JSON.parse(toolText(result))).toEqual({ gaps: [{ id: 2, status: "triggered" }], stats: { total: 2 } });
   });
 
+  // A gap the scorer parked in the review band is waiting for a human, and this
+  // tool is the surface that human (or their agent) queries. Leaving "review"
+  // out of the enum made the whole review band unreachable.
+  it("lists the gaps parked for human review", async () => {
+    serveGaps();
+
+    const result = await call("list_knowledge_gaps", { status: "review" });
+
+    expect(isToolError(result)).toBe(false);
+    expect(JSON.parse(toolText(result))).toEqual({ gaps: [{ id: 3, status: "review" }], stats: { total: 2 } });
+  });
+
   it("returns every gap when no status is given", async () => {
     serveGaps();
 
@@ -91,6 +104,7 @@ describe("gap tools", () => {
       gaps: [
         { id: 1, status: "resolved" },
         { id: 2, status: "triggered" },
+        { id: 3, status: "review" },
       ],
       stats: { total: 2 },
     });

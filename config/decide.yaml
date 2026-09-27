@@ -1,0 +1,24 @@
+# System One decision service. See
+# docs/superpowers/specs/2026-09-22-system-one-decision-design.md
+#
+# thresholds.resolved   : noul at or above this closes the gap
+# thresholds.unresolved : noul below this reopens it and spends a retry
+# Between the two the gap is parked for review and spends no retry, because
+# the middle of a 4B's distribution is the part least worth acting on.
+# 8010, not 8000: Splash — the fourth LLM stack — binds 127.0.0.1:8000 by
+# default, and running the scorer alongside a stack is the normal case. Splash
+# keeps its default so no --port flag has to be remembered anywhere; the scorer
+# had no default worth preserving, and nothing was bound here yet.
+base_url: http://127.0.0.1:8010
+model: jev-latest
+timeout_ms: 15000
+thresholds:
+  resolved: 0.85
+  unresolved: 0.5
+
+# Run the scorer alongside the 27B at gap-detection time, recording both
+# verdicts without letting the scorer decide anything. Detection runs on every
+# chat turn -- far more traffic than gap resolution -- so this is how evidence
+# accrues about whether a 4B can be trusted there, before anything depends on
+# it. Off by default; it costs one scorer call per turn.
+shadow_detection: false

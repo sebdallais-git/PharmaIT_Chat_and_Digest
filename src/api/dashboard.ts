@@ -9,8 +9,9 @@ import { getStats } from "../services/knowledge-store.js";
 import { getActiveStack } from "../config/llm-stacks.js";
 import { getIndexStatus } from "../services/index-guard.js";
 import { isBenchmarkActive } from "../services/bench-mode.js";
-import { aggregateHealth, probeGeneration, probeUrl, stackProbeUrls } from "../services/health.js";
+import { aggregateHealth, isScorerConfigured, probeGeneration, probeUrl, stackProbeUrls } from "../services/health.js";
 import type { HealthCheck } from "../services/health.js";
+import { loadDecideConfig } from "../services/decide-config.js";
 
 const router = Router();
 
@@ -88,6 +89,30 @@ router.get("/health", async (_req: Request, res: Response): Promise<void> => {
     };
   } catch {
     checks.chromadb = { status: "unreachable" };
+  }
+
+  // The scorer (open-jev). Deliberately NOT in CRITICAL_CHECKS: only the
+  // gap-resolution loop uses it, and that loop degrades to "no decision"
+  // rather than to a wrong one.
+  //
+  // A GET /health is enough here, unlike llm_chat above. A wedged chat server
+  // serves /v1/models while generating nothing, so its probe has to ask for a
+  // token; a wedged scorer simply fails the decision, and the gap stays open --
+  // it cannot quietly produce a bad answer, so liveness is the right question.
+  //
+  // Installing it is optional and skippable, so on a machine where it was
+  // skipped there is nothing to probe: probing anyway reported "unreachable"
+  // and pinned this endpoint at "degraded" forever. isScorerConfigured() asks
+  // the same question scripts/hermes-setup.sh answers at install time.
+  if (!isScorerConfigured()) {
+    checks.jev = { status: "not_configured", detail: "open-jev is not installed; gap decisions are unavailable" };
+  } else {
+    try {
+      checks.jev = await probeUrl(`${loadDecideConfig().baseUrl}/health`);
+    } catch {
+      // A missing or invalid config/decide.yaml must not take down /api/health.
+      checks.jev = { status: "error", detail: "decide config unreadable" };
+    }
   }
 
   // SearXNG

@@ -29,9 +29,15 @@ interface Sandbox {
   runDir: string;
   agentsDir: string;
   calls: string;
+  jevDir: string;
 }
 
-// Temp HERMES_HOME, run dir with both token files, and stub hermes/launchctl that log their arguments
+// Temp HERMES_HOME, run dir with both PharmaITChat/MCP tokens, and stub hermes/launchctl
+// that log their arguments. No open-jev venv and no hf-token: the scorer is an optional
+// dependency (src/services/health.ts's CRITICAL_CHECKS, scripts/check-services.sh), and
+// install_jev_service must SKIP it rather than abort install-services. Building the fixture
+// into every sandbox would hide exactly that regression, so the jev prerequisites are opt-in
+// via installJevVenv/installJevFixture below, used only by the tests that need the install path.
 function sandbox(): Sandbox {
   const root = mkdtempSync(join(tmpdir(), "hermes-setup-"));
   dirs.push(root);
@@ -39,13 +45,28 @@ function sandbox(): Sandbox {
   const runDir = join(root, "run");
   const agentsDir = join(root, "LaunchAgents");
   const calls = join(root, "calls.log");
+  const jevDir = join(root, "open-jev");
   mkdirSync(runDir);
   writeFileSync(join(runDir, "api-token"), `${API_TOKEN}\n`);
   writeFileSync(join(runDir, "mcp-token"), `${MCP_TOKEN}\n`);
   for (const name of ["hermes", "launchctl"]) {
     writeStub(join(root, name), name);
   }
-  return { root, home, runDir, agentsDir, calls };
+  return { root, home, runDir, agentsDir, calls, jevDir };
+}
+
+// Fakes an open-jev checkout: a venv with an executable openjev binary. On its own this is
+// still not enough for install_jev_service to take the install path -- hf-token is separate.
+function installJevVenv(box: Sandbox): void {
+  mkdirSync(join(box.jevDir, ".venv", "bin"), { recursive: true });
+  writeFileSync(join(box.jevDir, ".venv", "bin", "openjev"), "#!/bin/bash\nexit 0\n");
+  chmodSync(join(box.jevDir, ".venv", "bin", "openjev"), 0o755);
+}
+
+// Both jev prerequisites present: install_jev_service takes the install path.
+function installJevFixture(box: Sandbox): void {
+  writeFileSync(join(box.runDir, "hf-token"), "hf-token-value\n");
+  installJevVenv(box);
 }
 
 // Logs its arguments to $STUB_CALLS; extra lines let a test decide the exit status
@@ -77,6 +98,7 @@ function setup(box: Sandbox, args: string[], extraEnv: Record<string, string> = 
       LAUNCHCTL_BIN: join(box.root, "launchctl"),
       MCP_HEALTH_URL: "http://127.0.0.1:9/healthz",
       STUB_CALLS: box.calls,
+      JEV_DIR: box.jevDir,
       ...extraEnv,
     },
   });
@@ -381,6 +403,7 @@ describe("hermes/scripts/pharmaitchat-watchlist-ingest.sh", () => {
 describe("hermes-setup.sh install-services", () => {
   it("renders the MCP plist with node's path, loads it and installs the gateway", () => {
     const box = sandbox();
+    installJevFixture(box);
 
     const result = setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" });
 
@@ -390,9 +413,68 @@ describe("hermes-setup.sh install-services", () => {
     expect(plist).toContain(`<string>${projectDir}/scripts/run-mcp.sh</string>`);
     expect(plist).not.toContain("__");
     expect(plist).not.toContain(MCP_TOKEN);
+    const jevPlist = readFileSync(join(box.agentsDir, "com.pharmaitchat.jev.plist"), "utf-8");
+    expect(jevPlist).toContain(`<string>${projectDir}/scripts/run-jev.sh</string>`);
+    expect(jevPlist).toContain(`<key>JEV_DIR</key><string>${box.jevDir}</string>`);
+    expect(jevPlist).not.toContain("__");
     const calls = readFileSync(box.calls, "utf-8");
     expect(calls).toMatch(/launchctl \[bootstrap\] \[gui\/\d+\] \[.*com\.pharmaitchat\.mcp\.plist\]/);
+    expect(calls).toMatch(/launchctl \[bootstrap\] \[gui\/\d+\] \[.*com\.pharmaitchat\.jev\.plist\]/);
     expect(calls).toContain("hermes [gateway] [install] [--force] [--start-now] [--start-on-login]");
+  });
+
+  // The skip paths return 0, but a failing bootstrap still called `exit 1`. It
+  // runs before the gateway install, so a bad jev plist or a stuck launchd
+  // teardown left Telegram uninstalled, for a scorer that is optional.
+  it("installs the gateway even when the scorer's launchd job will not bootstrap", () => {
+    const box = sandbox();
+    installJevFixture(box);
+    writeStub(join(box.root, "launchctl"), "launchctl", [
+      'if [ "$1" = bootstrap ] && [[ "$3" == *com.pharmaitchat.jev.plist ]]; then exit 5; fi',
+      "exit 0",
+    ]);
+
+    const result = setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" });
+
+    expect(result.status).toBe(0);
+    const calls = readFileSync(box.calls, "utf-8");
+    expect(calls).toContain("hermes [gateway] [install] [--force] [--start-now] [--start-on-login]");
+    expect(result.stdout + result.stderr).toMatch(/jev.*optional|optional.*jev/i);
+  }, 30000);
+
+  // Regression test for the reported bug: install_jev_service used to `exit 1` here under
+  // set -euo pipefail, so install-services installed MCP and n8n and then hard-aborted,
+  // never reaching the Hermes gateway install. The scorer is optional (src/services/health.ts
+  // keeps it out of CRITICAL_CHECKS, src/api/dashboard.ts:94, scripts/check-services.sh's
+  // "chat is unaffected" hint) so a missing prerequisite must SKIP the scorer, not the installer.
+  it("installs every other service, including the gateway, when open-jev is not checked out at all (regression: scorer is optional)", () => {
+    const box = sandbox(); // no jev fixture: this is the machine's actual state
+
+    const result = setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(join(box.agentsDir, "com.pharmaitchat.jev.plist"))).toBe(false);
+    const calls = readFileSync(box.calls, "utf-8");
+    expect(calls).toMatch(/launchctl \[bootstrap\] \[gui\/\d+\] \[.*com\.pharmaitchat\.mcp\.plist\]/);
+    expect(calls).toMatch(/launchctl \[bootstrap\] \[gui\/\d+\] \[.*com\.pharmaitchat\.n8n\.plist\]/);
+    expect(calls).toContain("hermes [gateway] [install] [--force] [--start-now] [--start-on-login]");
+    const output = result.stdout + result.stderr;
+    expect(output).toContain(box.jevDir);
+    expect(output).toContain("make setup");
+  });
+
+  it("skips the jev scorer but still installs the gateway when the Hugging Face token is missing", () => {
+    const box = sandbox();
+    installJevVenv(box); // open-jev checked out, but no hf-token
+
+    const result = setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" });
+
+    expect(result.status).toBe(0);
+    const output = result.stdout + result.stderr;
+    expect(output).toContain("hf-token");
+    expect(existsSync(join(box.agentsDir, "com.pharmaitchat.jev.plist"))).toBe(false);
+    const calls = readFileSync(box.calls, "utf-8");
+    expect(calls).toContain("hermes [gateway] [install]");
   });
 
   it("bakes MCP_HOST into the plist so a LAN move survives a reboot", () => {

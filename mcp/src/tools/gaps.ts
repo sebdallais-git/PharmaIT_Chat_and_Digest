@@ -19,9 +19,11 @@ export function registerGapTools(server: McpServer, client: PharmaITChatClient, 
       description: "Recent questions PharmaITChat answered with low confidence, with overall gap statistics.",
       inputSchema: {
         status: z
-          .enum(["triggered", "skipped", "resolved", "unresolved", "detected"])
+          .enum(["triggered", "skipped", "resolved", "unresolved", "review", "detected"])
           .optional()
-          .describe("Only gaps with this status (new gaps are 'triggered')"),
+          .describe(
+            "Only gaps with this status (new gaps are 'triggered'; 'review' is the scorer's middle band, parked for a human)"
+          ),
         limit: z.number().int().min(1).max(50).optional().describe("How many gaps to return, newest first (default 20)"),
       },
     },
@@ -39,8 +41,9 @@ export function registerGapTools(server: McpServer, client: PharmaITChatClient, 
     "resolve_knowledge_gap",
     {
       description:
-        "Re-ask a knowledge gap's question through PharmaITChat's RAG pipeline and mark the gap resolved if the new " +
-        "answer is confident. Use after adding knowledge for that topic. Takes about 1-2 minutes.",
+        "Re-ask a knowledge gap's question through PharmaITChat's RAG pipeline and let the local scorer judge the new " +
+        "answer: the gap is marked resolved, unresolved (retried later), or review (parked for a human). Use after " +
+        "adding knowledge for that topic. Takes about 1-2 minutes.",
       inputSchema: {
         gap_id: z.number().int().positive(),
         original_query: z.string().min(1),

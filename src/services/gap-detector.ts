@@ -6,10 +6,46 @@ import { mkdirSync } from "node:fs";
 import { getLlmClient } from "./llm-client.js";
 import type { ChatMessage } from "./llm-client.js";
 import { isBenchmarkActive, trackJob } from "./bench-mode.js";
+import { decide } from "./decide.js";
+import { loadDecideConfig } from "./decide-config.js";
+import type { DecideConfig } from "./decide-config.js";
+import { openShadowStore, recordShadowDecision } from "./detection-shadow.js";
+import type { ShadowDeps, ShadowStore } from "./detection-shadow.js";
+import { isScorerConfigured } from "./health.js";
+import { readScorerKey } from "../api/decide.js";
 
 const DB_PATH = join(process.cwd(), "data", "gap_log.db");
 
 let db: Database.Database;
+
+// Shadow scoring shares gap_log.db rather than opening a second connection to
+// the same domain, and is built lazily on first use so importing this module
+// reads no config and opens nothing.
+let shadow: ShadowStore | null = null;
+
+function shadowStore(): ShadowStore {
+  return (shadow ??= openShadowStore(db));
+}
+
+// Inert unless a scorer is actually installed AND config asks for it, so a
+// machine without open-jev pays nothing and writes nothing.
+function shadowDeps(): ShadowDeps {
+  let enabled = false;
+  let config: DecideConfig | null = null;
+  try {
+    config = loadDecideConfig();
+    enabled = config.shadowDetection && isScorerConfigured();
+  } catch {
+    // A missing or malformed decide.yaml disables shadow mode; it must never
+    // take down detection, which creates every gap in the system.
+    enabled = false;
+  }
+  return {
+    enabled,
+    decide: (question, state) =>
+      decide(question, state, { config: config as DecideConfig, apiKey: readScorerKey(), fetchImpl: fetch }),
+  };
+}
 
 // Initialise la base SQLite pour le suivi des lacunes
 export function initGapDB(): void {
@@ -175,6 +211,11 @@ export async function handleGapDetection(
   try {
     const result = await trackJob("gap-detection", () => checkConfidence(originalQuery, gemmaResponse));
 
+    // Shadow mode: ask the scorer the same question and store both answers.
+    // The 27B's verdict above is still the one that acts -- see R1 in
+    // detection-shadow.ts. This cannot throw and cannot change what follows.
+    await recordShadowDecision(shadowStore(), originalQuery, gemmaResponse, result.confident, shadowDeps());
+
     if (result.confident) {
       return false;
     }
@@ -248,6 +289,13 @@ export function markUnresolved(gapId: number): void {
   db.prepare(
     `UPDATE gap_log SET status = 'unresolved', retry_count = retry_count + 1 WHERE id = ?`
   ).run(gapId);
+}
+
+// Parks a gap the scorer was not confident about. Unlike markUnresolved this
+// does NOT touch retry_count: a gap nobody is sure about should not consume an
+// ingest cycle.
+export function markForReview(gapId: number): void {
+  db.prepare("UPDATE gap_log SET status = 'review' WHERE id = ?").run(gapId);
 }
 
 // Get a single gap by ID
