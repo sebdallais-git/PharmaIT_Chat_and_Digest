@@ -53,7 +53,8 @@ describe("GAP_RESOLVED_QUESTION", () => {
   });
 
   it.each([
-    ["production", join("src", "api", "knowledge.ts")],
+    // The scorer runs in the resolution check from here (recorded next to the 27B)
+    ["production", join("src", "services", "gap-resolution-verdict.ts")],
     ["the replay harness", join("scripts", "replay-gap-decisions.ts")],
   ])("is imported by %s rather than repeated there", (_label: string, path: string) => {
     const source = readFileSync(join(process.cwd(), path), "utf8");

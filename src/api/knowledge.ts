@@ -38,9 +38,8 @@ import { assertIndexUsable } from "../services/index-guard.js";
 import type { ChatMessage } from "../services/llm-client.js";
 import { getRunningJobs, isBenchmarkActive, trackJob } from "../services/bench-mode.js";
 import type { GraphEntity, GraphRelationship } from "../services/graph-store.js";
-import { decide } from "../services/decide.js";
-import { loadDecideConfig } from "../services/decide-config.js";
-import { applyGapVerdict, GAP_RESOLVED_QUESTION } from "../services/gap-outcome.js";
+import { applyGapVerdict } from "../services/gap-outcome.js";
+import { decideResolution, resolutionDeps } from "../services/gap-resolution-verdict.js";
 import { classifyDecideFailure, readScorerKey } from "./decide.js";
 
 const router = Router();
@@ -337,34 +336,27 @@ router.post("/gaps/check-resolution", async (req: Request, res: Response): Promi
 
     const newResponse = await trackJob("gap-resolution", () => getLlmClient().chat(messages));
 
-    // The 27B still writes the answer above; only the judgment moved. decide()
-    // throws rather than guessing when the scorer cannot answer, so a scorer
-    // outage leaves the gap untouched instead of silently closing it -- the
-    // failure mode of the checkConfidence() call this replaces.
-    const decision = await decide(
-      GAP_RESOLVED_QUESTION,
-      `Question: ${original_query}\nAnswer: ${newResponse}`,
-      { config: loadDecideConfig(), apiKey: readScorerKey(), fetchImpl: fetch },
-    );
+    // The 27B decides and the scorer's verdict is only recorded next to it:
+    // the acceptance replay found the scorer would close gaps the 27B keeps
+    // open (see src/services/gap-resolution-verdict.ts). An unparseable 27B
+    // reply parks the gap for review rather than closing it.
+    const { verdict, scorer } = await decideResolution(original_query, newResponse, resolutionDeps(readScorerKey()));
 
-    applyGapVerdict(decision.verdict, gap_id, newResponse, { resolveGap, markUnresolved, markForReview });
-    console.log(
-      `[Gap Resolution] Gap ${gap_id} ${decision.verdict.toUpperCase()} (noul ${decision.probability.toFixed(3)}) for topic: "${search_topic ?? ""}"`,
-    );
+    applyGapVerdict(verdict, gap_id, newResponse, { resolveGap, markUnresolved, markForReview });
+    console.log(`[Gap Resolution] Gap ${gap_id} ${verdict.toUpperCase()} for topic: "${search_topic ?? ""}"`);
     res.json({
-      resolved: decision.verdict === "resolved",
-      verdict: decision.verdict,
-      probability: decision.probability,
+      resolved: verdict === "resolved",
+      verdict,
+      // The scorer's opinion, recorded only; n8n's Resolution Result Log logs probability
+      probability: scorer?.probability ?? null,
+      scorer_verdict: scorer?.verdict ?? null,
       new_response: newResponse,
     });
   } catch (err) {
-    // This handler calls decide(), so scorer errors land here — and those
-    // interpolate text this codebase did not author: JSON.stringify of a
-    // scorer-controlled field, and undici's own message. Returning err.message
-    // verbatim put third-party text in a response body, which is the same
-    // class /api/decide was fixed for. Reuse its classifier rather than hold a
-    // second, differently-safe opinion: the detail goes to the log, a fixed
-    // message goes to the caller.
+    // Scorer errors no longer reach here (decideResolution records them), but
+    // the 27B, ChromaDB and the gap store can still fail, and their messages
+    // may carry text this codebase did not author. Keep /api/decide's
+    // classifier: the detail goes to the log, a fixed message to the caller.
     const failure = classifyDecideFailure(err);
     console.error(
       `[Gap Resolution] ${failure.logLabel} checking gap ${gap_id}:`,
