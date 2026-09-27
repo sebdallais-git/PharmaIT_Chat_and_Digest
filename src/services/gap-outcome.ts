@@ -15,10 +15,13 @@ import type { DecisionQuestion } from "./decide.js";
  */
 export const GAP_RESOLVED_QUESTION: DecisionQuestion = {
   id: "resolved",
+  // Measured with scripts/replay-gap-decisions.ts --question on 2026-09-27: 71.9%
+  // agreement with the 27B over 60 open gaps (the first wording: 34.6%). The
+  // 27B still decides resolution; this is the question the scorer is recorded on.
   instructions:
-    "Did the assistant answer the question with specific, confident information, rather than hedging, saying it does not know, or giving only vague generic information?",
-  whenTrue: "The answer is specific and addresses the question.",
-  whenFalse: "The answer hedges, is vague, or does not address the question.",
+    "Does the answer directly give the specific information the question asks for? Answer false if the answer says the provided context or sources do not contain the information, falls back on general knowledge, hedges, refuses, or only gives generic background instead of the specific facts asked for.",
+  whenTrue: "The answer directly provides the specific facts the question asks for.",
+  whenFalse: "The answer says the information is missing, falls back on general knowledge, hedges, refuses, or gives only generic background.",
 };
 
 export interface GapOutcomeDeps {
