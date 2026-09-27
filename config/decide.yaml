@@ -20,5 +20,7 @@ thresholds:
 # verdicts without letting the scorer decide anything. Detection runs on every
 # chat turn -- far more traffic than gap resolution -- so this is how evidence
 # accrues about whether a 4B can be trusted there, before anything depends on
-# it. Off by default; it costs one scorer call per turn.
-shadow_detection: false
+# it. It costs one scorer call per turn (~0.3 s once warm) and changes nothing
+# the user sees. On since 2026-09-27, when open-jev was installed on :8010;
+# read the agreement with: npx tsx scripts/shadow-report.ts
+shadow_detection: true
