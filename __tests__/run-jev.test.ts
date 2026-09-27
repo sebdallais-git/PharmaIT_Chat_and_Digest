@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,7 +11,7 @@ const SCRIPT = join(process.cwd(), "scripts", "run-jev.sh");
 function run(env: Record<string, string>): { stdout: string; status: number } {
   const runDir = mkdtempSync(join(tmpdir(), "run-jev-test-"));
   const stub = join(runDir, "stub.sh");
-  writeFileSync(stub, "#!/usr/bin/env bash\nenv | grep -E '^(OPENJEV_API_KEY|HF_TOKEN|JEV_PORT|JEV_HOST)=' | sort\n");
+  writeFileSync(stub, "#!/usr/bin/env bash\nenv | grep -E '^(OPENJEV_API_KEY|HF_TOKEN|JEV_PORT|JEV_HOST|JEV_MODEL)=' | sort\n");
   chmodSync(stub, 0o755);
   for (const [name, value] of Object.entries(env.tokens ? JSON.parse(env.tokens) : {})) {
     const p = join(runDir, name);
@@ -48,6 +48,28 @@ describe("run-jev.sh", () => {
 
   // Mirrors run-mcp.sh: a service that holds a gated model and answers
   // decisions must not listen beyond loopback without a key.
+  // The spec chose a 4-bit scorer (~3 GB beside the 27B on 48 GB). The server
+  // was started without --model, so it loaded open-jev's 16-bit default (8 GB);
+  // on 2026-09-27 free memory fell to 1-3 GB and scorer calls slowed from ~0.3 s
+  // to 3-6 s. Measured on the 60 baseline gaps, the 4-bit model also agreed
+  // with the 27B more often (91.2% vs 71.9%) and answered faster.
+  it("serves the 4-bit model by default", () => {
+    const { stdout, status } = run({ tokens: JSON.stringify({ "hf-token": "h1" }) });
+    expect(status).toBe(0);
+    expect(stdout).toContain("JEV_MODEL=models/gemma-3-4b-it-4bit");
+  });
+
+  it("lets JEV_MODEL choose another model", () => {
+    const { stdout } = run({ JEV_MODEL: "models/gemma-3-4b-it", tokens: JSON.stringify({ "hf-token": "h1" }) });
+    expect(stdout).toContain("JEV_MODEL=models/gemma-3-4b-it\n");
+  });
+
+  it("passes the model to openjev serve", () => {
+    const script = readFileSync(join(process.cwd(), "scripts", "run-jev.sh"), "utf-8");
+    const serve = script.split("\n").find((l) => l.includes("openjev serve")) ?? "";
+    expect(serve).toContain('--model "$JEV_MODEL"');
+  });
+
   it("refuses a non-loopback host with no scorer key", () => {
     const { stdout, status } = run({ JEV_HOST: "0.0.0.0", tokens: JSON.stringify({ "hf-token": "h1" }) });
 

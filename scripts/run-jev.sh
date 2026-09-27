@@ -18,6 +18,10 @@ read_token() {
 
 export JEV_HOST="${JEV_HOST:-127.0.0.1}"
 export JEV_PORT="${JEV_PORT:-8010}"   # 8000 belongs to the Splash stack
+# The spec's 4-bit scorer (~3 GB), relative to $JEV_DIR. Without --model the
+# server loaded open-jev's 16-bit default (8 GB), which starved memory beside
+# the 27B and scored the baseline gaps worse (71.9% vs 91.2% agreement).
+export JEV_MODEL="${JEV_MODEL:-models/gemma-3-4b-it-4bit}"
 OPENJEV_API_KEY="$(read_token "$RUN_DIR/jev-token")"
 HF_TOKEN="$(read_token "$RUN_DIR/hf-token")"
 export OPENJEV_API_KEY HF_TOKEN
@@ -45,4 +49,4 @@ if [ -n "${RUN_JEV_EXEC:-}" ]; then
 fi
 
 cd "$JEV_DIR"
-exec .venv/bin/openjev serve --host "$JEV_HOST" --port "$JEV_PORT"
+exec .venv/bin/openjev serve --host "$JEV_HOST" --port "$JEV_PORT" --model "$JEV_MODEL"
