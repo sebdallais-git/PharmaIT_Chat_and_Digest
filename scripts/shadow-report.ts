@@ -34,8 +34,13 @@ const limitArg = args.indexOf("--limit");
 const limit = limitArg === -1 ? 500 : Number(args[limitArg + 1] ?? 500);
 
 const db = new Database(join(process.cwd(), "data", "gap_log.db"), { readonly: true });
-const store = openShadowStore(db);
-const rows = store.list(limit);
+// openShadowStore() creates the table, which a read-only handle cannot do. The
+// app creates it on its first detection after deploy, so before any chat
+// traffic it simply does not exist yet: that means no rows, not an error.
+const hasTable = db
+  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'detection_shadow'")
+  .get() !== undefined;
+const rows = hasTable ? openShadowStore(db).list(limit) : [];
 
 if (rows.length === 0) {
   console.log("No shadow rows yet. Shadow mode is off by default — set shadow_detection: true in");
@@ -57,4 +62,4 @@ console.log(`27B confident, scorer was not:       ${report.falseUnresolved}  (a 
 console.log(`parked for review:                   ${report.review} of ${report.total}`);
 console.log(`\nIf most rows sit in the middle buckets, the thresholds are deciding, not the model.`);
 
-store.close();
+db.close();
