@@ -243,7 +243,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ gap_id: $json.gap_id, original_query: $json.original_query, search_topic: $json.search_topic, sources: $json.stored_sources || [] }) }}",
         "options": {
-          "timeout": 120000
+          "timeout": 300000
         },
         "sendHeaders": true,
         "specifyHeaders": "keypair",

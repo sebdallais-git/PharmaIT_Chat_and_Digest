@@ -324,3 +324,14 @@ describe("knowledge gap workflow stores no 'not relevant' explanations", () => {
     expect(String(request.prompt)).toMatch(/no explanation/i);
   });
 });
+
+// The resolution check re-answers with the stored chunks in its context, a
+// 27B generation on a prompt of several thousand tokens. On 2026-09-27 (gap #81)
+// it ran past n8n's 120 s limit, so the run ended without a verdict; run by hand
+// the same check took 78 s and resolved the gap.
+describe("knowledge gap workflow waits for the resolution check", () => {
+  it("gives Check Gap Resolution as long as the app waits for the model", () => {
+    const options = (node("Check Gap Resolution").parameters as unknown as { options: { timeout: number } }).options;
+    expect(options.timeout).toBe(300000);
+  });
+});
