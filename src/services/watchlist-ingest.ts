@@ -208,17 +208,30 @@ export function isRunnableFeed(feed: Feed): feed is Feed & { url: string; cik: s
 // It reads Date.now() rather than deps.now() on purpose: this paces real
 // outbound requests against the SEC's real rate limit, and a test's frozen
 // clock must not be able to turn the gate off.
-function createMinIntervalGate(minIntervalMs: number): () => Promise<void> {
+export interface GateClock {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+}
+
+const realClock: GateClock = {
+  now: () => Date.now(),
+  // Deliberately NOT unref'd: the run is awaiting this timer. If it were
+  // the only ref'd handle left, the event loop would drain, the process
+  // would exit mid-run before finishRun, and cron would see exit 0.
+  sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+};
+
+// `clock` exists for tests of the gate itself; the ingest always uses the real one.
+export function createMinIntervalGate(minIntervalMs: number, clock: GateClock = realClock): () => Promise<void> {
   let next = 0;
   return async () => {
-    const nowMs = Date.now();
-    const waitMs = Math.max(0, next - nowMs);
-    next = Math.max(nowMs, next) + minIntervalMs;
-    if (waitMs > 0) {
-      // Deliberately NOT unref'd: the run is awaiting this timer. If it were
-      // the only ref'd handle left, the event loop would drain, the process
-      // would exit mid-run before finishRun, and cron would see exit 0.
-      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+    const admitAt = Math.max(clock.now(), next);
+    next = admitAt + minIntervalMs;
+    // Node starts timers from libuv's cached loop time, which lags Date.now()
+    // after synchronous work, so one sleep can wake early. Check the clock and
+    // sleep off the remainder until the admission time has really passed.
+    for (let waitMs = admitAt - clock.now(); waitMs > 0; waitMs = admitAt - clock.now()) {
+      await clock.sleep(waitMs);
     }
   };
 }

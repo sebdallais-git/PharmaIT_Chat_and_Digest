@@ -171,3 +171,14 @@ esac`;
     expect(calls.some((c) => c.startsWith("curl ") || c.startsWith("lsof ") || c.includes("ensure-stack"))).toBe(false);
   });
 });
+
+describe("the mlx-watchdog launchd job", () => {
+  // The watchdog restarts the chat server from inside its own launchd job, so
+  // the new server lands in the job's process group. By default launchd kills
+  // that whole group when the job exits: every restart died seconds later, and
+  // on 2026-09-26 the watchdog restarted MLX 172 times while chat stayed down.
+  it("leaves the chat server it restarted running when the job exits", () => {
+    const template = readFileSync(join(process.cwd(), "hermes", "com.pharmaitchat.mlx-watchdog.plist.template"), "utf-8");
+    expect(template).toMatch(/<key>AbandonProcessGroup<\/key>\s*<true\/>/);
+  });
+});

@@ -254,6 +254,71 @@ export async function addToChromaDB(
   return unique.length;
 }
 
+// Where-filter for the chunks of exactly one source
+export function chromaSourceFilter(source: string): { where: { source: string } } {
+  return { where: { source } };
+}
+
+// How many chunks ChromaDB holds for a source
+export async function countChromaSource(source: string): Promise<number> {
+  const id = await getCollectionId();
+  const resp = await fetch(`${BASE}/${id}/get`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...chromaSourceFilter(source), include: [] }),
+  });
+  if (!resp.ok) throw new Error(`ChromaDB get failed (${resp.status})`);
+  return ((await resp.json()) as { ids: string[] }).ids.length;
+}
+
+// Delete every chunk of a source from the active stack's collection
+export async function deleteChromaSource(source: string): Promise<void> {
+  const id = await getCollectionId();
+  const resp = await fetch(`${BASE}/${id}/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(chromaSourceFilter(source)),
+  });
+  if (!resp.ok) throw new Error(`ChromaDB delete failed (${resp.status})`);
+}
+
+// Request body for the documents stored under any of `sources`
+export function sourceLookupBody(sources: string[], limit: number): Record<string, unknown> {
+  return {
+    where: { source: { $in: sources } },
+    limit,
+    include: ["documents", "metadatas"],
+  };
+}
+
+/**
+ * The chunks stored under the given sources, whatever their similarity to any
+ * query. The gap-resolution check uses this to see what the loop just stored.
+ */
+export async function getChromaChunksBySource(
+  sources: string[],
+  limit: number = 10
+): Promise<{ document: string; metadata: Record<string, unknown> }[]> {
+  if (sources.length === 0) return [];
+  assertIndexUsable();
+  const id = await getCollectionId();
+
+  const resp = await fetch(`${BASE}/${id}/get`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sourceLookupBody(sources, limit)),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`ChromaDB get failed (${resp.status})`);
+  }
+
+  const data = (await resp.json()) as { documents: (string | null)[]; metadatas: (Record<string, unknown> | null)[] };
+  return data.documents.flatMap((document, i) =>
+    document === null ? [] : [{ document, metadata: data.metadatas[i] ?? {} }]
+  );
+}
+
 /**
  * Check if a source URL already has chunks in ChromaDB.
  */

@@ -554,16 +554,11 @@ npm run watchlist -- status              # after the first run: counts and per-e
 
 <br/>
 
-1. Run [SearXNG](https://github.com/searxng/searxng) on `http://localhost:8888` and [n8n](https://n8n.io) on `http://localhost:5678`.
+1. Run [SearXNG](https://github.com/searxng/searxng) on `http://localhost:8888` with `bash scripts/setup-searxng.sh`, which builds its settings from `config/searxng/settings.yml`, and [n8n](https://n8n.io) on `http://localhost:5678`. The public search engines SearXNG scrapes tend to answer a self-hosted instance with CAPTCHAs and rate limits, so put a [Brave Search API](https://brave.com/search/api/) key in `data/run/brave-api-key` (mode 600) before running the script; it is rendered into the container's settings, never into the repo or a command line.
 2. In n8n, import `n8n/knowledge_gap_workflow_v2.json` and `n8n/knowledge_qa_workflow.json` (**Workflows → Import from File**) and activate them.
-3. Point the gap detector at the webhook and restart:
+3. Nothing else to wire: `start-services.sh` and `switch-stack.sh` point the gap detector at `http://localhost:5678/webhook/knowledge-gap` (override with `N8N_WEBHOOK_URL`), and `scripts/run-n8n.sh` hands n8n the API token from `data/run/api-token`.
 
-```bash
-export N8N_WEBHOOK_URL="http://localhost:5678/webhook/knowledge-gap"
-npm run dev
-```
-
-The workflows call protected routes, so once an API token is set they need `Authorization: Bearer {{ $env.PHARMALLM_API_TOKEN }}` — the exported workflows still carry the legacy variable name, so set that one in n8n's environment. See [`n8n/README.md`](n8n/README.md).
+The workflows call protected routes with `Authorization: Bearer {{ $env.PHARMALLM_API_TOKEN }}` — the legacy variable name, which `run-n8n.sh` sets. n8n 2.x blocks `$env` in expressions by default, so `run-n8n.sh` also sets `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`; an n8n started some other way needs both. See [`n8n/README.md`](n8n/README.md).
 
 </details>
 
@@ -789,7 +784,7 @@ Everything works with defaults. `scripts/switch-stack.sh` and `npm run dev` set 
 | `OMLX_URL` | `http://localhost:8090` | oMLX server (chat and embeddings) |
 | `MLX_PYTHON` | `python3` | Python used to create `python/mlx-venv` and `python/omlx-venv` |
 | `CHROMADB_URL` | `http://localhost:8100` | ChromaDB server |
-| `N8N_WEBHOOK_URL` | *(none)* | n8n webhook for gap auto-fill |
+| `N8N_WEBHOOK_URL` | `http://localhost:5678/webhook/knowledge-gap` | n8n webhook for gap auto-fill (set by `start-services.sh` and `switch-stack.sh`) |
 | `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
 | `NEO4J_USER` | `neo4j` | Neo4j user |
 | `NEO4J_PASSWORD` | `pharma2024` | Neo4j password |

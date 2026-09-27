@@ -851,6 +851,51 @@ describe("switch-stack.sh switch_to: a failed index step says so", () => {
   });
 });
 
+describe("switch-stack.sh start_app", () => {
+  // A stack switch restarts the app through start_app, not start-services.sh.
+  // If only one of them points the Gap Detector at n8n, the gap loop silently
+  // stops working after the first switch.
+  it("points the app's gap detector at the n8n webhook", () => {
+    const dir = mkdtempSync(join(tmpdir(), "start-app-"));
+    try {
+      const project = join(dir, "project");
+      const runDir = join(project, "data", "run");
+      mkdirSync(runDir, { recursive: true });
+      mkdirSync(join(project, "data", "logs"), { recursive: true });
+
+      const binDir = join(dir, "bin");
+      mkdirSync(binDir);
+      const envOut = join(dir, "app-env");
+      // npx stands in for the app: record its environment instead of starting it
+      writeFileSync(join(binDir, "npx"), `#!/bin/bash\necho "WEBHOOK=\${N8N_WEBHOOK_URL-<unset>}" >"${envOut}"\n`);
+      writeFileSync(join(binDir, "curl"), '#!/bin/bash\necho \'{"status":"healthy"}\'\n');
+      for (const f of ["npx", "curl"]) chmodSync(join(binDir, f), 0o755);
+
+      const funcsFile = join(dir, "funcs.sh");
+      writeFileSync(funcsFile, extractFuncs());
+      const harness = join(dir, "harness.sh");
+      writeFileSync(harness, ["#!/bin/bash", 'source "$FUNCS_FILE"', "start_app mlx", "wait"].join("\n"));
+
+      const result = spawnSync("bash", [harness], {
+        encoding: "utf-8",
+        env: {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          HOME: dir,
+          PHARMALLM_RUN_DIR: runDir,
+          SCRIPT_DIR: join(process.cwd(), "scripts"),
+          PROJECT_DIR: project,
+          FUNCS_FILE: funcsFile,
+        },
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(envOut, "utf-8").trim()).toBe("WEBHOOK=http://localhost:5678/webhook/knowledge-gap");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("services.sh is_project_pid", () => {
   // A process that renames itself has no project path in its command line. oMLX pulls in
   // setproctitle and shows up as plain "omlx-server", which made the script treat its own

@@ -12,10 +12,10 @@
 #   com.pharmaitchat.mlx-watchdog  restarts the mlx or omlx chat server when it stops generating
 #   ai.hermes.gateway         the Hermes gateway behind Telegram
 #
-# Docker is deliberately not managed here: Neo4j and SearXNG are containers with
-# restart policy unless-stopped, so they come back when Docker Desktop does.
-# `on` reports if Docker Desktop is not set to start at login, because nothing
-# this script does can fix that.
+# The container runtime is not a launchd job here: Neo4j and SearXNG run in colima
+# with restart policy unless-stopped, and start-services.sh (the stack job) starts
+# colima at boot when Docker is not reachable, which brings them back.
+# `on` reports if Docker is not reachable at that moment.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -40,7 +40,7 @@ render() {
       -e "s|__NODE_BIN__|$(node_bin)|g" \
       -e "s|__MCP_HOST__|${MCP_HOST:-127.0.0.1}|g" \
       -e "s|__N8N_PORT__|${N8N_PORT:-5678}|g" \
-      -e "s|__PATH__|$(dirname "$(node_bin)"):/usr/bin:/bin:/usr/sbin:/sbin|g" \
+      -e "s|__PATH__|$(dirname "$(node_bin)"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin|g" \
       "$template" >"$out"
 }
 
@@ -81,7 +81,7 @@ cmd_on() {
   done
   log "autostart is ON — these come back at login and restart on crash"
   if ! docker info >/dev/null 2>&1; then
-    log "NOTE: Docker Desktop is not running. Neo4j and SearXNG only return if it starts at login (Settings > General)."
+    log "NOTE: Docker is not reachable right now. The stack job starts colima at boot; to start it now: colima start"
   fi
   return "$rc"
 }

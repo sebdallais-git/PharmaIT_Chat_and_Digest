@@ -25,7 +25,7 @@
         "url": "http://localhost:3000/api/llm/complete",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'Generate 3 different web search queries to find information about: ' + $json.search_topic + '\\nOriginal question was: ' + $json.original_query + '\\nReturn ONLY a JSON array of 3 search query strings, nothing else. Example: [\"query 1\", \"query 2\", \"query 3\"]', stream: false }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'Generate 3 different web search queries to find information about: ' + $json.body.search_topic + '\\nOriginal question was: ' + $json.body.original_query + '\\nReturn ONLY a JSON array of 3 search query strings, nothing else. Example: [\"query 1\", \"query 2\", \"query 3\"]', stream: false }) }}",
         "options": {
           "timeout": 60000
         },
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse Ollama response to extract 3 search queries\nconst ollamaResponse = $input.first().json.response || '';\nconst searchTopic = $('Knowledge Gap Webhook').first().json.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.original_query;\n\nlet queries = [];\n\ntry {\n  // Try to parse JSON array from response\n  const match = ollamaResponse.match(/\\[[\\s\\S]*?\\]/);\n  if (match) {\n    queries = JSON.parse(match[0]);\n  }\n} catch (e) {\n  // Fallback: split by newlines and clean up\n  queries = ollamaResponse.split('\\n').filter(l => l.trim().length > 5).slice(0, 3);\n}\n\n// Ensure we have at least 1 query\nif (queries.length === 0) {\n  queries = [searchTopic];\n}\n\n// Limit to 3 queries\nqueries = queries.slice(0, 3);\n\n// Output one item per query\nreturn queries.map((q, i) => ({\n  json: {\n    query: String(q).replace(/^\"|\"$/g, ''),\n    query_index: i,\n    search_topic: searchTopic,\n    original_query: originalQuery,\n    total_queries: queries.length\n  }\n}));"
+        "jsCode": "// Parse Ollama response to extract 3 search queries\nconst ollamaResponse = $input.first().json.response || '';\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.body.original_query;\n\nlet queries = [];\n\ntry {\n  // Try to parse JSON array from response\n  const match = ollamaResponse.match(/\\[[\\s\\S]*?\\]/);\n  if (match) {\n    queries = JSON.parse(match[0]);\n  }\n} catch (e) {\n  // Fallback: split by newlines and clean up\n  queries = ollamaResponse.split('\\n').filter(l => l.trim().length > 5).slice(0, 3);\n}\n\n// Ensure we have at least 1 query\nif (queries.length === 0) {\n  queries = [searchTopic];\n}\n\n// Limit to 3 queries\nqueries = queries.slice(0, 3);\n\n// Output one item per query\nreturn queries.map((q, i) => ({\n  json: {\n    query: String(q).replace(/^\"|\"$/g, ''),\n    query_index: i,\n    search_topic: searchTopic,\n    original_query: originalQuery,\n    total_queries: queries.length\n  }\n}));"
       },
       "id": "a1b2c3d4-0003-4000-8000-000000000003",
       "name": "Parse Search Queries",
@@ -103,7 +103,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Collect results from all SearXNG searches, deduplicate by URL\nconst items = $input.all();\nconst searchTopic = $('Knowledge Gap Webhook').first().json.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.original_query;\n\nconst seenUrls = new Set();\nconst results = [];\n\nfor (const item of items) {\n  const searchResults = item.json.results || [];\n  // Take top 3 results per query\n  const top3 = searchResults.slice(0, 3);\n\n  for (const r of top3) {\n    const url = r.url;\n    if (!url || seenUrls.has(url)) continue;\n    // Skip PDFs, images, videos\n    if (/\\.(pdf|jpg|png|gif|mp4|avi)$/i.test(url)) continue;\n    seenUrls.add(url);\n    results.push({\n      json: {\n        url: url,\n        title: r.title || '',\n        search_topic: searchTopic,\n        original_query: originalQuery,\n        total_urls: 0\n      }\n    });\n  }\n}\n\n// Set total count and limit to 9\nconst limited = results.slice(0, 9);\nlimited.forEach(r => r.json.total_urls = limited.length);\n\nif (limited.length === 0) {\n  return [{ json: { error: 'No search results found', search_topic: searchTopic } }];\n}\n\nreturn limited;"
+        "jsCode": "// Collect results from all SearXNG searches, deduplicate by URL\nconst items = $input.all();\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.body.original_query;\n\nconst seenUrls = new Set();\nconst results = [];\n\nfor (const item of items) {\n  const searchResults = item.json.results || [];\n  // Take top 3 results per query\n  const top3 = searchResults.slice(0, 3);\n\n  for (const r of top3) {\n    const url = r.url;\n    if (!url || seenUrls.has(url)) continue;\n    // Skip PDFs, images, videos\n    if (/\\.(pdf|jpg|png|gif|mp4|avi)$/i.test(url)) continue;\n    seenUrls.add(url);\n    results.push({\n      json: {\n        url: url,\n        title: r.title || '',\n        search_topic: searchTopic,\n        original_query: originalQuery,\n        total_urls: 0\n      }\n    });\n  }\n}\n\n// Set total count and limit to 9\nconst limited = results.slice(0, 9);\nlimited.forEach(r => r.json.total_urls = limited.length);\n\nif (limited.length === 0) {\n  return [{ json: { error: 'No search results found', search_topic: searchTopic } }];\n}\n\nreturn limited;"
       },
       "id": "a1b2c3d4-0005-4000-8000-000000000005",
       "name": "Deduplicate Results",
@@ -141,7 +141,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Truncate page content to 8000 chars, strip HTML, filter failed fetches\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  // Skip failed fetches\n  if (item.json.error || !item.json.data) continue;\n\n  let content = String(item.json.data || '');\n\n  // Strip HTML tags, scripts, styles\n  content = content\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n    .replace(/<nav[\\s\\S]*?<\\/nav>/gi, '')\n    .replace(/<header[\\s\\S]*?<\\/header>/gi, '')\n    .replace(/<footer[\\s\\S]*?<\\/footer>/gi, '')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&[a-z]+;/gi, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  // Skip if too short (likely an error page)\n  if (content.length < 100) continue;\n\n  // Truncate to 8000 chars\n  content = content.slice(0, 8000);\n\n  // Get URL from the Deduplicate node's corresponding item\n  const dedupeItems = $('Deduplicate Results').all();\n  const url = dedupeItems[i] ? dedupeItems[i].json.url : 'unknown';\n  const searchTopic = dedupeItems[i] ? dedupeItems[i].json.search_topic : '';\n\n  output.push({\n    json: {\n      page_content: content,\n      url: url,\n      search_topic: searchTopic,\n      content_length: content.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No pages could be fetched successfully' } }];\n}\n\nreturn output;"
+        "jsCode": "// Truncate page content to 8000 chars, strip HTML, filter failed fetches\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  // Skip failed fetches\n  if (item.json.error || !item.json.data) continue;\n\n  let content = String(item.json.data || '');\n\n  // Strip HTML tags, scripts, styles\n  content = content\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n    .replace(/<nav[\\s\\S]*?<\\/nav>/gi, '')\n    .replace(/<header[\\s\\S]*?<\\/header>/gi, '')\n    .replace(/<footer[\\s\\S]*?<\\/footer>/gi, '')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&[a-z]+;/gi, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  // Skip if too short (likely an error page)\n  if (content.length < 100) continue;\n\n  // Truncate to 8000 chars\n  content = content.slice(0, 8000);\n\n  // Trace this page back to the URL it was fetched from. Failed fetches leave\n  // the success batch, so position i is not the i-th deduplicated URL.\n  const source = $('Deduplicate Results').itemMatching(i);\n  const url = source ? source.json.url : 'unknown';\n  const searchTopic = source ? source.json.search_topic : '';\n\n  output.push({\n    json: {\n      page_content: content,\n      url: url,\n      search_topic: searchTopic,\n      content_length: content.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No pages could be fetched successfully' } }];\n}\n\nreturn output;"
       },
       "id": "a1b2c3d4-0007-4000-8000-000000000007",
       "name": "Truncate & Clean Content",
@@ -159,9 +159,9 @@
         "url": "http://localhost:3000/api/llm/complete",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with ONLY the word NOT_RELEVANT.', stream: false }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with exactly NOT_RELEVANT and nothing else: no explanation.', stream: false }) }}",
         "options": {
-          "timeout": 120000
+          "timeout": 300000
         },
         "sendHeaders": true,
         "specifyHeaders": "keypair",
@@ -187,7 +187,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter out NOT_RELEVANT responses and errors\nconst items = $input.all();\nconst truncateItems = $('Truncate & Clean Content').all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const response = String(item.json.response || '').trim();\n\n  // Skip errors and NOT_RELEVANT\n  if (item.json.error) continue;\n  if (response === 'NOT_RELEVANT' || response.startsWith('NOT_RELEVANT')) continue;\n  if (response.length < 50) continue;\n\n  const sourceData = truncateItems[i] || { json: {} };\n\n  output.push({\n    json: {\n      summary: response,\n      url: sourceData.json.url || 'unknown',\n      search_topic: sourceData.json.search_topic || '',\n      summary_length: response.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No relevant content found', relevant_count: 0 } }];\n}\n\nreturn output;"
+        "jsCode": "// Filter out NOT_RELEVANT responses and errors\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const response = String(item.json.response || '').trim();\n\n  // Skip errors and NOT_RELEVANT\n  if (item.json.error) continue;\n  if (response === 'NOT_RELEVANT' || response.startsWith('NOT_RELEVANT')) continue;\n  // The model sometimes explains instead of answering NOT_RELEVANT. Only the opening is\n  // checked, so a real summary that mentions relevance later is kept.\n  if (/NOT_RELEVANT|\\bnot relevant\\b|\\birrelevant\\b|\\bno (relevant|useful) (information|content)\\b|\\bdoes not (contain|include|provide|mention) any\\b/i.test(response.slice(0, 250))) continue;\n  if (response.length < 50) continue;\n\n  // Trace back to the page this fact came from; failed extractions leave the batch\n  const sourceData = $('Truncate & Clean Content').itemMatching(i) || { json: {} };\n\n  output.push({\n    json: {\n      summary: response,\n      url: sourceData.json.url || 'unknown',\n      search_topic: sourceData.json.search_topic || '',\n      summary_length: response.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No relevant content found', relevant_count: 0 } }];\n}\n\nreturn output;"
       },
       "id": "a1b2c3d4-0009-4000-8000-000000000009",
       "name": "Filter Relevant Only",
@@ -223,7 +223,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Summarize the entire workflow run\nconst webhookData = $('Knowledge Gap Webhook').first().json;\nconst dedupeItems = $('Deduplicate Results').all();\nconst filteredItems = $('Filter Relevant Only').all();\nconst storedItems = $input.all();\n\nconst totalUrls = dedupeItems.filter(i => !i.json.error).length;\nconst relevantCount = filteredItems.filter(i => !i.json.error).length;\nconst storedCount = storedItems.filter(i => !i.json.error).length;\n\nconst summary = {\n  status: 'completed',\n  gap_id: webhookData.gap_id,\n  search_topic: webhookData.search_topic,\n  original_query: webhookData.original_query,\n  timestamp: new Date().toISOString(),\n  stats: {\n    pages_fetched: totalUrls,\n    relevant_pages: relevantCount,\n    chunks_stored: storedCount\n  }\n};\n\nconsole.log('[N8N Knowledge Gap] ' + JSON.stringify(summary));\n\nreturn [{ json: summary }];"
+        "jsCode": "// Summarize the entire workflow run\nconst webhookData = $('Knowledge Gap Webhook').first().json.body;\nconst dedupeItems = $('Deduplicate Results').all();\nconst filteredItems = $('Filter Relevant Only').all();\nconst storedItems = $input.all();\n\nconst totalUrls = dedupeItems.filter(i => !i.json.error).length;\nconst relevantCount = filteredItems.filter(i => !i.json.error).length;\nconst storedCount = storedItems.filter(i => !i.json.error).length;\n\n// The sources this run stored, labelled as Store in Knowledge Base labels them.\n// The resolution check always includes their chunks: a top-5 search over the\n// whole knowledge base can rank what was just stored out of sight.\nconst storedSources = [...new Set(storedItems\n  .map((item, i) => item.json.error ? null : $('Filter Relevant Only').itemMatching(i))\n  .map((filtered) => filtered && filtered.json.url)\n  // Only real URLs: Filter Relevant Only falls back to 'unknown' when it cannot trace a page\n  .filter((url) => typeof url === 'string' && url.length > 0 && url !== 'unknown')\n  .map((url) => 'n8n-gap|' + url))];\n\nconst summary = {\n  status: 'completed',\n  gap_id: webhookData.gap_id,\n  search_topic: webhookData.search_topic,\n  original_query: webhookData.original_query,\n  stored_sources: storedSources,\n  timestamp: new Date().toISOString(),\n  stats: {\n    pages_fetched: totalUrls,\n    relevant_pages: relevantCount,\n    chunks_stored: storedCount\n  }\n};\n\nconsole.log('[N8N Knowledge Gap] ' + JSON.stringify(summary));\n\nreturn [{ json: summary }];"
       },
       "id": "a1b2c3d4-0011-4000-8000-000000000011",
       "name": "Summary & Log",
@@ -241,7 +241,7 @@
         "url": "http://localhost:3000/api/knowledge/gaps/check-resolution",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ gap_id: $json.gap_id, original_query: $json.original_query, search_topic: $json.search_topic }) }}",
+        "jsonBody": "={{ JSON.stringify({ gap_id: $json.gap_id, original_query: $json.original_query, search_topic: $json.search_topic, sources: $json.stored_sources || [] }) }}",
         "options": {
           "timeout": 120000
         },
@@ -283,7 +283,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// SearXNG failed \u2014 log error and stop gracefully\nconst searchTopic = $('Knowledge Gap Webhook').first().json.search_topic;\nconsole.log('[N8N] SearXNG search failed for topic: ' + searchTopic);\nreturn [{\n  json: {\n    status: 'error',\n    stage: 'searxng_search',\n    search_topic: searchTopic,\n    message: 'SearXNG search failed. Check that SearXNG is running on localhost:8888.'\n  }\n}];"
+        "jsCode": "// SearXNG failed \u2014 log error and stop gracefully\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconsole.log('[N8N] SearXNG search failed for topic: ' + searchTopic);\nreturn [{\n  json: {\n    status: 'error',\n    stage: 'searxng_search',\n    search_topic: searchTopic,\n    message: 'SearXNG search failed. Check that SearXNG is running on localhost:8888.'\n  }\n}];"
       },
       "id": "a1b2c3d4-0012-4000-8000-000000000012",
       "name": "SearXNG Error Handler",
@@ -297,7 +297,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Ollama query generation failed \u2014 fallback to using search_topic directly\nconst searchTopic = $('Knowledge Gap Webhook').first().json.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.original_query;\n\nconsole.log('[N8N] Ollama query generation failed, using search_topic as fallback');\n\nreturn [{\n  json: {\n    query: searchTopic,\n    query_index: 0,\n    search_topic: searchTopic,\n    original_query: originalQuery,\n    total_queries: 1\n  }\n}];"
+        "jsCode": "// Ollama query generation failed \u2014 fallback to using search_topic directly\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.body.original_query;\n\nconsole.log('[N8N] Ollama query generation failed, using search_topic as fallback');\n\nreturn [{\n  json: {\n    query: searchTopic,\n    query_index: 0,\n    search_topic: searchTopic,\n    original_query: originalQuery,\n    total_queries: 1\n  }\n}];"
       },
       "id": "a1b2c3d4-0013-4000-8000-000000000013",
       "name": "Ollama Query Error Handler",
@@ -308,6 +308,69 @@
         560
       ],
       "notes": "If Ollama fails to generate queries, falls back to using the search_topic directly."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ade74b99-61a8-4543-85bc-b5c1e8818ac8",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "308feda1-784c-4a11-be06-04883cb66e00",
+      "name": "Anything Relevant?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2280,
+        520
+      ],
+      "notes": "Filter Relevant Only sets `error` when nothing relevant was found: store the facts, or record the gap as unresolved."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3000/api/knowledge/gaps/{{ $('Knowledge Gap Webhook').first().json.body.gap_id }}/unresolved",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.PHARMALLM_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "c6f82c3c-01c9-41c8-b74b-29489ea031da",
+      "name": "Mark Gap Unresolved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2520,
+        700
+      ],
+      "notes": "Nothing relevant was found: record the attempt as unresolved without spending a 27B re-answer."
     }
   ],
   "connections": {
@@ -400,13 +463,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Truncate & Clean Content",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Truncate & Clean Content": {
@@ -429,20 +486,14 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Filter Relevant Only",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Filter Relevant Only": {
       "main": [
         [
           {
-            "node": "Store in Knowledge Base",
+            "node": "Anything Relevant?",
             "type": "main",
             "index": 0
           }
@@ -458,13 +509,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Summary & Log",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Summary & Log": {
@@ -487,9 +532,21 @@
             "index": 0
           }
         ],
+        []
+      ]
+    },
+    "Anything Relevant?": {
+      "main": [
         [
           {
-            "node": "Resolution Result Log",
+            "node": "Store in Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Gap Unresolved",
             "type": "main",
             "index": 0
           }

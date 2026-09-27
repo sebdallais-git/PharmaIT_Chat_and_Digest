@@ -93,8 +93,10 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - `.worktrees/` holds checkouts of other branches and is excluded from Jest; tests that read
   scripts do so relative to `process.cwd()`.
 - Renaming an MCP server orphans long-lived agent sessions: they keep calling the old
-  `mcp__<old>__*` names, which fail instantly while health checks stay green. Rotate each chat
-  session from inside its own chat.
+  `mcp__<old>__*` names, which fail instantly while health checks stay green. Run
+  `scripts/check-stale-sessions.sh` (read-only; `--quiet` for the verdict only) before and after
+  a rename: it lists stale routed sessions, dead-name calls and cron jobs that name the old
+  server. Rotate each flagged session from inside its own chat (`/new`), then re-run.
 - Keep `OLLAMA_NUM_PARALLEL=1` — each slot allocates its own 64K context.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,

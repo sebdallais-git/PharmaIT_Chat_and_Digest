@@ -9,11 +9,25 @@
 # Detector calls this webhook the moment a gap is found, which is why it runs as
 # a service rather than on a schedule.
 #
-# Holds no secrets: n8n reads its own credentials from ~/.n8n.
+# Holds no secrets: n8n reads its own credentials from ~/.n8n, and the app's API
+# token is read from data/run and passed through the environment only.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+RUN_DIR="${PHARMALLM_RUN_DIR:-$PROJECT_DIR/data/run}"
+
+read_token() {
+  if [ -s "$1" ]; then tr -d '[:space:]' <"$1"; fi
+}
+
+# The workflows call the app's protected routes with
+# `Bearer {{ $env.PHARMALLM_API_TOKEN }}`. n8n 2.x blocks $env in expressions
+# by default, which leaves that header empty and every call a 401, so allow it.
+# The environment n8n sees is launchd's plus what this script exports.
+PHARMALLM_API_TOKEN="$(read_token "$RUN_DIR/api-token")"
+export PHARMALLM_API_TOKEN
+export N8N_BLOCK_ENV_ACCESS_IN_NODE=false
 
 export N8N_PORT="${N8N_PORT:-5678}"
 # Bound to loopback on purpose: the only caller is the app's Gap Detector on

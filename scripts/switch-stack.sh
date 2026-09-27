@@ -503,8 +503,11 @@ mcp_service() {
 
 start_app() {
   cd "$PROJECT_DIR"
+  # N8N_WEBHOOK_URL: same default as start-services.sh, or the gap loop stops
+  # working after the first stack switch
   LLM_PROVIDER="$1" CHROMADB_URL="$CHROMA_URL" PHARMAITCHAT_API_TOKEN="$(api_token)" \
     TELEGRAM_BOT_TOKEN="$(telegram_value bot-token)" TELEGRAM_CHAT_ID="$(telegram_value chat-id)" \
+    N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-5678}/webhook/knowledge-gap}" \
     nohup npx tsx src/server.ts >"$LOG_DIR/app.log" 2>&1 &
   echo $! >"$RUN_DIR/app.pid"
 

@@ -19,6 +19,11 @@
        than a crash-restart but well inside the window where a wedged MLX would
        otherwise sit unnoticed for hours. -->
   <key>StartInterval</key><integer>120</integer>
+  <!-- The watchdog restarts the chat server from inside this job, so the new
+       server joins the job's process group. Without this key launchd kills
+       that group when the script exits, and every restart died seconds later:
+       172 restarts on 2026-09-26 with chat down throughout. -->
+  <key>AbandonProcessGroup</key><true/>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>__PROJECT_DIR__/data/logs/mlx-watchdog.log</string>
   <key>StandardErrorPath</key><string>__PROJECT_DIR__/data/logs/mlx-watchdog.log</string>
