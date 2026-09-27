@@ -144,12 +144,11 @@ stop_pidfile_process() {
   rm -f "$pidfile"
 }
 
-# Neo4j and SearXNG are containers. Their restart policy is unless-stopped, so
-# they return once Docker Desktop is up -- but Docker Desktop starting at login
-# is registered through SMAppService, in a SIP-protected system database, and
-# nothing here can set it. So: start them if Docker is available, and say so
-# plainly if it is not, rather than letting the graph and web search fail later
-# with something that looks unrelated.
+# Neo4j and SearXNG are containers in colima. Their restart policy is
+# unless-stopped, so they return once colima is up, and the stack's launchd job
+# (RunAtLoad) gets here at login. So: start colima if Docker is unreachable,
+# start the containers, and say so plainly if that fails, rather than letting
+# the graph and web search fail later with something that looks unrelated.
 ensure_containers() {
   # The containers live in colima. Nothing else starts it after a reboot, and
   # `colima start` is a no-op when it is already running.

@@ -51,9 +51,9 @@ check_port 8100 "ChromaDB"   "  -> run scripts/start-services.sh"
 check_port "$(jev_port)" "jev scorer" "  -> gap decisions degrade; chat is unaffected"
 
 echo
-echo "docker containers (return only if Docker Desktop starts at login)"
-check_port 7687 "Neo4j"   "  -> docker start neo4j"
-check_port 8888 "SearXNG" "  -> docker start searxng"
+echo "docker containers (in colima; the stack job starts it at login)"
+check_port 7687 "Neo4j"   "  -> colima start && docker start neo4j"
+check_port 8888 "SearXNG" "  -> colima start && docker start searxng"
 
 echo
 echo "end to end"
