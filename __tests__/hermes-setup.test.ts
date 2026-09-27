@@ -423,6 +423,25 @@ describe("hermes-setup.sh install-services", () => {
     expect(calls).toContain("hermes [gateway] [install] [--force] [--start-now] [--start-on-login]");
   });
 
+  // The skip paths return 0, but a failing bootstrap still called `exit 1`. It
+  // runs before the gateway install, so a bad jev plist or a stuck launchd
+  // teardown left Telegram uninstalled, for a scorer that is optional.
+  it("installs the gateway even when the scorer's launchd job will not bootstrap", () => {
+    const box = sandbox();
+    installJevFixture(box);
+    writeStub(join(box.root, "launchctl"), "launchctl", [
+      'if [ "$1" = bootstrap ] && [[ "$3" == *com.pharmaitchat.jev.plist ]]; then exit 5; fi',
+      "exit 0",
+    ]);
+
+    const result = setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" });
+
+    expect(result.status).toBe(0);
+    const calls = readFileSync(box.calls, "utf-8");
+    expect(calls).toContain("hermes [gateway] [install] [--force] [--start-now] [--start-on-login]");
+    expect(result.stdout + result.stderr).toMatch(/jev.*optional|optional.*jev/i);
+  }, 30000);
+
   // Regression test for the reported bug: install_jev_service used to `exit 1` here under
   // set -euo pipefail, so install-services installed MCP and n8n and then hard-aborted,
   // never reaching the Hermes gateway install. The scorer is optional (src/services/health.ts

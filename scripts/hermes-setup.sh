@@ -257,7 +257,12 @@ install_jev_service() {
   local attempt
   for attempt in 1 2 3 4 5; do
     if "$LAUNCHCTL_BIN" bootstrap "$domain" "$plist"; then break; fi
-    if [ "$attempt" -eq 5 ]; then log "launchctl bootstrap failed 5 times for $JEV_LABEL"; exit 1; fi
+    if [ "$attempt" -eq 5 ]; then
+      # Return like the skip paths above: this runs before the gateway install,
+      # and an optional scorer must not leave Telegram uninstalled.
+      log "launchctl bootstrap failed 5 times for $JEV_LABEL; skipping the jev scorer. The scorer is optional — chat is unaffected."
+      return 0
+    fi
     sleep 1
   done
   log "Installed and started $JEV_LABEL"
