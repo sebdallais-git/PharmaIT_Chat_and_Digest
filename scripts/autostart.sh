@@ -22,6 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TEMPLATE_DIR="$PROJECT_DIR/hermes"
 LAUNCH_AGENTS_DIR="${LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+# shellcheck source=lib/launchd.sh
+source "$SCRIPT_DIR/lib/launchd.sh"
 LAUNCHCTL_BIN="${LAUNCHCTL_BIN:-launchctl}"
 DOMAIN="gui/$(id -u)"
 
@@ -40,7 +42,7 @@ render() {
       -e "s|__NODE_BIN__|$(node_bin)|g" \
       -e "s|__MCP_HOST__|${MCP_HOST:-127.0.0.1}|g" \
       -e "s|__N8N_PORT__|${N8N_PORT:-5678}|g" \
-      -e "s|__PATH__|$(dirname "$(node_bin)"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin|g" \
+      -e "s|__PATH__|$(launchd_path "$(node_bin)")|g" \
       "$template" >"$out"
 }
 

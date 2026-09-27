@@ -79,10 +79,19 @@ describe("services.sh ensure_containers", () => {
 });
 
 describe("launchd job PATH", () => {
+  // Every rendered plist takes its PATH from launchd_path() in scripts/lib/launchd.sh
+  const launchdPath = (nodeBin: string) =>
+    spawnSync("bash", ["-c", 'source "$1/scripts/lib/launchd.sh"; launchd_path "$2"', "bash", process.cwd(), nodeBin], {
+      encoding: "utf-8",
+    }).stdout;
+
   it("includes the Homebrew bin dirs, where docker and colima live", () => {
-    const autostart = readFileSync(join(process.cwd(), "scripts", "autostart.sh"), "utf-8");
-    const pathLine = autostart.split("\n").find((l) => l.includes("__PATH__")) ?? "";
-    expect(pathLine).toContain("/opt/homebrew/bin");
-    expect(pathLine).toContain("/usr/local/bin");
+    expect(launchdPath("/opt/node/bin/node")).toBe(
+      "/opt/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    );
+  });
+
+  it("leaves out the node dir when there is no node binary to name", () => {
+    expect(launchdPath("")).toBe("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
   });
 });

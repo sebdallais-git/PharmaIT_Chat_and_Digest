@@ -12,6 +12,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TEMPLATE_DIR="$PROJECT_DIR/hermes"
+# shellcheck source=lib/launchd.sh
+source "$SCRIPT_DIR/lib/launchd.sh"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 ENV_FILE="$HERMES_HOME/.env"
 RUN_DIR="${PHARMAITCHAT_RUN_DIR:-${PHARMALLM_RUN_DIR:-$PROJECT_DIR/data/run}}"
@@ -168,7 +170,7 @@ install_services() {
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
       -e "s|__NODE_BIN__|$node_bin|g" \
       -e "s|__MCP_HOST__|${MCP_HOST:-127.0.0.1}|g" \
-      -e "s|__PATH__|$(dirname "$node_bin"):/usr/bin:/bin:/usr/sbin:/sbin|g" \
+      -e "s|__PATH__|$(launchd_path "$node_bin")|g" \
       "$TEMPLATE_DIR/com.pharmaitchat.mcp.plist.template" >"$plist"
   domain="gui/$(id -u)"
   "$LAUNCHCTL_BIN" bootout "$domain/$MCP_LABEL" >/dev/null 2>&1 || true
@@ -189,7 +191,7 @@ install_services() {
   plist="$LAUNCH_AGENTS_DIR/$N8N_LABEL.plist"
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
       -e "s|__N8N_PORT__|${N8N_PORT:-5678}|g" \
-      -e "s|__PATH__|$(dirname "$node_bin"):/usr/bin:/bin:/usr/sbin:/sbin|g" \
+      -e "s|__PATH__|$(launchd_path "$node_bin")|g" \
       "$TEMPLATE_DIR/com.pharmaitchat.n8n.plist.template" >"$plist"
   "$LAUNCHCTL_BIN" bootout "$domain/$N8N_LABEL" >/dev/null 2>&1 || true
   for attempt in 1 2 3 4 5; do
@@ -249,7 +251,7 @@ install_jev_service() {
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
       -e "s|__JEV_DIR__|$jev_dir|g" \
       -e "s|__JEV_HOST__|${JEV_HOST:-127.0.0.1}|g" \
-      -e "s|__PATH__|/usr/bin:/bin:/usr/sbin:/sbin|g" \
+      -e "s|__PATH__|$(launchd_path)|g" \
       "$TEMPLATE_DIR/$JEV_LABEL.plist.template" >"$plist"
   domain="gui/$(id -u)"
   "$LAUNCHCTL_BIN" bootout "$domain/$JEV_LABEL" >/dev/null 2>&1 || true
