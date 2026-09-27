@@ -279,3 +279,48 @@ describe("knowledge gap workflow copes with a slow model and an empty harvest", 
     expect(JSON.stringify(mark.headerParameters)).toContain("Bearer {{ $env.PHARMALLM_API_TOKEN }}");
   });
 });
+
+// The extraction prompt asks for exactly NOT_RELEVANT when a page is off-topic,
+// but the model sometimes explains itself instead. Filter Relevant Only only
+// caught responses starting with NOT_RELEVANT, so on 2026-09-27 (execution 18,
+// gap #80) "The provided web content is not relevant to the topic..." was
+// stored in the knowledge base as if it were a fact.
+describe("knowledge gap workflow stores no 'not relevant' explanations", () => {
+  const truncated: Item[] = [{ json: { url: "https://a.test", search_topic: gap.search_topic } }];
+  const kept = (response: string) =>
+    runCode("Filter Relevant Only", [{ json: { response }, pairedItem: { item: 0 } }], {
+      "Truncate & Clean Content": truncated,
+    }).filter((i) => !i.json.error).length === 1;
+
+  it("drops the explanation that was stored on 2026-09-27", () => {
+    expect(
+      kept(
+        'The provided web content is not relevant to the topic of a "Sandoz cloud provider spin-off." The article discusses the spin-off of Sandoz, which is a generic and biosimilar pharmaceutical unit of Novartis, not a cloud computing provider.',
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    "NOT_RELEVANT.",
+    "not_relevant",
+    "This page does not contain any information about Sandoz's cloud provider. It covers quarterly results instead.",
+    "There is no relevant information about the topic in this content, which is a cookie banner and navigation links.",
+    "The content is irrelevant to the requested topic; it describes a casino loyalty programme and its rewards.",
+  ])("drops %j", (response) => {
+    expect(kept(response)).toBe(false);
+  });
+
+  it("keeps a real summary that mentions relevance later on", () => {
+    const summary =
+      "Sandoz migrated its ERP landscape to SAP S/4HANA on Microsoft Azure after the 2023 spin-off, run by Accenture. " +
+      "The migration covered finance, supply chain and manufacturing. Older Novartis-era reporting tools were retired, " +
+      "since they were not relevant to a standalone generics company.";
+    expect(kept(summary)).toBe(true);
+  });
+
+  it("asks the model for no explanation when a page is off-topic", () => {
+    const request = evalJsonBody("Extract Knowledge (Ollama)", { search_topic: "t", page_content: "p" });
+    expect(String(request.prompt)).toMatch(/exactly NOT_RELEVANT/);
+    expect(String(request.prompt)).toMatch(/no explanation/i);
+  });
+});

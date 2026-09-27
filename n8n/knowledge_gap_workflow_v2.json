@@ -159,7 +159,7 @@
         "url": "http://localhost:3000/api/llm/complete",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with ONLY the word NOT_RELEVANT.', stream: false }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with exactly NOT_RELEVANT and nothing else: no explanation.', stream: false }) }}",
         "options": {
           "timeout": 300000
         },
@@ -187,7 +187,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter out NOT_RELEVANT responses and errors\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const response = String(item.json.response || '').trim();\n\n  // Skip errors and NOT_RELEVANT\n  if (item.json.error) continue;\n  if (response === 'NOT_RELEVANT' || response.startsWith('NOT_RELEVANT')) continue;\n  if (response.length < 50) continue;\n\n  // Trace back to the page this fact came from; failed extractions leave the batch\n  const sourceData = $('Truncate & Clean Content').itemMatching(i) || { json: {} };\n\n  output.push({\n    json: {\n      summary: response,\n      url: sourceData.json.url || 'unknown',\n      search_topic: sourceData.json.search_topic || '',\n      summary_length: response.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No relevant content found', relevant_count: 0 } }];\n}\n\nreturn output;"
+        "jsCode": "// Filter out NOT_RELEVANT responses and errors\nconst items = $input.all();\nconst output = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const response = String(item.json.response || '').trim();\n\n  // Skip errors and NOT_RELEVANT\n  if (item.json.error) continue;\n  if (response === 'NOT_RELEVANT' || response.startsWith('NOT_RELEVANT')) continue;\n  // The model sometimes explains instead of answering NOT_RELEVANT. Only the opening is\n  // checked, so a real summary that mentions relevance later is kept.\n  if (/NOT_RELEVANT|\\bnot relevant\\b|\\birrelevant\\b|\\bno (relevant|useful) (information|content)\\b|\\bdoes not (contain|include|provide|mention) any\\b/i.test(response.slice(0, 250))) continue;\n  if (response.length < 50) continue;\n\n  // Trace back to the page this fact came from; failed extractions leave the batch\n  const sourceData = $('Truncate & Clean Content').itemMatching(i) || { json: {} };\n\n  output.push({\n    json: {\n      summary: response,\n      url: sourceData.json.url || 'unknown',\n      search_topic: sourceData.json.search_topic || '',\n      summary_length: response.length\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { error: 'No relevant content found', relevant_count: 0 } }];\n}\n\nreturn output;"
       },
       "id": "a1b2c3d4-0009-4000-8000-000000000009",
       "name": "Filter Relevant Only",

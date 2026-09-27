@@ -61,6 +61,11 @@ let chunks: KnowledgeChunk[] = [];
 let indexMeta: IndexMeta | null = null;
 let indexComplete = false;
 
+// The active stack's index file, for tools that edit it outside the running app
+export function activeIndexPath(): string {
+  return indexPath();
+}
+
 function indexPath(): string {
   return join(KNOWLEDGE_DIR, getActiveStack().indexFile);
 }

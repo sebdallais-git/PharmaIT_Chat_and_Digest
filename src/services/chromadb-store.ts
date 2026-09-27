@@ -254,6 +254,34 @@ export async function addToChromaDB(
   return unique.length;
 }
 
+// Where-filter for the chunks of exactly one source
+export function chromaSourceFilter(source: string): { where: { source: string } } {
+  return { where: { source } };
+}
+
+// How many chunks ChromaDB holds for a source
+export async function countChromaSource(source: string): Promise<number> {
+  const id = await getCollectionId();
+  const resp = await fetch(`${BASE}/${id}/get`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...chromaSourceFilter(source), include: [] }),
+  });
+  if (!resp.ok) throw new Error(`ChromaDB get failed (${resp.status})`);
+  return ((await resp.json()) as { ids: string[] }).ids.length;
+}
+
+// Delete every chunk of a source from the active stack's collection
+export async function deleteChromaSource(source: string): Promise<void> {
+  const id = await getCollectionId();
+  const resp = await fetch(`${BASE}/${id}/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(chromaSourceFilter(source)),
+  });
+  if (!resp.ok) throw new Error(`ChromaDB delete failed (${resp.status})`);
+}
+
 // Request body for the documents stored under any of `sources`
 export function sourceLookupBody(sources: string[], limit: number): Record<string, unknown> {
   return {
