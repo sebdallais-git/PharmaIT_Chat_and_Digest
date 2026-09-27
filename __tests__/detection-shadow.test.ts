@@ -32,6 +32,20 @@ describe("ANSWER_CONFIDENT_QUESTION", () => {
     expect(ANSWER_CONFIDENT_QUESTION.id).toBe("confident");
     expect(ANSWER_CONFIDENT_QUESTION.id).not.toBe(GAP_RESOLVED_QUESTION.id);
   });
+
+  // Replayed on the 60 gap answers the 27B labelled, the original wording
+  // ("specific, confident information, rather than hedging...") agreed 26.8%:
+  // the 4B read a polite "the provided sources do not contain this" as a
+  // confident answer 41 times out of 56. Spelling out when to answer false
+  // took the same answers to 91.2%.
+  it("tells the scorer to answer false when the answer says its sources lack the information", () => {
+    const { instructions } = ANSWER_CONFIDENT_QUESTION;
+
+    expect(instructions).toMatch(/Answer false if/);
+    expect(instructions).toMatch(/context or sources do not contain the information/);
+    expect(instructions).toMatch(/general knowledge/);
+    expect(instructions).toMatch(/generic background/);
+  });
 });
 
 describe("recordShadowDecision", () => {

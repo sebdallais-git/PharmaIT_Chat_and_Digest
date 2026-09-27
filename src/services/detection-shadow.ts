@@ -36,10 +36,15 @@ import type { ReplayRow } from "./replay-report.js";
  */
 export const ANSWER_CONFIDENT_QUESTION: DecisionQuestion = {
   id: "confident",
+  // Same wording as GAP_RESOLVED_QUESTION today, kept as its own constant so
+  // tuning one cannot silently change the other. Measured with
+  // scripts/replay-gap-decisions.ts --question on 2026-09-27 over the 60 gap
+  // answers the 27B labelled: 91.2% agreement with the 4-bit scorer. The first
+  // wording scored 26.8% there -- it called 41 of 56 non-answers confident.
   instructions:
-    "Did the assistant answer the question with specific, confident information, rather than hedging, saying it does not know, or giving only vague generic information?",
-  whenTrue: "The answer is specific and addresses the question.",
-  whenFalse: "The answer hedges, is vague, says it does not know, or does not address the question.",
+    "Does the answer directly give the specific information the question asks for? Answer false if the answer says the provided context or sources do not contain the information, falls back on general knowledge, hedges, refuses, or only gives generic background instead of the specific facts asked for.",
+  whenTrue: "The answer directly provides the specific facts the question asks for.",
+  whenFalse: "The answer says the information is missing, falls back on general knowledge, hedges, refuses, or gives only generic background.",
 };
 
 // Enough to recognise a pattern when reading the table; not enough to become a
