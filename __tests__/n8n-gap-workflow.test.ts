@@ -223,3 +223,59 @@ describe("knowledge gap workflow hands the resolution check what it stored", () 
     expect(check.sources).toEqual(["n8n-gap|https://c.test"]);
   });
 });
+
+// n8n's HTTP Request node sends all of a step's items at once and awaits them
+// together; batching only delays launches. MLX serves one request at a time,
+// so 7-9 extraction requests queue, and with a 120 s timeout counted from
+// launch the last ones failed (executions 16 and 17, 2026-09-27: 3 and 2 of
+// 8 pages lost). The app's own ceiling for a model call is Node fetch's 300 s.
+//
+// And when nothing relevant was found, the run ended at Store with a 400 for
+// an empty text, leaving the gap "triggered" instead of "unresolved".
+describe("knowledge gap workflow copes with a slow model and an empty harvest", () => {
+  interface Param {
+    [key: string]: unknown;
+  }
+  const params = (name: string) => node(name).parameters as unknown as Param;
+  const targets = (name: string, output: number) =>
+    (workflow.connections[name]?.main[output] ?? []).map((c) => c.node);
+
+  it("gives each extraction as long as the app waits for the model", () => {
+    expect((params("Extract Knowledge (Ollama)").options as Param).timeout).toBe(300000);
+  });
+
+  it("stores only relevant facts, and sends an empty harvest elsewhere", () => {
+    expect(targets("Filter Relevant Only", 0)).toEqual(["Anything Relevant?"]);
+    expect(targets("Anything Relevant?", 0)).toEqual(["Store in Knowledge Base"]);
+    expect(targets("Anything Relevant?", 1)).toEqual(["Mark Gap Unresolved"]);
+  });
+
+  it("tells the two apart by the error field Filter Relevant Only sets", () => {
+    const [empty] = runCode("Filter Relevant Only", [{ json: { response: "NOT_RELEVANT" }, pairedItem: { item: 0 } }], {
+      "Truncate & Clean Content": [{ json: { url: "https://a.test" } }],
+    });
+    const [relevant] = runCode(
+      "Filter Relevant Only",
+      [{ json: { response: "Sandoz chose SAP S/4HANA for its post-spin-off ERP. ".repeat(2) }, pairedItem: { item: 0 } }],
+      { "Truncate & Clean Content": [{ json: { url: "https://a.test" } }] },
+    );
+    expect(empty.json.error).toBeDefined();
+    expect(relevant.json.error).toBeUndefined();
+
+    const condition = ((params("Anything Relevant?").conditions as Param).conditions as Param[])[0];
+    expect(condition.leftValue).toBe("={{ $json.error }}");
+    expect(condition.operator).toMatchObject({ type: "string", operation: "notExists" });
+  });
+
+  it("marks the gap unresolved through the app, with the API token", () => {
+    const mark = params("Mark Gap Unresolved");
+    const url = String(mark.url).replace(/^=/, "");
+    const rendered = url.replace(/\{\{([\s\S]+?)\}\}/g, (_m, expr: string) => {
+      const $ = () => itemsOf([webhookItem]);
+      return String(new Function("$", `return ${expr};`)($));
+    });
+    expect(mark.method).toBe("POST");
+    expect(rendered).toBe("http://localhost:3000/api/knowledge/gaps/71/unresolved");
+    expect(JSON.stringify(mark.headerParameters)).toContain("Bearer {{ $env.PHARMALLM_API_TOKEN }}");
+  });
+});

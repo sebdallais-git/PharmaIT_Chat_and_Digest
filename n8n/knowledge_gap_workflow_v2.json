@@ -161,7 +161,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'gemma2:9b', prompt: 'You are a knowledge extraction assistant. Given this web page content, extract the key facts and information relevant to this topic: ' + $json.search_topic + '\\n\\nWeb content:\\n' + $json.page_content.slice(0, 6000) + '\\n\\nReturn a clean, factual summary in 2-4 paragraphs. If the content is not relevant to the topic, respond with ONLY the word NOT_RELEVANT.', stream: false }) }}",
         "options": {
-          "timeout": 120000
+          "timeout": 300000
         },
         "sendHeaders": true,
         "specifyHeaders": "keypair",
@@ -308,6 +308,69 @@
         560
       ],
       "notes": "If Ollama fails to generate queries, falls back to using the search_topic directly."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ade74b99-61a8-4543-85bc-b5c1e8818ac8",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "308feda1-784c-4a11-be06-04883cb66e00",
+      "name": "Anything Relevant?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2280,
+        520
+      ],
+      "notes": "Filter Relevant Only sets `error` when nothing relevant was found: store the facts, or record the gap as unresolved."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3000/api/knowledge/gaps/{{ $('Knowledge Gap Webhook').first().json.body.gap_id }}/unresolved",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.PHARMALLM_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "c6f82c3c-01c9-41c8-b74b-29489ea031da",
+      "name": "Mark Gap Unresolved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2520,
+        700
+      ],
+      "notes": "Nothing relevant was found: record the attempt as unresolved without spending a 27B re-answer."
     }
   ],
   "connections": {
@@ -430,7 +493,7 @@
       "main": [
         [
           {
-            "node": "Store in Knowledge Base",
+            "node": "Anything Relevant?",
             "type": "main",
             "index": 0
           }
@@ -470,6 +533,24 @@
           }
         ],
         []
+      ]
+    },
+    "Anything Relevant?": {
+      "main": [
+        [
+          {
+            "node": "Store in Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Gap Unresolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
