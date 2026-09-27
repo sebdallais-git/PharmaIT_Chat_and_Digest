@@ -20,6 +20,7 @@
     "scripts/benchmark-stack.ts",
     "scripts/compare-benchmarks.ts",
     "scripts/replay-gap-decisions.ts",
+    "scripts/replay-detection.ts",
     "scripts/shadow-report.ts"
   ]
 }

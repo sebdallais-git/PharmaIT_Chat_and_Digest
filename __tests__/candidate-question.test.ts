@@ -11,6 +11,13 @@ describe("candidateQuestion", () => {
     expect(q).toEqual({ id: GAP_RESOLVED_QUESTION.id, instructions: "i", whenTrue: "t", whenFalse: "f" });
   });
 
+  // scripts/replay-detection.ts measures the detection question, whose id is
+  // "confident"; a candidate there must keep that id, not the resolution one.
+  it("keeps the id it is given instead, when there is one", () => {
+    const q = candidateQuestion({ instructions: "i", whenTrue: "t", whenFalse: "f" }, "confident");
+    expect(q.id).toBe("confident");
+  });
+
   it.each(["instructions", "whenTrue", "whenFalse"])("rejects a candidate without %s", (field) => {
     const raw: Record<string, string> = { instructions: "i", whenTrue: "t", whenFalse: "f" };
     delete raw[field];
