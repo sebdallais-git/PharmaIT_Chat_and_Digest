@@ -961,13 +961,18 @@ describe("watchlist ingest", () => {
     harness.store.close();
   });
 
+  // What this proves is the wiring: the gate applies to EDGAR calls and not to
+  // RSS. The gate's own spacing is proven deterministically in
+  // min-interval-gate.test.ts. The numbers leave room for scheduling jitter:
+  // at 40 ms with a 35 ms floor, and a 40 ms budget for the whole RSS run, a
+  // busy full-suite run failed this now and then without anything being wrong.
   it("rate-limits EDGAR calls across the whole run, and only EDGAR calls (R17)", async () => {
     const entities = ["a", "b", "c"].map((id) =>
       makeEntity({ id, name: id.toUpperCase(), feeds: [{ kind: "edgar", cik: `000000000${id.charCodeAt(0)}` }] }),
     );
     const harness = makeHarness({
       watchlist: makeWatchlist(entities),
-      edgarMinIntervalMs: 40,
+      edgarMinIntervalMs: 150,
       async edgar() {
         return [];
       },
@@ -977,8 +982,8 @@ describe("watchlist ingest", () => {
 
     expect(harness.edgarCalls).toHaveLength(3);
     const [first, second, third] = harness.edgarCalls;
-    expect(second.at - first.at).toBeGreaterThanOrEqual(35);
-    expect(third.at - second.at).toBeGreaterThanOrEqual(35);
+    expect(second.at - first.at).toBeGreaterThanOrEqual(120);
+    expect(third.at - second.at).toBeGreaterThanOrEqual(120);
     harness.store.close();
 
     // The same three feeds as RSS are not throttled.
@@ -987,14 +992,15 @@ describe("watchlist ingest", () => {
     );
     const rssHarness = makeHarness({
       watchlist: makeWatchlist(rssEntities),
-      edgarMinIntervalMs: 40,
+      // Throttled, three feeds would take at least 2 s
+      edgarMinIntervalMs: 1000,
       async rss() {
         return [];
       },
     });
     const startedAt = Date.now();
     await rssHarness.run();
-    expect(Date.now() - startedAt).toBeLessThan(40);
+    expect(Date.now() - startedAt).toBeLessThan(500);
     rssHarness.store.close();
   });
 
