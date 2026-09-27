@@ -114,6 +114,13 @@ export async function decide(
   }
 
   if (!resp.ok) {
+    // A 4xx is the scorer refusing this request (a missing or wrong jev-token,
+    // a malformed body) and stays wrong on every retry. Only timeouts, rate
+    // limits and server errors are the scorer being temporarily unavailable.
+    const transient = resp.status >= 500 || resp.status === 408 || resp.status === 429;
+    if (!transient) {
+      throw new ScorerResponseError(`decide: scorer refused the request (${resp.status})`);
+    }
     throw new ScorerUnavailableError(`decide: scorer returned ${resp.status}`);
   }
 

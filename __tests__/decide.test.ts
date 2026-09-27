@@ -108,6 +108,24 @@ describe("decide", () => {
   // A 200 whose body is not JSON (a proxy's HTML error page) used to surface as
   // a bare SyntaxError, which /api/decide answered 500 while every other scorer
   // failure answered 503.
+  // A 4xx is the scorer refusing this request, not the scorer being down: a
+  // missing or wrong jev-token (401/403) or a malformed request stays wrong on
+  // every retry. Classed as unavailable, /api/decide answered 503 "retry" and
+  // n8n kept retrying a permanent failure.
+  it.each([400, 401, 403, 404, 422])("treats a %i as a response that retrying will not fix", async (status) => {
+    const deps = depsReturning(0.9);
+    deps.fetchImpl = (async () => new Response("no", { status })) as unknown as typeof fetch;
+
+    await expect(decide(question, "state", deps)).rejects.toBeInstanceOf(ScorerResponseError);
+  });
+
+  it.each([408, 429, 500, 502, 503])("treats a %i as the scorer being temporarily unavailable", async (status) => {
+    const deps = depsReturning(0.9);
+    deps.fetchImpl = (async () => new Response("later", { status })) as unknown as typeof fetch;
+
+    await expect(decide(question, "state", deps)).rejects.toBeInstanceOf(ScorerUnavailableError);
+  });
+
   it("treats a non-JSON 200 body as the scorer being unavailable", async () => {
     const deps = depsReturning(0.9);
     deps.fetchImpl = (async () =>
