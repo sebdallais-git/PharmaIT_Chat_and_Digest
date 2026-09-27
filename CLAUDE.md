@@ -37,8 +37,9 @@ There is **no lint script and no ESLint config** — do not run `npm run lint`.
 
 Stack operations go through `scripts/switch-stack.sh` (`ollama|mlx|omlx|splash|status|prepare|
 ensure-stack <s>|ollama-ctx|telegram|mcp start|stop`). The active stack is recorded in
-`data/run/active-stack`. Nothing starts after a reboot except the MCP service and the Hermes
-gateway; `switch-stack.sh <stack>` itself starts the app in the background (log in
+`data/run/active-stack`. Everything comes back after a reboot: the launchd job
+`com.pharmaitchat.stack` runs `start-services.sh` (app, active stack, ChromaDB, colima
+containers). `switch-stack.sh <stack>` itself starts the app in the background (log in
 `data/logs/app.log`), so `npm run dev` right after it fails on port 3000.
 
 App: http://localhost:3000 (chat), `/dashboard`, `/api/health`. HTTPS on 3443 when `certs/` has

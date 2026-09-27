@@ -43,7 +43,7 @@ PharmaITChat watches the IT and security scene around three pharma customers, th
 
 ## Everything local, on one machine
 
-The whole system runs on one local box with 48 GB of unified memory — no cloud tenancy, no inference bill, no rate limit. A 27B Qwen model answers the chat, embeds the documents, tags every item the watchlist collects and drives the Telegram assistant. Nothing about what is watched, what is asked or what is stored is handed to a third party.
+The whole system runs on one local box with 48 GB of unified memory — no cloud tenancy, no inference bill, no rate limit. A 27B Qwen model answers the chat, embeds the documents, tags every item the watchlist collects and drives the Telegram assistant. No question, answer or stored document is handed to a cloud model. The one exception to "nothing leaves" is web search: see below.
 
 | What | Where it runs |
 |---|---|
@@ -51,9 +51,10 @@ The whole system runs on one local box with 48 GB of unified memory — no cloud
 | Embeddings | Local Qwen3-Embedding 0.6B, on the same stack |
 | Nightly entity/domain tagging | The same local chat model, one item at a time |
 | Vector store, item store, graph | ChromaDB, SQLite and Neo4j on localhost |
-| Web search (chat and the self-healing loop) | Your own SearXNG instance on localhost |
+| Answer scoring (System One) | Local Gemma 3 4B (4-bit) on open-jev, beside the 27B |
+| Web search (chat and the self-healing loop) | Your own SearXNG instance on localhost, which forwards the **search queries** to public engines and the Brave Search API |
 
-Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, and Telegram. Web search can be switched off in the chat UI. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
+Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, web search, and Telegram. SearXNG runs locally, but it is a metasearch proxy: the search queries themselves (written by the local model from a chat question, or from a knowledge gap) reach the engines it queries, including Brave's Search API under your own key. Web search can be switched off in the chat UI; the self-healing loop always searches. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
 
 ---
 
@@ -71,9 +72,10 @@ Outbound traffic is limited to what the system goes out to *get* and the one cha
 | 🧰 | **MCP server** | `pharmaitchat-mcp` exposes the knowledge base to any MCP client over Streamable HTTP, with compacted payloads |
 | 🔌 | **Model gateway** | OpenAI-compatible `/v1` on whichever stack is active, so any agent can borrow the local model |
 | 🩹 | **Self-healing knowledge** | Low-confidence answers trigger an n8n workflow that researches, ingests and re-checks the gap |
+| ⚖️ | **System One scorer** | A local 4B model scores every chat answer and gap resolution beside the 27B, in shadow mode, with replay harnesses to measure it before it is trusted |
 | 🎙️ | **Voice input** | Local speech-to-text with whisper.cpp; HTTPS mode for iPad and phone microphones |
 | ⏱️ | **Built-in benchmark** | Reproducible Ollama vs MLX vs oMLX vs Splash comparison with retrieval overlap and a blind A/B review page |
-| ✅ | **606 tests** | 48 Jest suites across the app and the MCP server, plus 27 Python tests for the Telegram plugin — every one of them against fakes, none touching a real model server, ChromaDB, Docker, launchd or Telegram |
+| ✅ | **1,159 tests** | 1,132 Jest tests in 99 suites across the app and the MCP server, plus 27 Python tests for the Telegram plugin — every one of them against fakes, none touching a real model server, ChromaDB, Docker, launchd or Telegram |
 
 ---
 
@@ -391,20 +393,41 @@ sequenceDiagram
     N->>App: POST /api/llm/complete (generate 3 search queries)
     N->>S: Search each query, dedupe, fetch pages
     N->>App: POST /api/llm/complete (extract relevant facts)
-    N->>App: POST /api/knowledge/ingest-text
-    N->>App: POST /api/knowledge/gaps/check-resolution
-    App-->>N: resolved, or unresolved with retry_count++
+    alt something relevant found
+        N->>App: POST /api/knowledge/ingest-text
+        N->>App: POST /api/knowledge/gaps/check-resolution
+        App->>App: re-answer — the 27B judges it, the scorer's verdict is logged beside it
+        App-->>N: resolved, or unresolved with retry_count++
+    else nothing relevant
+        N->>App: POST /api/knowledge/gaps/:id/unresolved
+    end
 ```
 
 A second workflow runs every 6 hours as a KB health check: it sends test queries through the full RAG pipeline, has the active stack score each answer and flag hallucinations, and posts the report to `/api/dashboard/kb-health` (168 reports kept, 7 days).
 
 | File | Nodes | Purpose |
 |---|---:|---|
-| `n8n/knowledge_gap_workflow_v2.json` | 15 | Gap auto-fill with resolution check (recommended) |
+| `n8n/knowledge_gap_workflow_v2.json` | 17 | Gap auto-fill with resolution check (recommended) |
 | `n8n/knowledge_gap_workflow.json` | 13 | Gap auto-fill, v1 |
 | `n8n/knowledge_qa_workflow.json` | 12 | KB health monitor, every 6 hours |
 
 All LLM steps call `POST /api/llm/complete`, so they run on the active stack. See [`n8n/README.md`](n8n/README.md).
+
+### The System One scorer
+
+Every judgment in the loop above ("did the chat answer the question?", "does the re-answer close the gap?") costs a full 27B call. [open-jev](https://github.com/daseinlabs/open-jev) serves Gemma 3 4B (4-bit, ~3 GB, `127.0.0.1:8010`) as a *System One* scorer: it answers a typed yes/no question with a probability in under a second, and the app reaches it through `/api/decide` (`config/decide.yaml` holds the thresholds, 0.85 and 0.5).
+
+**It decides nothing yet.** In gap resolution the 27B still decides and the scorer's verdict is logged beside it (`[Gap Resolution] 27B X, scorer Y`); on every chat turn, with `shadow_detection: true`, both verdicts go to the `detection_shadow` table. Chat works the same with the scorer down.
+
+Before a scorer is trusted, it is measured against the 27B:
+
+| Tool | Measures |
+|---|---|
+| `scripts/replay-gap-decisions.ts` | The 60 open gaps (mostly non-answers): does the scorer catch a missed answer? |
+| `scripts/replay-detection.ts` | Past confident questions, answers regenerated in benchmark mode: does it raise false alarms on good answers? |
+| `scripts/shadow-report.ts` | Live agreement on real chat turns |
+
+Each replay takes `--question candidate.json` to try a new wording without touching production, and `--details` to list every disagreement. The wording matters more than anything else measured so far: on the same 60 gap answers, the first detection question agreed with the 27B 26.8% of the time and the current one 91.2%; the 16-bit model was replaced by the 4-bit one on the same kind of evidence. Setup: [Optional: System One scorer](#setup).
 
 > [!NOTE]
 > The standalone news agent (`src/services/news-agent.ts`) no longer scrubs anything. Its 188 topic queries now belong solely to the watchlist ingest, which already fetches every one of them with its own dedupe ladder; running both meant the same articles were embedded into the same collection twice a day. The job, its state file and its tool contract (`POST /api/agent/run`, the MCP `run_news_agent` tool) are kept and now report zero.
@@ -435,7 +458,7 @@ scripts/hermes-setup.sh check           # read-only status; prints variable name
 - **Web search:** the local SearXNG instance, with the keyless cloud fallbacks turned off. Private and loopback URLs stay blocked for Hermes' web tools, so ChromaDB and Neo4j cannot be reached that way.
 - **Speed:** a warm Telegram round trip takes about 1 min 47 s end to end (Hermes' own timer reports 107.7 s). The first step of a cold session pays the full prefill, about 140–156 s.
 - **Restarting the MCP service** costs the next Hermes message about 3 minutes, because the model has to prefill the tool list again.
-- **After a reboot:** `com.pharmaitchat.mcp` and the Hermes gateway come back on their own; the app and the model stack do not. Run `scripts/start-services.sh` before the first job fires.
+- **After a reboot:** everything comes back on its own. The Hermes gateway and the launchd jobs `com.pharmaitchat.stack` (the app, the active model stack, ChromaDB, and colima with the Neo4j and SearXNG containers), `mcp`, `n8n`, `jev` and `mlx-watchdog` all run at load. `scripts/check-services.sh` confirms it.
 
 The Telegram bot is also what confirms a stack switch requested from the web UI — see [Switching from the web UI](#switching-from-the-web-ui).
 
@@ -659,6 +682,7 @@ flowchart TB
 
     CRON["Nightly watchlist ingest<br/>02:30, Hermes script mode"]
     STACK["Active stack<br/>Ollama :11434, MLX :8080 or oMLX :8090"]
+    JEV["System One scorer :8010<br/>Gemma 3 4B, shadow only"]
     DATA["ChromaDB · in-memory index<br/>Neo4j · SQLite (app + watchlist)"]
 
     B --> AUTH
@@ -671,6 +695,7 @@ flowchart TB
     API --> RJ
     V1 --> STACK
     API --> STACK
+    API -. "/api/decide" .-> JEV
     API --> DATA
     RJ --> DATA
     CRON --> STACK
@@ -680,6 +705,7 @@ flowchart TB
     style MCP fill:#4a1d6b,stroke:#d946ef,color:#e5e7eb
     style STACK fill:#064e3b,stroke:#22d3ee,color:#e5e7eb
     style CRON fill:#0f766e,stroke:#5eead4,color:#e5e7eb
+    style JEV fill:#1e3a8a,stroke:#60a5fa,color:#e5e7eb
 ```
 
 Static files and the browser routes listed in `src/api/auth.ts` are always open. Everything else (`/v1/*` and the rest of `/api/*`) needs `Authorization: Bearer <token>` once `PHARMAITCHAT_API_TOKEN` is set. Without a token, those routes accept only same-machine requests that also carry a `localhost`, `127.0.0.1` or `[::1]` Host header, which blocks DNS rebinding.
