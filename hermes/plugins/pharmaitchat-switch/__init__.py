@@ -5,7 +5,8 @@ app's buttons lands here. The handler is scoped to ``pls:`` callback data and re
 Hermes' own catch-all, so every other button keeps working.
 
 The ready file PharmaITChat checks is written only once the adapter is connected with this plugin's handler
-in place: a Telegram app rebuilt by a transient init retry never gets plugin handlers, so it gets no file."""
+in place. A Telegram app rebuilt by a transient init retry gets only Hermes' own handlers, so the plugin
+re-attaches its handler there, ahead of Hermes' catch-all, before writing the file."""
 
 from __future__ import annotations
 
@@ -31,7 +32,6 @@ def register(ctx) -> None:
 def _wire(app, adapter) -> None:
     # Runs only when the gateway's Telegram adapter connects. A CLI session loads plugins too but never
     # gets here, so it cannot overwrite the ready file with its own pid.
-    from telegram.ext import CallbackQueryHandler
     from gateway.status import get_process_start_time
     from hermes_constants import get_process_hermes_home
 
@@ -42,8 +42,7 @@ def _wire(app, adapter) -> None:
     (home / READY_FILE_NAME).unlink(missing_ok=True)
     for task in list(_pending):  # an earlier connect's publisher would only log a spurious error
         task.cancel()
-    # block=False: the tap waits on the app, and a blocking handler would hold up every other update
-    app.add_handler(CallbackQueryHandler(handle_tap, pattern=PATTERN, block=False))
+    attach_handler(app)
     pid = os.getpid()
     # Same function the gateway's own pid record uses, so PharmaITChat can compare the two exactly.
     # The factory runs inside the adapter's connect() coroutine, so there is a running loop.
@@ -51,6 +50,21 @@ def _wire(app, adapter) -> None:
         publish_ready_when_connected(adapter, app, home, pid, get_process_start_time(pid)))
     _pending.add(task)
     task.add_done_callback(_pending.discard)
+
+
+def attach_handler(app) -> None:
+    """Registers the tap handler FIRST in group 0. python-telegram-bot hands an update to the first
+    matching handler of each group, and Hermes' own catch-all for every button sits in group 0: behind
+    it, a switch tap would never arrive. On the first build this is where Hermes wires plugins anyway;
+    on a rebuilt app Hermes' handlers are already there, so the handler is moved to the front."""
+    from telegram.ext import CallbackQueryHandler
+
+    # block=False: the tap waits on the app, and a blocking handler would hold up every other update
+    handler = CallbackQueryHandler(handle_tap, pattern=PATTERN, block=False)
+    app.add_handler(handler)
+    group = app.handlers[0]
+    group.remove(handler)
+    group.insert(0, handler)
 
 
 async def publish_ready_when_connected(adapter, app, home: Path, pid: int, start_time: Optional[int],
@@ -64,9 +78,17 @@ async def publish_ready_when_connected(adapter, app, home: Path, pid: int, start
             logger.warning("pharmaitchat-switch: Telegram did not connect within %.0f s; no ready file", timeout)
             return
         await asyncio.sleep(poll)
-    if getattr(adapter, "_app", app) is not app:
-        logger.error("pharmaitchat-switch: Telegram app was rebuilt without plugin handlers; restart the gateway")
-        return
+    current = getattr(adapter, "_app", app)
+    if current is not app:
+        # A retry inside connect() rebuilt the Application without running plugin factories again
+        # (seen 2026-09-28 03:11): put the handler on the app that is actually polling
+        try:
+            attach_handler(current)
+        except Exception as exc:
+            logger.error("pharmaitchat-switch: Telegram app was rebuilt and the handler could not be "
+                         "re-attached (%s); restart the gateway", type(exc).__name__)
+            return
+        logger.warning("pharmaitchat-switch: Telegram app was rebuilt during connect; handler re-attached")
     write_ready_file(home, pid, start_time)
 
 

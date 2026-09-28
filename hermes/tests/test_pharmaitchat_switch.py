@@ -273,6 +273,28 @@ class ReadyFileTest(unittest.TestCase):
             self.assertEqual([p.name for p in Path(home).iterdir()], ["pharmaitchat-switch.ready.json"])
 
 
+class FakeHandler:
+    def __init__(self, callback, **kwargs):
+        self.callback, self.kwargs = callback, kwargs
+
+
+class FakeApp:
+    """Shaped like python-telegram-bot's Application: ``handlers`` maps group -> list, and
+    ``add_handler`` appends, which is why a late handler would sit behind Hermes' catch-all."""
+
+    def __init__(self, core=()):
+        self.handlers = {0: list(core)} if core else {}
+
+    def add_handler(self, handler, group=0):
+        self.handlers.setdefault(group, []).append(handler)
+
+
+def telegram_fakes():
+    telegram_ext = types.ModuleType("telegram.ext")
+    telegram_ext.CallbackQueryHandler = FakeHandler
+    return {"telegram": types.ModuleType("telegram"), "telegram.ext": telegram_ext}
+
+
 class FakeAdapter:
     """Stands in for Hermes' Telegram adapter: connects after ``connect_after`` polls (never when None),
     and holds ``rebuilt`` as its app from then on when given, as a transient-init retry would."""
@@ -304,13 +326,33 @@ class PublishReadyTest(unittest.TestCase):
             self.assertEqual(json.loads(ready.read_text()), {"pid": 4242, "start_time": 777})
         self.assertGreaterEqual(adapter.polls, 3)
 
-    def test_never_writes_when_the_app_was_rebuilt_without_the_handler(self):
+    # A transient Telegram error during connect() makes Hermes rebuild its Application and register
+    # only its own handlers on it, including a catch-all for every button in group 0. Seen on
+    # 2026-09-28 03:11: the UI's stack selector stayed disabled until the gateway was restarted.
+    def test_reattaches_to_a_rebuilt_app_ahead_of_hermes_catch_all(self):
         app = object()
-        adapter = FakeAdapter(app, connect_after=2, rebuilt=object())
-        with tempfile.TemporaryDirectory() as home, self.assertLogs(plugin.logger, "ERROR") as logs:
+        catch_all = object()
+        rebuilt = FakeApp(core=[catch_all])
+        adapter = FakeAdapter(app, connect_after=2, rebuilt=rebuilt)
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(sys.modules, telegram_fakes()), \
+                self.assertLogs(plugin.logger, "WARNING") as logs:
+            self.publish(adapter, app, Path(home))
+            ready = Path(home) / plugin.READY_FILE_NAME
+            self.assertEqual(json.loads(ready.read_text()), {"pid": 4242, "start_time": 777})
+        first = rebuilt.handlers[0][0]
+        self.assertIs(first.callback, plugin.handle_tap)
+        self.assertEqual(first.kwargs, {"pattern": plugin.PATTERN, "block": False})
+        self.assertEqual(rebuilt.handlers[0][1:], [catch_all])
+        self.assertIn("re-attached", logs.output[0])
+
+    def test_still_writes_nothing_when_reattaching_fails(self):
+        app = object()
+        adapter = FakeAdapter(app, connect_after=2, rebuilt=object())  # no handlers to attach to
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(sys.modules, telegram_fakes()), \
+                self.assertLogs(plugin.logger, "ERROR") as logs:
             self.publish(adapter, app, Path(home))
             self.assertEqual(list(Path(home).iterdir()), [])
-        self.assertIn("restart the gateway", logs.output[0])
+        self.assertIn("restart the gateway", logs.output[-1])
 
     def test_gives_up_without_a_file_when_never_connected(self):
         app = object()
@@ -323,32 +365,21 @@ class WireTest(unittest.TestCase):
     """_wire with fake Telegram/Hermes modules: never the real gateway."""
 
     def test_removes_a_stale_ready_file_and_registers_a_non_blocking_handler(self):
-        handlers = []
-
-        class FakeHandler:
-            def __init__(self, callback, **kwargs):
-                self.callback, self.kwargs = callback, kwargs
-
-        class FakeApp:
-            def add_handler(self, handler):
-                handlers.append(handler)
+        app = FakeApp()
 
         with tempfile.TemporaryDirectory() as home:
             stale = Path(home) / plugin.READY_FILE_NAME
             stale.write_text(json.dumps({"pid": 1, "start_time": 1}))
-            telegram_ext = types.ModuleType("telegram.ext")
-            telegram_ext.CallbackQueryHandler = FakeHandler
             gateway_status = types.ModuleType("gateway.status")
             gateway_status.get_process_start_time = lambda pid: 777
             constants = types.ModuleType("hermes_constants")
             # Only the process home is offered: the plugin must not read the per-session override
             constants.get_process_hermes_home = lambda: Path(home)
-            fakes = {"telegram": types.ModuleType("telegram"), "telegram.ext": telegram_ext,
+            fakes = {**telegram_fakes(),
                      "gateway": types.ModuleType("gateway"), "gateway.status": gateway_status,
                      "hermes_constants": constants}
 
             async def wire_then_look():
-                app = FakeApp()
                 plugin._wire(app, FakeAdapter(app))  # never connects: no file may appear
                 await asyncio.sleep(0)
                 exists = stale.exists()
@@ -358,6 +389,7 @@ class WireTest(unittest.TestCase):
 
             with mock.patch.dict(sys.modules, fakes):
                 self.assertFalse(asyncio.run(wire_then_look()))
+        handlers = app.handlers[0]
         self.assertEqual(len(handlers), 1)
         self.assertIs(handlers[0].callback, plugin.handle_tap)
         self.assertEqual(handlers[0].kwargs, {"pattern": plugin.PATTERN, "block": False})
