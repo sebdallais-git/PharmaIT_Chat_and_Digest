@@ -52,8 +52,19 @@ MLX_EMBED_MODEL="mlx-community/Qwen3-Embedding-0.6B-8bit"
 OMLX_CHAT_MODEL="mlx-community--Qwen3.8-27B-4bit"
 OMLX_EMBED_MODEL="mlx-community--Qwen3-Embedding-0.6B-8bit"
 OLLAMA_MODELFILE="$PROJECT_DIR/ollama/qwen3.8-pharma.Modelfile"
-# Caps how much memory mlx_lm.server spends on cached prompts (several 64k agent prompts would otherwise pile up)
-MLX_PROMPT_CACHE_BYTES="${MLX_PROMPT_CACHE_BYTES:-8589934592}"
+# Memory limits for mlx_lm.server. On 2026-09-29 six concurrent ~7.5k-token requests took it
+# from 23 GB to 36 GB and all six failed with a Metal "Insufficient Memory" error; the
+# generation thread died while the server kept accepting requests, so Hermes and chat hung
+# until the watchdog restarted it. With these limits the same load passed 6/6 at a 27 GB peak
+# in the same wall time, and a single 9k-token prompt took 74 s from a cold cache.
+# Cached prompts (several 64k agent prompts would otherwise pile up):
+MLX_PROMPT_CACHE_BYTES="${MLX_PROMPT_CACHE_BYTES:-4294967296}"
+# Freed GPU buffers MLX keeps for reuse, uncapped by default (see run-jev.sh):
+MLX_CACHE_LIMIT="${MLX_CACHE_LIMIT:-2147483648}"
+# Requests worked on at once; the defaults (8 prefills, 32 decodes) each hold a 27B KV cache.
+# Same rule as OLLAMA_NUM_PARALLEL=1: a burst queues instead of exhausting Metal memory.
+MLX_PROMPT_CONCURRENCY="${MLX_PROMPT_CONCURRENCY:-1}"
+MLX_DECODE_CONCURRENCY="${MLX_DECODE_CONCURRENCY:-2}"
 
 OMLX_VENV="$PROJECT_DIR/python/omlx-venv"
 OMLX_PORT="8090"
@@ -204,9 +215,17 @@ start_mlx() {
     project_listener_open "$MLX_CHAT_PORT" \
       || { log "Port $MLX_CHAT_PORT is used by another program — cannot start MLX"; return 1; }
   else
-    nohup "$MLX_VENV/bin/mlx_lm.server" --model "$MLX_CHAT_MODEL" --host 127.0.0.1 --port "$MLX_CHAT_PORT" \
+    # Appended, not truncated: a hang the watchdog restarts must leave its traceback behind
+    echo "=== $(date '+%Y-%m-%d %H:%M:%S') starting mlx_lm.server (cache limit $MLX_CACHE_LIMIT, prompt/decode concurrency $MLX_PROMPT_CONCURRENCY/$MLX_DECODE_CONCURRENCY)" >>"$LOG_DIR/mlx-chat.log"
+    # mlx_lm.server sets no MLX cache limit, so it is set in the server process before the
+    # server's own main() runs. argv[0] stays the server's path, so is_project_pid and
+    # benchmark-stack's pgrep still recognise the process; the limit comes from the environment.
+    MLX_CACHE_LIMIT="$MLX_CACHE_LIMIT" nohup "$MLX_VENV/bin/python" -c \
+      'import os, sys, mlx.core as mx; mx.set_cache_limit(int(os.environ["MLX_CACHE_LIMIT"])); sys.argv = sys.argv[1:]; from mlx_lm.server import main; main()' \
+      "$MLX_VENV/bin/mlx_lm.server" --model "$MLX_CHAT_MODEL" --host 127.0.0.1 --port "$MLX_CHAT_PORT" \
       --prompt-cache-bytes "$MLX_PROMPT_CACHE_BYTES" \
-      >"$LOG_DIR/mlx-chat.log" 2>&1 &
+      --prompt-concurrency "$MLX_PROMPT_CONCURRENCY" --decode-concurrency "$MLX_DECODE_CONCURRENCY" \
+      >>"$LOG_DIR/mlx-chat.log" 2>&1 &
     echo $! >"$RUN_DIR/mlx-chat.pid"
   fi
   wait_http "http://localhost:$MLX_CHAT_PORT/v1/models" 180 || { log "mlx_lm.server did not become ready"; return 1; }

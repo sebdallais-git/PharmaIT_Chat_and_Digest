@@ -89,10 +89,46 @@ describe("switch-stack.sh stays in sync with llm-stacks.ts", () => {
 });
 
 describe("switch-stack.sh long-context settings", () => {
+  // 4 GiB, down from 8: on 2026-09-29 six concurrent ~7.5k-token requests took
+  // mlx_lm.server from 23 GB to 36 GB and failed all six with a Metal
+  // "Insufficient Memory" error. With the settings below the same load passed
+  // 6/6 at a 27 GB peak in the same wall time (345 s).
   it("caps the MLX prompt cache with an overridable byte limit", () => {
-    expect(script).toContain('MLX_PROMPT_CACHE_BYTES="${MLX_PROMPT_CACHE_BYTES:-8589934592}"');
+    expect(script).toContain('MLX_PROMPT_CACHE_BYTES="${MLX_PROMPT_CACHE_BYTES:-4294967296}"');
     expect(script).toContain('--prompt-cache-bytes "$MLX_PROMPT_CACHE_BYTES"');
     expect(script).toContain("start_ollama && ensure_ollama_ctx");
+  });
+
+  // mlx_lm.server's defaults prefill 8 prompts and decode 32 at once, each with
+  // its own KV cache for a 27B; with Hermes' 9k-token prompts a burst exhausts
+  // Metal memory and the generation thread dies while the server keeps accepting
+  // requests. The same rule as OLLAMA_NUM_PARALLEL=1: queue instead of crash.
+  it("limits how many requests the MLX server works on at once", () => {
+    expect(script).toContain('MLX_PROMPT_CONCURRENCY="${MLX_PROMPT_CONCURRENCY:-1}"');
+    expect(script).toContain('MLX_DECODE_CONCURRENCY="${MLX_DECODE_CONCURRENCY:-2}"');
+    expect(script).toContain('--prompt-concurrency "$MLX_PROMPT_CONCURRENCY"');
+    expect(script).toContain('--decode-concurrency "$MLX_DECODE_CONCURRENCY"');
+  });
+
+  // MLX keeps freed GPU buffers for reuse with no cap (the same growth that took
+  // the jev scorer to 36 GB, see run-jev.sh)
+  it("caps MLX's buffer cache inside the server process, from the environment", () => {
+    expect(script).toContain('MLX_CACHE_LIMIT="${MLX_CACHE_LIMIT:-2147483648}"');
+    const start = script.slice(script.indexOf("start_mlx() {"), script.indexOf("wait_http", script.indexOf("start_mlx() {")));
+    expect(start).toMatch(/mx\.set_cache_limit\(int\(os\.environ\["MLX_CACHE_LIMIT"\]\)\)/);
+    expect(start.indexOf("set_cache_limit")).toBeLessThan(start.indexOf("from mlx_lm.server import main"));
+    // argv[0] stays the server's path: is_project_pid and benchmark-stack's
+    // pgrep for "mlx_lm.server" recognise the process by its command line
+    expect(start).toContain('"$MLX_VENV/bin/mlx_lm.server" --model');
+  });
+
+  // The log was truncated on every start, so the process the watchdog had just
+  // killed for hanging left no trace of why it hung
+  it("appends to the MLX chat log across restarts, marking each start", () => {
+    const start = script.slice(script.indexOf("start_mlx() {"), script.indexOf("wait_http", script.indexOf("start_mlx() {")));
+    expect(start).toContain('>>"$LOG_DIR/mlx-chat.log"');
+    expect(start).not.toMatch(/[^>]>"\$LOG_DIR\/mlx-chat\.log"/); // a single > truncates
+    expect(start).toMatch(/starting mlx_lm\.server/);
   });
 });
 
