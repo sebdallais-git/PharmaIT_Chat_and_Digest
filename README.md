@@ -115,11 +115,11 @@ flowchart LR
     Q["Chat question"] --> R["Parallel retrieval<br/>ChromaDB · in-memory · Neo4j · news"]
     R --> A["27B answer<br/>streamed to the user"]
     A --> BG["After done<br/>background"]
-    BG --> D["Gap detector<br/>27B checkConfidence"]
+    BG --> D["Gap detector, one 27B call<br/>in scope? answered?"]
     BG -. "shadow_detection" .-> S["System One<br/>same question, recorded only"]
     S --> DS[("detection_shadow")]
     D --> RL[("request_log<br/>every turn")]
-    D -- "not confident<br/>2 h cooldown per topic" --> GL[("gap_log")]
+    D -- "in scope and not answered<br/>2 h cooldown per topic" --> GL[("gap_log")]
     GL --> WH["n8n webhook<br/>gap_id, topic, question"]
 
     style A fill:#064e3b,stroke:#22d3ee,color:#e5e7eb
@@ -557,7 +557,7 @@ sequenceDiagram
     participant App as PharmaITChat
     participant N as n8n
     participant S as SearXNG
-    App->>App: Answer with low confidence (2 h cooldown per topic, logged to SQLite)
+    App->>App: In-scope question the answer did not answer (2 h cooldown per topic, logged to SQLite)
     App->>N: Webhook with gap_id
     N->>App: POST /api/llm/complete (generate 3 search queries)
     N->>S: Search each query, dedupe, fetch pages

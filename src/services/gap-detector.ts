@@ -13,6 +13,7 @@ import { openShadowStore, recordShadowDecision } from "./detection-shadow.js";
 import type { ShadowDeps, ShadowStore } from "./detection-shadow.js";
 import { isScorerConfigured } from "./health.js";
 import { readScorerKey } from "../api/decide.js";
+import { checkNeedsResearch } from "./gap-need.js";
 
 const DB_PATH = join(process.cwd(), "data", "gap_log.db");
 
@@ -89,7 +90,8 @@ interface ConfidenceResult {
   search_topic: string;
 }
 
-// Secondary LLM call to evaluate response confidence
+// Secondary LLM call to evaluate response confidence. Gap RESOLUTION and the
+// replay baselines use it; detection asks gap-need.ts's narrower question.
 export async function checkConfidence(
   originalQuestion: string,
   gemmaResponse: string
@@ -213,14 +215,18 @@ export async function handleGapDetection(
 
   gapDetectionRunning = true;
   try {
-    const result = await trackJob("gap-detection", () => checkConfidence(originalQuery, gemmaResponse));
+    const result = await trackJob("gap-detection", () => checkNeedsResearch(originalQuery, gemmaResponse));
 
     // Shadow mode: ask the scorer the same question and store both answers.
     // The 27B's verdict above is still the one that acts -- see R1 in
     // detection-shadow.ts. This cannot throw and cannot change what follows.
-    await recordShadowDecision(shadowStore(), originalQuery, gemmaResponse, result.confident, shadowDeps());
+    // "No gap" is the 27B's "the answer stands".
+    await recordShadowDecision(shadowStore(), originalQuery, gemmaResponse, !result.gap, shadowDeps());
 
-    if (result.confident) {
+    if (!result.gap) {
+      if (result.parsed && !result.inScope) {
+        console.log(`[Gap Detector] No gap: out of scope -- "${originalQuery.slice(0, 80)}"`);
+      }
       return false;
     }
 

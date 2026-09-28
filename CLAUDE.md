@@ -68,7 +68,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   calling localhost. Switches roll back on failure and are refused during a benchmark,
   reindex or another switch.
 - **Retrieval** (`api/chat.ts`): ChromaDB, the in-memory vector+keyword index, Neo4j Graph RAG
-  and live news in parallel. Low-confidence answers go to `gap-detector.ts`, which triggers an
+  and live news in parallel. `gap-detector.ts` asks the 27B (`gap-need.ts`) whether the question is
+  in scope and went unanswered; only then does it trigger an
   n8n self-healing workflow. Graph rebuild (`python/graph_builder.py`) only works on Ollama (409
   otherwise).
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)
