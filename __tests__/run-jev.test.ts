@@ -11,7 +11,7 @@ const SCRIPT = join(process.cwd(), "scripts", "run-jev.sh");
 function run(env: Record<string, string>): { stdout: string; status: number } {
   const runDir = mkdtempSync(join(tmpdir(), "run-jev-test-"));
   const stub = join(runDir, "stub.sh");
-  writeFileSync(stub, "#!/usr/bin/env bash\nenv | grep -E '^(OPENJEV_API_KEY|HF_TOKEN|JEV_PORT|JEV_HOST|JEV_MODEL)=' | sort\n");
+  writeFileSync(stub, "#!/usr/bin/env bash\nenv | grep -E '^(OPENJEV_API_KEY|HF_TOKEN|JEV_PORT|JEV_HOST|JEV_MODEL|JEV_MLX_CACHE_LIMIT)=' | sort\n");
   chmodSync(stub, 0o755);
   for (const [name, value] of Object.entries(env.tokens ? JSON.parse(env.tokens) : {})) {
     const p = join(runDir, name);
@@ -66,7 +66,8 @@ describe("run-jev.sh", () => {
 
   it("passes the model to openjev serve", () => {
     const script = readFileSync(join(process.cwd(), "scripts", "run-jev.sh"), "utf-8");
-    const serve = script.split("\n").find((l) => l.includes("openjev serve")) ?? "";
+    // The launch spans two lines since the MLX cache cap; the serve arguments are on the second
+    const serve = script.split("\n").find((l) => l.trim().startsWith("serve --host")) ?? "";
     expect(serve).toContain('--model "$JEV_MODEL"');
   });
 
@@ -82,5 +83,34 @@ describe("run-jev.sh", () => {
 
     expect(status).not.toBe(0);
     expect(stdout).toMatch(/hf-token/);
+  });
+
+  // MLX keeps every freed GPU buffer for reuse. Each scorer call on a long page
+  // allocates gigabytes (Gemma 3's 262k-word vocabulary), and with no cap the
+  // process grew from 3 GB to 36 GB within 30 calls on 2026-09-28: 40 GB of swap
+  // beside the 27B, which froze and was restarted by the watchdog, and a Telegram
+  // "ping" took 7 minutes. On the same 72 real pages a 1 GiB cap held it at
+  // 4.2 GB with no change in latency (1.56 s vs 1.59 s median).
+  it("caps MLX's buffer cache at 1 GiB by default", () => {
+    const { stdout, status } = run({ tokens: JSON.stringify({ "hf-token": "h1" }) });
+    expect(status).toBe(0);
+    expect(stdout).toContain("JEV_MLX_CACHE_LIMIT=1073741824");
+  });
+
+  it("takes another cap from the environment, and refuses one that is not a byte count", () => {
+    expect(run({ tokens: JSON.stringify({ "hf-token": "h1" }), JEV_MLX_CACHE_LIMIT: "536870912" }).stdout).toContain(
+      "JEV_MLX_CACHE_LIMIT=536870912",
+    );
+    const bad = run({ tokens: JSON.stringify({ "hf-token": "h1" }), JEV_MLX_CACHE_LIMIT: "1GB" });
+    expect(bad.status).not.toBe(0);
+    expect(bad.stdout).toMatch(/JEV_MLX_CACHE_LIMIT/);
+  });
+
+  it("sets the cap inside the server process before open-jev starts, from the environment", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+    const launch = script.slice(script.lastIndexOf("exec "));
+    expect(launch).toMatch(/mx\.set_cache_limit\(int\(os\.environ\["JEV_MLX_CACHE_LIMIT"\]\)\)/);
+    expect(launch.indexOf("set_cache_limit")).toBeLessThan(launch.indexOf("from openjev.cli import main"));
+    expect(launch).toContain('serve --host "$JEV_HOST" --port "$JEV_PORT" --model "$JEV_MODEL"');
   });
 });
