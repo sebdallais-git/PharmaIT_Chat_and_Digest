@@ -33,6 +33,14 @@ export LLM_PROVIDER="$STACK"
 if [ -s "$PROJECT_DIR/data/run/api-token" ]; then
   export PHARMAITCHAT_API_TOKEN="$(cat "$PROJECT_DIR/data/run/api-token")"
 fi
+# Telegram credentials the app uses to confirm a stack switch requested in the
+# web UI; the same files switch-stack.sh reads. Without them the UI's stack
+# selector is disabled ("telegram_configured": false). Absent on a machine
+# with no Telegram set up, which is fine.
+if [ -s "$PROJECT_DIR/data/run/telegram-bot-token" ] && [ -s "$PROJECT_DIR/data/run/telegram-chat-id" ]; then
+  export TELEGRAM_BOT_TOKEN="$(tr -d '[:space:]' <"$PROJECT_DIR/data/run/telegram-bot-token")"
+  export TELEGRAM_CHAT_ID="$(tr -d '[:space:]' <"$PROJECT_DIR/data/run/telegram-chat-id")"
+fi
 # Where the Gap Detector sends each gap it finds. Without it the app logs
 # "N8N_WEBHOOK_URL not set" and the auto-fill workflow never runs.
 export N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-5678}/webhook/knowledge-gap}"
