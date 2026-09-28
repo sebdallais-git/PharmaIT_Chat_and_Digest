@@ -87,12 +87,34 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X POST -H 'Content-Type: a
 
 # Through the app rather than a direct bolt connection: no extra dependency, and
 # it proves the app can reach Neo4j, which is what actually matters.
-graph="$(curl -sf -m 8 -H "Authorization: Bearer $(cat "$PROJECT_DIR/data/run/api-token" 2>/dev/null)" \
-  http://localhost:3000/api/graph/stats 2>/dev/null)"
+# The token goes on stdin (-H @-): on a command line every process could read it
+auth_header() { printf 'Authorization: Bearer %s\n' "$(cat "$PROJECT_DIR/data/run/api-token" 2>/dev/null)"; }
+graph="$(auth_header | curl -sf -m 8 -H @- http://localhost:3000/api/graph/stats 2>/dev/null)"
 if [ -n "$graph" ]; then
   green "ok" "vendor graph: $(printf '%s' "$graph" | tr -d '\n' | cut -c1-90)"
 else
   red "unreadable" "vendor graph (/api/graph/stats)"
+fi
+
+# A UI stack switch needs the app's Telegram credentials (to send the confirm
+# buttons) and Hermes' pharmaitchat-switch plugin (to receive the tap); either
+# missing disables the selector in the web UI, with nothing else looking wrong
+switch="$(auth_header | curl -sf -m 10 -H @- http://localhost:3000/api/stack/status 2>/dev/null | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+if not d.get("telegram_configured"):
+    print("not ready|the app has no Telegram credentials; restart it with scripts/start-services.sh")
+elif not d.get("hermes_ready"):
+    print("not ready|" + str(d.get("hermes_reason", "")))
+else:
+    print("ready|")
+' 2>/dev/null)"
+switch_state="${switch%%|*}"
+switch_reason="${switch#*|}"
+if [ "$switch_state" = "ready" ]; then
+  green "ready" "UI stack switch"
+else
+  red "${switch_state:-unreadable}" "UI stack switch${switch_reason:+  -> $switch_reason}"
 fi
 
 echo
