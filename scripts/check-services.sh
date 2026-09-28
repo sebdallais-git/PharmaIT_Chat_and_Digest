@@ -43,11 +43,11 @@ check_job com.pharmaitchat.jev
 check_job ai.hermes.gateway
 
 echo
-echo "started by scripts/start-services.sh (nothing restarts these)"
-check_port 3000 "app"        "  -> run scripts/start-services.sh"
-check_port 8080 "MLX chat"   "  -> run scripts/start-services.sh"
-check_port 8081 "MLX embed"  "  -> run scripts/start-services.sh"
-check_port 8100 "ChromaDB"   "  -> run scripts/start-services.sh"
+echo "started by scripts/start-services.sh (the com.pharmaitchat.stack launchd job, at login)"
+check_port 3000 "app"        "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+check_port 8080 "MLX chat"   "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+check_port 8081 "MLX embed"  "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+check_port 8100 "ChromaDB"   "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
 check_port "$(jev_port)" "jev scorer" "  -> gap decisions degrade; chat is unaffected"
 
 echo
@@ -103,7 +103,7 @@ switch="$(auth_header | curl -sf -m 10 -H @- http://localhost:3000/api/stack/sta
 import sys, json
 d = json.load(sys.stdin)
 if not d.get("telegram_configured"):
-    print("not ready|the app has no Telegram credentials; restart it with scripts/start-services.sh")
+    print("not ready|the app has no Telegram credentials; launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack")
 elif not d.get("hermes_ready"):
     print("not ready|" + str(d.get("hermes_reason", "")))
 else:

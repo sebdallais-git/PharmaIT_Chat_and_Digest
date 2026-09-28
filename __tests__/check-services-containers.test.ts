@@ -23,3 +23,14 @@ describe("check-services.sh container section", () => {
     expect(line).toMatch(/colima start && docker start (neo4j|searxng)/);
   });
 });
+
+// The app, the model servers, ChromaDB and the scorer are started by
+// start-services.sh from the com.pharmaitchat.stack launchd job (RunAtLoad,
+// KeepAlive); the heading still said "nothing restarts these".
+describe("check-services.sh section for the app and models", () => {
+  it("names the launchd job that starts them", () => {
+    const header = lines.find((l) => /^echo "started by scripts\/start-services\.sh/.test(l)) ?? "";
+    expect(header).toContain("com.pharmaitchat.stack");
+    expect(script).not.toContain("nothing restarts these");
+  });
+});
