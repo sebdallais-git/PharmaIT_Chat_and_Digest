@@ -18,6 +18,19 @@ rc=0
 green() { printf "  \033[32m%-12s\033[0m %s\n" "$1" "$2"; }
 red()   { printf "  \033[31m%-12s\033[0m %s\n" "$1" "$2"; rc=1; }
 
+# "<port> <label>" for each model server the ACTIVE stack runs: its chat server, from the same
+# read-only switch-stack.sh chat-endpoint the watchdog uses, plus MLX's embedder for the stacks
+# that borrow it. A fixed MLX chat check reported "down" whenever another stack was active.
+model_server_checks() {
+  local stack endpoint
+  stack="$(cat "$PROJECT_DIR/data/run/active-stack" 2>/dev/null || echo ollama)"
+  endpoint="$(bash "$PROJECT_DIR/scripts/switch-stack.sh" chat-endpoint "$stack" 2>/dev/null | cut -d' ' -f1)"
+  [ -n "$endpoint" ] && echo "${endpoint##*:} $stack chat"
+  case "$stack" in
+    mlx|splash) echo "8081 MLX embed" ;;
+  esac
+}
+
 # The scorer's port, from the base_url in config/decide.yaml so this cannot
 # drift from what the app calls (it moved from 8000, which is Splash's, to 8010)
 jev_port() {
@@ -45,8 +58,9 @@ check_job ai.hermes.gateway
 echo
 echo "started by scripts/start-services.sh (the com.pharmaitchat.stack launchd job, at login)"
 check_port 3000 "app"        "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
-check_port 8080 "MLX chat"   "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
-check_port 8081 "MLX embed"  "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+while read -r port label; do
+  [ -n "$port" ] && check_port "$port" "$label" "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+done < <(model_server_checks)
 check_port 8100 "ChromaDB"   "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
 check_port "$(jev_port)" "jev scorer" "  -> gap decisions degrade; chat is unaffected"
 

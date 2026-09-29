@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Neo4j and SearXNG moved from Docker Desktop to colima, which the stack's
@@ -32,5 +34,45 @@ describe("check-services.sh section for the app and models", () => {
     const header = lines.find((l) => /^echo "started by scripts\/start-services\.sh/.test(l)) ?? "";
     expect(header).toContain("com.pharmaitchat.stack");
     expect(script).not.toContain("nothing restarts these");
+  });
+});
+
+// With Splash the default stack (2026-09-29), check-services.sh reported
+// "MLX chat (:8080) DOWN" and "something is down": it probed MLX's chat port
+// whatever stack was active. It now asks switch-stack.sh where the active
+// stack serves chat, and checks MLX's embedder only for stacks that use it.
+describe("check-services.sh model servers follow the active stack", () => {
+  function modelPorts(stack: string): string[] {
+    const dir = mkdtempSync(join(tmpdir(), "check-stack-"));
+    try {
+      mkdirSync(join(dir, "data", "run"), { recursive: true });
+      mkdirSync(join(dir, "scripts"));
+      writeFileSync(join(dir, "data", "run", "active-stack"), `${stack}\n`);
+      writeFileSync(join(dir, "scripts", "switch-stack.sh"), `#!/bin/bash
+case "$2" in mlx) echo "http://localhost:8080 m" ;; splash) echo "http://localhost:8000 s" ;; ollama) echo "http://localhost:11434 o" ;; omlx) echo "http://localhost:8090 x" ;; esac
+`);
+      const fn = script.slice(script.indexOf("model_server_checks() {"), script.indexOf("\n}\n", script.indexOf("model_server_checks() {")) + 3);
+      const result = spawnSync("bash", ["-c", `PROJECT_DIR="$1"\n${fn}\nmodel_server_checks`, "bash", dir], { encoding: "utf-8" });
+      return result.stdout.trim().split("\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("checks Splash's chat port and the MLX embedder it borrows, not MLX chat", () => {
+    expect(modelPorts("splash")).toEqual(["8000 splash chat", "8081 MLX embed"]);
+  });
+
+  it("checks MLX chat and embed on the MLX stack", () => {
+    expect(modelPorts("mlx")).toEqual(["8080 mlx chat", "8081 MLX embed"]);
+  });
+
+  it("checks only the one server for stacks that serve their own embeddings", () => {
+    expect(modelPorts("ollama")).toEqual(["11434 ollama chat"]);
+    expect(modelPorts("omlx")).toEqual(["8090 omlx chat"]);
+  });
+
+  it("no longer probes MLX chat unconditionally", () => {
+    expect(script).not.toMatch(/check_port 8080 "MLX chat"/);
   });
 });

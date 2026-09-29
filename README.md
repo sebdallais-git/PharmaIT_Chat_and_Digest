@@ -374,15 +374,15 @@ Measured 2026-09-17 on the same machine, through `/v1` with a 16.7K-token prompt
 
 | Metric | 🦙 Ollama | 🍎 MLX | ⚡ oMLX | 💦 Splash |
 |---|---:|---:|---:|---:|
-| Cold time to first token | 156.3 s | 141.2 s | 149.6 s | *not yet measured* |
-| Warm time to first token, same prefix | 5.8 s | **0.8 s** | 7.1 s | *not yet measured* |
-| Same prompt after restarting the model server | ≈156 s | ≈141 s | **12.6 s** | *not yet measured* |
-| Decode | 11.3–11.6 tok/s | 11.5–12.4 tok/s | 11.4–12.1 tok/s | *not yet measured* |
-| Memory pressure | normal, 41% free | normal, 40% free | normal, 39% free | *not yet measured* |
+| Cold time to first token | 156.3 s | 141.2 s | 149.6 s | **130.7 s**† |
+| Warm time to first token, same prefix | 5.8 s | 0.8 s | 7.1 s | **0.5 s** |
+| Same prompt after restarting the model server | ≈156 s | ≈141 s | **12.6 s** | ≈133 s |
+| Decode | 11.3–11.6 tok/s | 11.5–12.4 tok/s | 11.4–12.1 tok/s | **25–43 tok/s** |
+| Memory pressure | normal, 41% free | normal, 40% free | normal, 39% free | normal, 49–50% free |
 
 The oMLX column was measured on 2026-09-18 during its trial, on the same machine and the same 16.7K-token prompt. **Restart recovery is the one axis where it is in a different class**: its SSD prefix cache restored 16,384 tokens and recomputed only 368, turning a 149.6 s cold prefill into 12.6 s (`Prefix cache restore … source=paged cached=16384 suffix=368`). The cache costs about 4.3 GB under `~/.omlx`, capped by `OMLX_CACHE_MAX_GB` (default 20).
 
-The Splash column is pending too — this table is filled by the manual `curl` walkthrough described above, run once against each stack, and nobody has run it against Splash yet.
+The Splash column was measured on 2026-09-29 (Homebrew 1.1.0) with a rebuilt prompt of the same size — 16,817–16,960 tokens from `knowledge/`, since the original prompt text was not kept. †The first long prompt after switching to Splash took 196.9 s; later cold prompts, including a different uncached one, took 130.7–132.6 s, so the one-off extra is a first-use cost, not its steady state. Splash's SSD prompt cache (`--max-cache-disk`) is off by default, so a restart costs a full cold prefill.
 
 Prefill is the cost, at roughly 104–118 tok/s. Caching works on all three: appending a tool result to a conversation keeps the cached prefix, and a 14.6K-token prompt that cost 140.6 s cold came back in 10.9 s once about 1K tokens were appended. On Ollama the cache is shared, so a web chat between two agent steps evicts it.
 
