@@ -82,11 +82,10 @@ SPLASH_CHAT_MODEL="${SPLASH_CHAT_MODEL:-incoai/Qwen3.8-27B-Splash}"
 SPLASH_DIR="${SPLASH_DIR:-$PROJECT_DIR/python/splash-src}"
 SPLASH_BIN="${SPLASH_BIN:-$SPLASH_DIR/splash}"
 SPLASH_REPO="https://github.com/incoai/splash"
-# Defaults to main because no commit has been verified on this machine yet, unlike OMLX_VERSION
-# above. It MUST be pinned to a tested commit (the same way OMLX_VERSION is) before any benchmark
-# row produced with Splash is treated as reproducible -- an unpinned engine makes those rows
-# non-comparable over time.
-SPLASH_VERSION="${SPLASH_VERSION:-main}"
+# Pinned, like OMLX_VERSION above, to the commit installed and switched to on this machine on
+# 2026-09-29. It defaulted to main until then, which took whatever was newest and made benchmark
+# rows produced with Splash non-comparable over time.
+SPLASH_VERSION="${SPLASH_VERSION:-6c6002d42aabdddb9e31b96c9bba9041e2fba29f}"
 # Matches the other stacks so benchmark rows compare like with like
 SPLASH_MAX_CONTEXT="${SPLASH_MAX_CONTEXT:-65536}"
 
@@ -136,6 +135,20 @@ models_ready() {
       ;;
   esac
 }
+
+# Splash compiles its Metal kernels on its first start (build/splash, build/splash.metallib) and
+# needs Xcode's clang++, metal and metallib for it; the Command Line Tools have no metal. Without
+# them its server dies in the build while a switch waits 600 s for it with every stack stopped
+# (seen 2026-09-29). Once built, the toolchain is no longer needed.
+splash_runnable() {
+  [ -x "$SPLASH_DIR/build/splash" ] && return 0
+  local tool
+  for tool in clang++ metal metallib; do
+    xcrun -sdk macosx -f "$tool" >/dev/null 2>&1 || return 1
+  done
+}
+
+SPLASH_UNBUILDABLE="Splash cannot build its engine: Xcode's Metal compiler is missing (install Xcode; the Command Line Tools are not enough)"
 
 # --- Stack processes -----------------------------------------------------------
 
@@ -588,6 +601,11 @@ switch_to() {
     notify_switch_result failed
     exit 1
   fi
+  if [ "$target" = splash ] && ! splash_runnable; then
+    write_switch_phase failed "$SPLASH_UNBUILDABLE"
+    notify_switch_result failed
+    exit 1
+  fi
   if ! ensure_chromadb; then
     write_switch_phase failed "could not start ChromaDB"
     notify_switch_result failed
@@ -657,6 +675,7 @@ ensure_stack() {
   local target="$1"
   validate_stack "$target"
   models_ready "$target" || { log "Models for $target are missing. Run: scripts/switch-stack.sh prepare"; exit 1; }
+  if [ "$target" = splash ] && ! splash_runnable; then log "$SPLASH_UNBUILDABLE"; exit 1; fi
   stop_other_stacks "$target"
   if ! { start_stack "$target" && warm_up "$target" && ensure_index "$target"; }; then
     show_logs

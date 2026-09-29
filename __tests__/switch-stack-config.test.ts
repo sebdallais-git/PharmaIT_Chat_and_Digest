@@ -88,6 +88,15 @@ describe("switch-stack.sh stays in sync with llm-stacks.ts", () => {
   });
 });
 
+// SPLASH_VERSION defaulted to "main": every install took whatever was newest.
+// Pinned to the commit installed and switched to on 2026-09-29, as oMLX is.
+describe("switch-stack.sh Splash version", () => {
+  it("pins Splash to a commit, not a branch", () => {
+    expect(script).toMatch(/SPLASH_VERSION="\$\{SPLASH_VERSION:-[0-9a-f]{40}\}"/);
+    expect(script).not.toContain('SPLASH_VERSION="${SPLASH_VERSION:-main}"');
+  });
+});
+
 describe("switch-stack.sh long-context settings", () => {
   // 4 GiB, down from 8: on 2026-09-29 six concurrent ~7.5k-token requests took
   // mlx_lm.server from 23 GB to 36 GB and failed all six with a Metal
@@ -685,7 +694,7 @@ describe("switch-stack.sh switch_to: pre-flight checks are guarded and recorded"
   // (bad stack name, missing models, or ChromaDB not starting) exited with no progress file
   // written at all and no Telegram notification sent, since SWITCH_TARGET was only set — and
   // write_switch_phase only usable — after these checks had already run.
-  function runPreflight(target: string, modelsReadyRc: number, ensureChromadbRc: number): {
+  function runPreflight(target: string, modelsReadyRc: number, ensureChromadbRc: number, splashRunnableRc = 0): {
     progress: unknown;
     curlLog: string;
     status: number | null;
@@ -714,9 +723,12 @@ describe("switch-stack.sh switch_to: pre-flight checks are guarded and recorded"
       'source "$FUNCS_FILE"',
       "# Stubs: no real model check, no real ChromaDB, and these must never run when a pre-flight check fails.",
       `models_ready() { return ${modelsReadyRc}; }`,
+      `splash_runnable() { return ${splashRunnableRc}; }`,
       `ensure_chromadb() { return ${ensureChromadbRc}; }`,
       'stop_app() { echo "stop_app_called" >>"$STUB_LOG"; return 0; }',
       'stop_other_stacks() { echo "stop_other_stacks_called" >>"$STUB_LOG"; return 0; }',
+      // A check that wrongly passes must not start a real server (and wait minutes for it)
+      'start_stack() { echo "start_stack_called" >>"$STUB_LOG"; return 1; }',
       `switch_to ${target}`,
     ].join("\n");
     const harnessFile = join(dir, "harness.sh");
@@ -774,6 +786,22 @@ describe("switch-stack.sh switch_to: pre-flight checks are guarded and recorded"
     expect(stubLog).not.toContain("stop_app_called");
   });
 
+  // 2026-09-29: with the model downloaded, a switch to Splash passed every check,
+  // stopped the app and the MLX stack, then waited 10 minutes for a server whose
+  // first start had died building its Metal kernels without Xcode. Chat and Hermes
+  // were down until the rollback. It must fail here, before anything is stopped.
+  it("fails a Splash switch before stopping anything when Splash cannot build its engine", () => {
+    const { progress, curlLog, status, stubLog } = runPreflight("splash", 0, 0, 1);
+    expect(status).not.toBe(0);
+    expect((progress as { phase: string }).phase).toBe("failed");
+    expect((progress as { error: string }).error).toBe(
+      "Splash cannot build its engine: Xcode's Metal compiler is missing (install Xcode; the Command Line Tools are not enough)"
+    );
+    expect(curlLog).toContain("curl_called");
+    expect(stubLog).not.toContain("stop_app_called");
+    expect(stubLog).not.toContain("stop_other_stacks_called");
+  });
+
   it("writes failed with a specific reason and notifies, never reaching stop_app, when ChromaDB cannot start", () => {
     const { progress, curlLog, status, stubLog } = runPreflight("omlx", 0, 1);
     expect(status).not.toBe(0);
@@ -781,6 +809,57 @@ describe("switch-stack.sh switch_to: pre-flight checks are guarded and recorded"
     expect((progress as { error: string }).error).toBe("could not start ChromaDB");
     expect(curlLog).toContain("curl_called");
     expect(stubLog).not.toContain("stop_app_called");
+  });
+});
+
+describe("switch-stack.sh splash_runnable", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Splash compiles its Metal kernels on first start (build/splash, build/splash.metallib)
+  // and needs xcrun's clang++, metal and metallib for it
+  function runnable(built: boolean, xcrunRc: number): { rc: number | null; xcrunCalled: boolean } {
+    const dir = mkdtempSync(join(tmpdir(), "splash-runnable-"));
+    dirs.push(dir);
+    const splashDir = join(dir, "splash-src");
+    mkdirSync(join(splashDir, "build"), { recursive: true });
+    if (built) {
+      writeFileSync(join(splashDir, "build", "splash"), "#!/bin/sh\n");
+      chmodSync(join(splashDir, "build", "splash"), 0o755);
+    }
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const calls = join(dir, "xcrun.log");
+    writeFileSync(join(bin, "xcrun"), `#!/bin/bash\necho "$*" >> "${calls}"\nexit ${xcrunRc}\n`);
+    chmodSync(join(bin, "xcrun"), 0o755);
+    const funcs = join(dir, "funcs.sh");
+    writeFileSync(funcs, extractFuncs());
+    const result = spawnSync("bash", ["-c", 'source "$FUNCS"; splash_runnable'], {
+      encoding: "utf-8",
+      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
+             PROJECT_DIR: process.cwd(), SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
+    });
+    let xcrunCalled = false;
+    try {
+      xcrunCalled = readFileSync(calls, "utf-8").length > 0;
+    } catch {
+      // never called
+    }
+    return { rc: result.status, xcrunCalled };
+  }
+
+  it("is runnable once the engine is built, whatever the toolchain", () => {
+    expect(runnable(true, 1)).toEqual({ rc: 0, xcrunCalled: false });
+  });
+
+  it("is not runnable unbuilt without Xcode's Metal tools", () => {
+    expect(runnable(false, 1).rc).not.toBe(0);
+  });
+
+  it("is runnable unbuilt when the Metal tools are there to build it", () => {
+    expect(runnable(false, 0)).toEqual({ rc: 0, xcrunCalled: true });
   });
 });
 
