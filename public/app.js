@@ -834,11 +834,25 @@ function describeStackStatus(status) {
 
 // Writes the switch status into its own persistent element (#stack-status), not the transient
 // #status toast, which erases itself after 5 seconds and would never show a completed switch.
+// Literal copy of stackOptionState in src/services/switch-labels.ts (the browser cannot import
+// TypeScript); __tests__/switch-labels.test.ts pins the two together.
+function stackOptionState(name, status) {
+  const entry = status.availability ? status.availability[name] : undefined;
+  if (name === status.active || !entry || entry.available) return { disabled: false, title: null };
+  return { disabled: true, title: entry.reason || `${name} cannot start` };
+}
+
 function renderStackStatus(status) {
   const options = (status.stacks || ["ollama", "mlx", "omlx", "splash"])
     .map((name) => {
       const selected = (status.pending ? status.pending.target : status.active) === name ? " selected" : "";
-      return `<option value="${name}"${selected}>${STACK_LABELS[name] || name}</option>`;
+      // A stack that cannot start is shown, disabled, with the reason as its tooltip
+      const state = stackOptionState(name, status);
+      const attrs = state.disabled
+        ? ` disabled title="${String(state.title).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"`
+        : "";
+      const label = (STACK_LABELS[name] || name) + (state.disabled ? " (unavailable)" : "");
+      return `<option value="${name}"${selected}${attrs}>${label}</option>`;
     })
     .join("");
   if (stackSelect.innerHTML !== options) stackSelect.innerHTML = options;

@@ -7,6 +7,7 @@ import { createStackSwitch } from "../src/services/stack-switch.js";
 import type { StackName } from "../src/config/llm-stacks.js";
 import type { SwitchProgress } from "../src/services/stack-switch.js";
 import type { TelegramSendOptions } from "../src/services/telegram-notify.js";
+import type { StackAvailability } from "../src/services/stack-availability.js";
 
 const servers: Server[] = [];
 
@@ -32,6 +33,7 @@ interface Fixture {
     sendFails: boolean;
     sendFailMessage: string;
     hermesReady: boolean;
+    availability: StackAvailability | null;
   };
 }
 
@@ -45,6 +47,7 @@ async function startApp(): Promise<Fixture> {
     sendFails: false,
     sendFailMessage: "telegram sendMessage failed (401)",
     hermesReady: true,
+    availability: null as StackAvailability | null,
   };
   const messages: SentMessage[] = [];
   const spawned: StackName[] = [];
@@ -79,6 +82,7 @@ async function startApp(): Promise<Fixture> {
       readProgress: () => state.progress,
       telegramConfigured: () => state.configured,
       hermes: { check: readiness, cached: readiness },
+      availability: async () => state.availability,
     })
   );
   const server = await new Promise<Server>((resolve) => {
@@ -364,5 +368,41 @@ describe("newSwitchToken", () => {
       expect(Buffer.byteLength(`pls:ok:${token}`, "utf8")).toBeLessThanOrEqual(64);
     }
     expect(new Set(tokens).size).toBe(tokens.length);
+  });
+});
+
+// On 2026-09-29 the UI offered Splash, which cannot build without Xcode: the
+// user was asked to confirm on Telegram, then the switch refused. A stack the
+// switch script already knows cannot start is refused here, before anything.
+describe("stack availability", () => {
+  const splashMissing: StackAvailability = {
+    ollama: { available: true },
+    mlx: { available: true },
+    splash: { available: false, reason: "Splash cannot build its engine: Xcode is missing" },
+  };
+
+  it("reports it in the status", async () => {
+    const f = await startApp();
+    f.state.availability = splashMissing;
+    const status = (await (await fetch(`${f.url}/api/stack/status`)).json()) as Record<string, unknown>;
+    expect(status.availability).toEqual(splashMissing);
+  });
+
+  it("refuses a switch to an unavailable stack with the reason, sending nothing to Telegram", async () => {
+    const f = await startApp();
+    f.state.availability = splashMissing;
+    const res = await post(f.url, "splash");
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ reason: "stack_unavailable", error: "Splash cannot build its engine: Xcode is missing" });
+    expect(f.messages).toEqual([]);
+  });
+
+  it("still asks for confirmation for an available stack, or when availability is unknown", async () => {
+    const f = await startApp();
+    f.state.availability = splashMissing;
+    expect((await post(f.url, "mlx")).status).toBe(202);
+    const g = await startApp();
+    g.state.availability = null;
+    expect((await post(g.url, "splash")).status).toBe(202);
   });
 });

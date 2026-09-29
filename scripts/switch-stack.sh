@@ -3,6 +3,7 @@
 # Usage:
 #   scripts/switch-stack.sh ollama|mlx|omlx|splash          stop the other stacks, start this one, restart the app
 #   scripts/switch-stack.sh ensure-stack ollama|mlx|omlx|splash  start a stack and its indexes without starting the app
+#   scripts/switch-stack.sh availability                    read-only: which stacks can start, and why not
 #   scripts/switch-stack.sh prepare                  download models and create the MLX venv (one-time)
 #   scripts/switch-stack.sh status                   show the active stack, ports and index counts
 #   scripts/switch-stack.sh token                    create the API token for agents and other machines
@@ -149,6 +150,22 @@ splash_runnable() {
 }
 
 SPLASH_UNBUILDABLE="Splash cannot build its engine: Xcode's Metal compiler is missing (install Xcode; the Command Line Tools are not enough)"
+
+# Read-only: one line per stack, "<stack> ok" or "<stack> <why it cannot start>", from the same
+# checks switch_to runs before stopping anything. The app shows unavailable stacks disabled and
+# refuses to ask for a Telegram confirmation of a switch that can only fail.
+stack_availability() {
+  local s
+  for s in "${STACK_NAMES[@]}"; do
+    if ! models_ready "$s"; then
+      echo "$s models for $s are missing (run scripts/switch-stack.sh prepare)"
+    elif [ "$s" = splash ] && ! splash_runnable; then
+      echo "$s $SPLASH_UNBUILDABLE"
+    else
+      echo "$s ok"
+    fi
+  done
+}
 
 # --- Stack processes -----------------------------------------------------------
 
@@ -784,6 +801,7 @@ case "${1:-}" in
   ollama|mlx|omlx|splash) switch_to "$1" ;;
   ensure-stack) ensure_stack "${2:-}" ;;
   chat-endpoint) chat_endpoint "${2:-}" ;;
+  availability) stack_availability ;;
   prepare) prepare ;;
   status) status ;;
   token) ensure_token ;;

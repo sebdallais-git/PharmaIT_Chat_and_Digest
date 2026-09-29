@@ -57,3 +57,16 @@ export interface StackSelectState {
 export function isStackSelectDisabled(status: StackSelectState, busy: boolean): boolean {
   return busy || Boolean(status.pending) || !status.telegram_configured || !status.hermes_ready;
 }
+
+export interface StackOptionStatus {
+  active: StackName | string;
+  availability: Partial<Record<string, { available: boolean; reason?: string }>> | null;
+}
+
+// A stack the switch script says cannot start is shown disabled, with the reason as its tooltip.
+// The active stack is never disabled, and unknown availability leaves every stack selectable.
+export function stackOptionState(name: string, status: StackOptionStatus): { disabled: boolean; title: string | null } {
+  const entry = status.availability ? status.availability[name] : undefined;
+  if (name === status.active || !entry || entry.available) return { disabled: false, title: null };
+  return { disabled: true, title: entry.reason || `${name} cannot start` };
+}
