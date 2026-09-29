@@ -100,10 +100,10 @@ Everything that runs on its own, what starts it, and whether it is live on this 
 |---|---|---|---|
 | [Chat turn and gap detection](#chat-turn-and-gap-detection) | Every chat message | App | Live |
 | [Gap auto-fill v2](#gap-auto-fill-v2) · `n8n/knowledge_gap_workflow_v2.json` | Webhook from the gap detector | n8n (18 nodes) | **Live**, active |
-| [KB health monitor](#kb-health-monitor) · `n8n/knowledge_qa_workflow.json` | Every 6 hours | n8n (12 nodes) | Imported, **not active** |
+| [KB canaries](#kb-canaries) · `config/kb-canaries.yaml` | 05:00 daily | Hermes, script mode | Live |
 | [Gap auto-fill v1](#gap-auto-fill-v1) · `n8n/knowledge_gap_workflow.json` | Webhook | n8n (13 nodes) | Kept for reference, not imported |
 | [Nightly watchlist ingest](#the-nightly-run) | 02:30 daily | Hermes, script mode | Live |
-| [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 4 jobs | Hermes agent | Live |
+| [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 4 agent jobs | Hermes agent | Live |
 | [Stack switch](#stack-switch) | Web UI request | App + Telegram + Hermes plugin | Live |
 
 ### Chat turn and gap detection
@@ -166,26 +166,27 @@ flowchart TD
 
 Deploying a change to the JSON: back up the live workflow, `launchctl bootout` the n8n job, `n8n import:workflow`, `n8n publish:workflow`, `launchctl bootstrap`. Editing the file alone changes nothing.
 
-### KB health monitor
+### KB canaries
 
-Imported into n8n but **not activated**, so no health reports are produced today; activate it in n8n to start them.
+A daily check that the knowledge base still answers what it is known to hold. `config/kb-canaries.yaml` lists 8 questions with the facts each answer must contain, e.g. Merck 2017 → "NotPetya" and "1.4 billion", and Roche Kaiseraugst MES → "Rockwell", a fact the gap loop stored. A canary passes when the chat retrieved at least one chunk and the answer contains one term from every expected group. A failing canary is asked once more before it counts. The check is plain string matching: a model grading answers would follow its prompt's wording, as the scorer measurements showed.
 
 ```mermaid
 flowchart LR
-    T["Every 6 hours"] --> KS["Get KB Stats"]
-    T --> DM["Get Dashboard Metrics"]
-    KS --> GQ["Generate Test Queries"]
-    GQ --> RAG["Query RAG Pipeline<br/>POST /api/chat"]
-    RAG --> SC["Score Response Quality<br/>POST /api/llm/complete"]
-    SC --> PS["Parse Quality Scores"]
-    PS --> BR["Build Health Report"]
-    BR --> SR["Store Health Report<br/>POST /api/dashboard/kb-health"]
-    SR --> DG{"Is Degraded?"}
-    DG -- "yes" --> AL["Generate Alert"]
-    DG -- "no" --> OK["Log Healthy"]
+    H["Hermes cron, 05:00<br/>pharmaitchat-kb-canary.sh"] --> S["scripts/kb-canary.ts"]
+    S --> C["POST /api/chat, benchmark: true<br/>no gap detection, no request log"]
+    C --> K{"chunks ≥ 1 and<br/>expected facts present?"}
+    K -- "fail" --> R["Ask once more"]
+    R --> DB[("gap_log.db<br/>kb_canary_runs")]
+    K -- "pass" --> DB
+    DB --> T{"All passed?"}
+    T -- "yes" --> Q["Silent"]
+    T -- "no" --> TG["Telegram: KB canary 7/8 passed<br/>- roche-kaiseraugst-mes: missing Rockwell"]
+    DB --> API["GET /api/dashboard/kb-health<br/>ok · failing · stale · never-run"]
 
-    style DG fill:#7c2d12,stroke:#fb923c,color:#e5e7eb
+    style K fill:#7c2d12,stroke:#fb923c,color:#e5e7eb
 ```
+
+Run it by hand with `npx tsx scripts/kb-canary.ts` (add `--no-store` to leave no row). Each run's per-canary lines are kept in `data/logs/kb-canary-<date>.log`. It replaced the n8n KB health monitor (2026-09-29). That workflow was never activated, and would not have worked: it sent no API token, read the streamed chat reply as JSON, ran its test chats through gap detection, and kept reports only in memory.
 
 ### Gap auto-fill v1
 
@@ -205,6 +206,7 @@ Hermes' cron runs these on the local 27B and reports on Telegram. Scheduled runs
 ```mermaid
 flowchart LR
     H["Hermes gateway<br/>cron"] --> WL["02:30 · watchlist ingest<br/>script mode, no agent"]
+    H --> KC["05:00 · KB canaries<br/>script mode, no agent"]
     H --> ND["06:00 · news digest"]
     H --> GR["07:00 · gap resolution"]
     H --> HW["09:00 and 19:00 · health watch"]
@@ -215,6 +217,7 @@ flowchart LR
     HW --> T3["system_health"]
     FD --> T4["feedback_report"]
     WI -- "only on failure" --> TG["Telegram"]
+    KC -- "only on failure" --> TG
     T1 --> TG
     T2 --> TG
     T3 -- "only when unhealthy" --> TG
@@ -589,13 +592,12 @@ sequenceDiagram
     end
 ```
 
-A second workflow is a KB health check meant to run every 6 hours: it sends test queries through the full RAG pipeline, has the active stack score each answer and flag hallucinations, and posts the report to `/api/dashboard/kb-health` (168 reports kept, 7 days). It is imported into n8n but **not activated**; activate it in n8n to start the reports. See [Workflows](#workflows).
+The KB health check is no longer an n8n workflow: see [KB canaries](#kb-canaries).
 
 | File | Nodes | Purpose |
 |---|---:|---|
 | `n8n/knowledge_gap_workflow_v2.json` | 18 | Gap auto-fill with resolution check (recommended) |
 | `n8n/knowledge_gap_workflow.json` | 13 | Gap auto-fill, v1 |
-| `n8n/knowledge_qa_workflow.json` | 12 | KB health monitor, every 6 hours |
 
 All LLM steps call `POST /api/llm/complete`, so they run on the active stack. See [`n8n/README.md`](n8n/README.md).
 
@@ -754,7 +756,7 @@ npm run dev          # runs scripts/start-services.sh
 The nightly ingest is a Hermes cron job, so it needs Hermes installed first ([`hermes/README.md`](hermes/README.md)). Then:
 
 ```bash
-scripts/hermes-setup.sh install-cron     # creates all five jobs from hermes/cron/jobs.json
+scripts/hermes-setup.sh install-cron     # creates all six jobs from hermes/cron/jobs.json
 npm run watchlist -- verify-feeds        # sanity-check the feeds before the first night
 npm run watchlist -- status              # after the first run: counts and per-entity totals
 ```
@@ -767,7 +769,7 @@ npm run watchlist -- status              # after the first run: counts and per-e
 <br/>
 
 1. Run [SearXNG](https://github.com/searxng/searxng) on `http://localhost:8888` with `bash scripts/setup-searxng.sh`, which builds its settings from `config/searxng/settings.yml`, and [n8n](https://n8n.io) on `http://localhost:5678`. General web search uses the [Brave Search API](https://brave.com/search/api/) only: the public engines SearXNG would scrape answer a self-hosted instance with CAPTCHAs and rate limits, and Bing returned spam that crowded out real results. Put a Brave key in `data/run/brave-api-key` (mode 600) before running the script, or web search returns nothing; it is rendered into the container's settings, never into the repo or a command line.
-2. In n8n, import `n8n/knowledge_gap_workflow_v2.json` and `n8n/knowledge_qa_workflow.json` (**Workflows → Import from File**) and activate them.
+2. In n8n, import `n8n/knowledge_gap_workflow_v2.json` (**Workflows → Import from File**) and activate it.
 3. Nothing else to wire: `start-services.sh` and `switch-stack.sh` point the gap detector at `http://localhost:5678/webhook/knowledge-gap` (override with `N8N_WEBHOOK_URL`), and `scripts/run-n8n.sh` hands n8n the API token from `data/run/api-token`.
 
 The workflows call protected routes with `Authorization: Bearer {{ $env.PHARMALLM_API_TOKEN }}` — the legacy variable name, which `run-n8n.sh` sets. n8n 2.x blocks `$env` in expressions by default, so `run-n8n.sh` also sets `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`; an n8n started some other way needs both. See [`n8n/README.md`](n8n/README.md).
@@ -977,7 +979,7 @@ Job state lives in memory, so a server restart forgets it. The index completenes
 | `/api/health` | GET | open | Active stack (`llm_chat`, `llm_embed`, `search_index`), ChromaDB, SearXNG, Neo4j, SQLite |
 | `/api/dashboard/metrics` | GET | open | All dashboard metrics (30 s cache) |
 | `/api/dashboard/chromadb-misses` | GET | open | Recent ChromaDB misses and top missed queries |
-| `/api/dashboard/kb-health` | GET / POST | token | KB health history, or receive a report from n8n |
+| `/api/dashboard/kb-health` | GET | token | KB canary status (`ok`, `failing`, `stale`, `never-run`), newest run and the last 30 pass counts |
 | `/api/graph/health` | GET | token | Neo4j connection check with latency |
 | `/api/graph/stats` | GET | open | Node and relationship counts by type |
 | `/api/graph/search` | POST | token | Search by entity name, returns neighbors |

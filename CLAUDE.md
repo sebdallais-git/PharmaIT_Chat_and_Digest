@@ -32,6 +32,7 @@ npx tsx scripts/replay-detection.ts [--backfill [--limit N] [--all] | --question
                                                # same for detection: regenerates past answers (27B-labelled, resumable)
 npx tsx scripts/replay-page-relevance.ts        # gap workflow page pre-check vs the 27B's keep/discard in n8n history
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
+npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
 ```
 
 There is **no lint script and no ESLint config** — do not run `npm run lint`.
@@ -138,7 +139,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   treat a timeout with the GPU ≥ 30% (`ioreg` "Device Utilization %") as busy, not wedged.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
-  `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`).
+  `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`, `kb-canary-<date>.log`).
 
 ## Git
 
