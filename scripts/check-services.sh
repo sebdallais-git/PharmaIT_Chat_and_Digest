@@ -95,9 +95,16 @@ except Exception:
 " 2>/dev/null)"
 [ "$tg" = "connected" ] && green "connected" "Telegram" || red "$tg" "Telegram"
 
-code="$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X POST -H 'Content-Type: application/json' \
-  -d '{"question":"probe","gap_id":"probe","confidence":0.1}' http://localhost:5678/webhook/knowledge-gap 2>/dev/null)"
-[ "$code" = "200" ] && green "200" "gap-fill webhook" || red "$code" "gap-fill webhook"
+# A GET, never a POST: a POST starts a research run (26 health checks once searched the web for
+# "undefined" and stored junk). n8n answers a GET on a POST-only webhook "not registered for GET
+# requests. Did you mean to make a POST request?" when the workflow is active, and "not registered"
+# when it is not -- telling the two apart without running anything.
+hook="$(curl -s -m 10 http://localhost:5678/webhook/knowledge-gap 2>/dev/null)"
+case "$hook" in
+  *"Did you mean to make a POST request"*) green "active" "gap-fill webhook" ;;
+  *"not registered"*) red "inactive" "gap-fill webhook  -> activate the gap workflow in n8n" ;;
+  *) red "no answer" "gap-fill webhook  -> is n8n running?" ;;
+esac
 
 # Through the app rather than a direct bolt connection: no extra dependency, and
 # it proves the app can reach Neo4j, which is what actually matters.

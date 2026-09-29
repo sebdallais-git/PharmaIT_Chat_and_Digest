@@ -99,7 +99,7 @@ Everything that runs on its own, what starts it, and whether it is live on this 
 | Workflow | Started by | Runs in | Status |
 |---|---|---|---|
 | [Chat turn and gap detection](#chat-turn-and-gap-detection) | Every chat message | App | Live |
-| [Gap auto-fill v2](#gap-auto-fill-v2) · `n8n/knowledge_gap_workflow_v2.json` | Webhook from the gap detector | n8n (17 nodes) | **Live**, active |
+| [Gap auto-fill v2](#gap-auto-fill-v2) · `n8n/knowledge_gap_workflow_v2.json` | Webhook from the gap detector | n8n (18 nodes) | **Live**, active |
 | [KB health monitor](#kb-health-monitor) · `n8n/knowledge_qa_workflow.json` | Every 6 hours | n8n (12 nodes) | Imported, **not active** |
 | [Gap auto-fill v1](#gap-auto-fill-v1) · `n8n/knowledge_gap_workflow.json` | Webhook | n8n (13 nodes) | Kept for reference, not imported |
 | [Nightly watchlist ingest](#the-nightly-run) | 02:30 daily | Hermes, script mode | Live |
@@ -133,7 +133,9 @@ The live self-healing workflow. Every model step calls the app, so it runs on th
 
 ```mermaid
 flowchart TD
-    W["Knowledge Gap Webhook"] --> G["Generate Search Queries<br/>POST /api/llm/complete"]
+    W["Knowledge Gap Webhook"] --> V{"Validate Gap<br/>numeric gap_id and a topic?"}
+    V -- "no" --> VX["End: nothing researched"]
+    V -- "yes" --> G["Generate Search Queries<br/>POST /api/llm/complete"]
     G -- "ok" --> P["Parse Search Queries<br/>3 queries"]
     G -- "error" --> GE["Query Error Handler<br/>search the topic itself"]
     P --> S["Search SearXNG<br/>Brave Search API"]
@@ -591,7 +593,7 @@ A second workflow is a KB health check meant to run every 6 hours: it sends test
 
 | File | Nodes | Purpose |
 |---|---:|---|
-| `n8n/knowledge_gap_workflow_v2.json` | 17 | Gap auto-fill with resolution check (recommended) |
+| `n8n/knowledge_gap_workflow_v2.json` | 18 | Gap auto-fill with resolution check (recommended) |
 | `n8n/knowledge_gap_workflow.json` | 13 | Gap auto-fill, v1 |
 | `n8n/knowledge_qa_workflow.json` | 12 | KB health monitor, every 6 hours |
 

@@ -21,6 +21,19 @@
     },
     {
       "parameters": {
+        "jsCode": "// Only a real gap is researched: a numeric gap_id and a topic. check-services.sh once POSTed\n// {\"gap_id\":\"probe\"} here to prove the webhook answered; 26 such runs searched the web for\n// \"undefined\" and 19 stored junk in the knowledge base. Anything else ends the run here,\n// before a search or a 27B call. The webhook item passes through unchanged.\nconst body = $input.first().json.body || {};\nconst id = Number(body.gap_id);\nconst topic = String(body.search_topic ?? '').trim();\nif (!Number.isInteger(id) || id <= 0 || topic === '' || topic === 'undefined') {\n  return [];\n}\nreturn $input.all();"
+      },
+      "id": "aefc86d1-7a8b-42c4-8501-4737737f11b7",
+      "name": "Validate Gap",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        350,
+        480
+      ]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "http://localhost:3000/api/llm/complete",
         "sendBody": true,
@@ -283,7 +296,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// SearXNG failed \u2014 log error and stop gracefully\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconsole.log('[N8N] SearXNG search failed for topic: ' + searchTopic);\nreturn [{\n  json: {\n    status: 'error',\n    stage: 'searxng_search',\n    search_topic: searchTopic,\n    message: 'SearXNG search failed. Check that SearXNG is running on localhost:8888.'\n  }\n}];"
+        "jsCode": "// SearXNG failed — log error and stop gracefully\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconsole.log('[N8N] SearXNG search failed for topic: ' + searchTopic);\nreturn [{\n  json: {\n    status: 'error',\n    stage: 'searxng_search',\n    search_topic: searchTopic,\n    message: 'SearXNG search failed. Check that SearXNG is running on localhost:8888.'\n  }\n}];"
       },
       "id": "a1b2c3d4-0012-4000-8000-000000000012",
       "name": "SearXNG Error Handler",
@@ -293,11 +306,11 @@
         1200,
         560
       ],
-      "notes": "Handles SearXNG failures gracefully \u2014 logs and stops."
+      "notes": "Handles SearXNG failures gracefully — logs and stops."
     },
     {
       "parameters": {
-        "jsCode": "// Ollama query generation failed \u2014 fallback to using search_topic directly\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.body.original_query;\n\nconsole.log('[N8N] Ollama query generation failed, using search_topic as fallback');\n\nreturn [{\n  json: {\n    query: searchTopic,\n    query_index: 0,\n    search_topic: searchTopic,\n    original_query: originalQuery,\n    total_queries: 1\n  }\n}];"
+        "jsCode": "// Ollama query generation failed — fallback to using search_topic directly\nconst searchTopic = $('Knowledge Gap Webhook').first().json.body.search_topic;\nconst originalQuery = $('Knowledge Gap Webhook').first().json.body.original_query;\n\nconsole.log('[N8N] Ollama query generation failed, using search_topic as fallback');\n\nreturn [{\n  json: {\n    query: searchTopic,\n    query_index: 0,\n    search_topic: searchTopic,\n    original_query: originalQuery,\n    total_queries: 1\n  }\n}];"
       },
       "id": "a1b2c3d4-0013-4000-8000-000000000013",
       "name": "Ollama Query Error Handler",
@@ -378,7 +391,7 @@
       "main": [
         [
           {
-            "node": "Generate Search Queries (Ollama)",
+            "node": "Validate Gap",
             "type": "main",
             "index": 0
           }
@@ -547,6 +560,17 @@
         [
           {
             "node": "Mark Gap Unresolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Gap": {
+      "main": [
+        [
+          {
+            "node": "Generate Search Queries (Ollama)",
             "type": "main",
             "index": 0
           }
