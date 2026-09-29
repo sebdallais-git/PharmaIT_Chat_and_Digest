@@ -65,9 +65,9 @@ The whole system runs on one local box with 48 GB of unified memory — no cloud
 | Nightly entity/domain tagging | The same local chat model, one item at a time |
 | Vector store, item store, graph | ChromaDB, SQLite and Neo4j on localhost |
 | Answer scoring (System One) | Local Gemma 3 4B (4-bit) on open-jev, beside the 27B |
-| Web search | Chat: Google News RSS search. Self-healing loop and Hermes: your own SearXNG on localhost, which forwards the **search queries** to public engines and the Brave Search API |
+| Web search | Chat: Google News RSS search. Self-healing loop and Hermes: your own SearXNG on localhost, which forwards the **search queries** to the Brave Search API |
 
-Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, web search, and Telegram. The search queries themselves leave the machine: chat's optional web search sends the question to Google News RSS, and the self-healing loop's queries (written by the local model from a knowledge gap) go through SearXNG, which runs locally but is a metasearch proxy, to the engines it queries, including Brave's Search API under your own key. Web search can be switched off in the chat UI; the self-healing loop always searches. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
+Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, web search, and Telegram. The search queries themselves leave the machine: chat's optional web search sends the question to Google News RSS, and the self-healing loop's queries (written by the local model from a knowledge gap) go through SearXNG, which runs locally but only as a proxy, to Brave's Search API under your own key (SearXNG's page-scraping engines are switched off). Web search can be switched off in the chat UI; the self-healing loop always searches. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
 
 ---
 
@@ -136,7 +136,7 @@ flowchart TD
     W["Knowledge Gap Webhook"] --> G["Generate Search Queries<br/>POST /api/llm/complete"]
     G -- "ok" --> P["Parse Search Queries<br/>3 queries"]
     G -- "error" --> GE["Query Error Handler<br/>search the topic itself"]
-    P --> S["Search SearXNG<br/>public engines + Brave API"]
+    P --> S["Search SearXNG<br/>Brave Search API"]
     GE --> S
     S -- "error" --> SE["SearXNG Error Handler<br/>log and stop"]
     S -- "ok" --> DD["Deduplicate Results<br/>top 3 per query"]
@@ -764,7 +764,7 @@ npm run watchlist -- status              # after the first run: counts and per-e
 
 <br/>
 
-1. Run [SearXNG](https://github.com/searxng/searxng) on `http://localhost:8888` with `bash scripts/setup-searxng.sh`, which builds its settings from `config/searxng/settings.yml`, and [n8n](https://n8n.io) on `http://localhost:5678`. The public search engines SearXNG scrapes tend to answer a self-hosted instance with CAPTCHAs and rate limits, so put a [Brave Search API](https://brave.com/search/api/) key in `data/run/brave-api-key` (mode 600) before running the script; it is rendered into the container's settings, never into the repo or a command line.
+1. Run [SearXNG](https://github.com/searxng/searxng) on `http://localhost:8888` with `bash scripts/setup-searxng.sh`, which builds its settings from `config/searxng/settings.yml`, and [n8n](https://n8n.io) on `http://localhost:5678`. General web search uses the [Brave Search API](https://brave.com/search/api/) only: the public engines SearXNG would scrape answer a self-hosted instance with CAPTCHAs and rate limits, and Bing returned spam that crowded out real results. Put a Brave key in `data/run/brave-api-key` (mode 600) before running the script, or web search returns nothing; it is rendered into the container's settings, never into the repo or a command line.
 2. In n8n, import `n8n/knowledge_gap_workflow_v2.json` and `n8n/knowledge_qa_workflow.json` (**Workflows → Import from File**) and activate them.
 3. Nothing else to wire: `start-services.sh` and `switch-stack.sh` point the gap detector at `http://localhost:5678/webhook/knowledge-gap` (override with `N8N_WEBHOOK_URL`), and `scripts/run-n8n.sh` hands n8n the API token from `data/run/api-token`.
 

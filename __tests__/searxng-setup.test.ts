@@ -55,6 +55,20 @@ describe("config/searxng/settings.yml", () => {
     expect(settings.use_default_settings).toBe(true);
   });
 
+  // 2026-09-29, gap #82 ("Which company supplies the MES at Roche's Kaiseraugst
+  // site?"): the workflow keeps the top 3 results per query, and Bing's always
+  // rank first. Bing answered with a wrong results page ("starting at 41"):
+  // Swiss pension forums, a senior-care portal, casino spam and unrelated
+  // LinkedIn profiles, so the Brave API's relevant results (Roche MES job ads,
+  // a pharma-MES article on Roche) never reached the 27B and the gap was marked
+  // unresolved. The other scrapers were suspended or behind CAPTCHAs.
+  it("searches the general web with the Brave API only, every scraping engine off", () => {
+    for (const name of ["google", "duckduckgo", "startpage", "brave", "bing", "mojeek", "qwant", "yahoo", "presearch"]) {
+      expect({ name, disabled: engine(settings, name)?.disabled }).toEqual({ name, disabled: true });
+    }
+    expect(engine(settings, "braveapi")?.disabled).not.toBe(true);
+  });
+
   it("serves JSON, which the n8n workflow and the chat's web search request", () => {
     expect(settings.search?.formats).toEqual(expect.arrayContaining(["html", "json"]));
   });
