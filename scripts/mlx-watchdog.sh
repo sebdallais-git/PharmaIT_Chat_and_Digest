@@ -30,6 +30,10 @@ MAX_STRIKES="${WATCHDOG_MAX_STRIKES:-2}"
 # sat at 0%; a server generating a long chat turn or an export narration is
 # busy, and the probe merely queued behind it.
 BUSY_CPU="${WATCHDOG_BUSY_CPU:-5}"
+# 27B generation runs on the GPU, so a busy server can sit below BUSY_CPU (a strike on
+# 2026-09-29 06:51 during a load test). A wedged one -- generation thread dead after a
+# Metal OOM -- leaves the GPU idle. Same threshold as the app's health check.
+BUSY_GPU="${WATCHDOG_BUSY_GPU:-30}"
 
 mkdir -p "$STATE_DIR" "$(dirname "$LOG")"
 log() { printf "%s %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG"; }
@@ -77,6 +81,11 @@ if [ -n "$pid" ]; then
   cpu="$(ps -o %cpu= -p "$pid" 2>/dev/null | tr -d ' ')"
   if awk -v c="${cpu:-0}" -v t="$BUSY_CPU" 'BEGIN { exit !(c >= t) }'; then
     log "generation probe failed (HTTP ${code:-000}) but the server is busy (${cpu}% CPU), not counting a strike"
+    exit 0
+  fi
+  gpu="$(ioreg -r -d 1 -c IOAccelerator 2>/dev/null | grep -o '"Device Utilization %"=[0-9]*' | cut -d= -f2 | sort -n | tail -1)"
+  if [ -n "$gpu" ] && [ "$gpu" -ge "$BUSY_GPU" ]; then
+    log "generation probe failed (HTTP ${code:-000}) but the GPU is busy (${gpu}%), not counting a strike"
     exit 0
   fi
 fi

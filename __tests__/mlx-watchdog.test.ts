@@ -60,7 +60,7 @@ describe("mlx-watchdog.sh", () => {
   // Runs a copy of the watchdog in a sandbox whose switch-stack.sh, curl, lsof,
   // kill and pgrep are recorders: no real port is probed, no process is killed
   // and no stack is started, even on the restart path.
-  function runWatchdog(opts: { stack: string; httpCode: string; priorStrikes?: number; cpu?: string; lsof?: (root: string) => string }) {
+  function runWatchdog(opts: { stack: string; httpCode: string; priorStrikes?: number; cpu?: string; gpu?: string; lsof?: (root: string) => string }) {
     const root = tempDir();
     const scripts = join(root, "scripts");
     const bin = join(root, "bin");
@@ -92,6 +92,8 @@ esac`,
     // CPU of the chat server: 0 by default, i.e. idle, which is what wedged looks like
     stub(join(bin, "ps"), `printf '%s\\n' "${opts.cpu ?? "0.0"}"`);
     stub(join(bin, "sleep"), "exit 0");
+    // GPU load, 0 by default; never the real ioreg, whose GPU is busy whenever a model works
+    stub(join(bin, "ioreg"), `echo '| "PerformanceStatistics" = {"Device Utilization %"=${opts.gpu ?? "0"}}'`);
 
     // kill is a bash builtin, so the stub above would never run and a real
     // process could be signalled. Disable the builtin before the script starts.
@@ -156,6 +158,16 @@ esac`;
     // queues behind it and times out. High CPU means busy, not wedged.
     const lsof = (root: string) => `echo "lsof $*" >>"${root}/calls.log"; echo 111`;
     const { calls, strikes } = runWatchdog({ stack: "mlx", httpCode: "000", priorStrikes: 1, cpu: "87.5", lsof });
+    expect(calls.some((c) => c.startsWith("kill ") || c.includes("ensure-stack"))).toBe(false);
+    expect(strikes).toBe("1");
+  });
+
+  // 27B generation runs on the GPU: on 2026-09-29 06:51 the server was working
+  // through a load test at low CPU and still earned a strike. With one prefill at
+  // a time, a second strike would restart a healthy server mid-reply.
+  it("does not count a strike while the GPU is busy, even at low CPU", () => {
+    const lsof = (root: string) => `echo "lsof $*" >>"${root}/calls.log"; echo 111`;
+    const { calls, strikes } = runWatchdog({ stack: "mlx", httpCode: "000", priorStrikes: 1, cpu: "0.4", gpu: "97", lsof });
     expect(calls.some((c) => c.startsWith("kill ") || c.includes("ensure-stack"))).toBe(false);
     expect(strikes).toBe("1");
   });
