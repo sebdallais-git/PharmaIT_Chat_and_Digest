@@ -838,7 +838,9 @@ describe("switch-stack.sh splash_runnable", () => {
     writeFileSync(funcs, extractFuncs());
     const result = spawnSync("bash", ["-c", 'source "$FUNCS"; splash_runnable'], {
       encoding: "utf-8",
+      // Never the real Homebrew Splash, which this machine may have: this is the source-checkout path
       env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
+             SPLASH_HOMEBREW_BIN: join(dir, "no-homebrew-splash"),
              PROJECT_DIR: process.cwd(), SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
     });
     let xcrunCalled = false;
@@ -1256,6 +1258,7 @@ describe("switch-stack.sh availability", () => {
     const result = spawnSync("bash", ["-c", 'source "$FUNCS"; stack_availability'], {
       encoding: "utf-8",
       env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, FUNCS: funcs, PROJECT_DIR: project,
+             SPLASH_HOMEBREW_BIN: join(dir, "no-homebrew-splash"), // the source checkout above, not a real install
              PHARMALLM_RUN_DIR: join(dir, "run"), SCRIPT_DIR: join(process.cwd(), "scripts") },
     });
     expect(result.status).toBe(0);
@@ -1278,5 +1281,76 @@ describe("switch-stack.sh availability", () => {
     expect(a.splash).toBe(
       "Splash cannot build its engine: Xcode's Metal compiler is missing (install Xcode; the Command Line Tools are not enough)",
     );
+  });
+});
+
+// Splash's Homebrew package ships its Metal kernels precompiled ("no Xcode or
+// local tuning required"); only a source checkout compiles them on first start
+// and needs Xcode's metal. The stack now prefers the Homebrew binary.
+describe("switch-stack.sh Splash from Homebrew", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function run(opts: { homebrew: boolean; built?: boolean; xcrunRc?: number }, command: string) {
+    const dir = mkdtempSync(join(tmpdir(), "splash-brew-"));
+    dirs.push(dir);
+    const brewBin = join(dir, "homebrew", "bin", "splash");
+    mkdirSync(join(dir, "homebrew", "bin"), { recursive: true });
+    if (opts.homebrew) {
+      writeFileSync(brewBin, "#!/bin/sh\n");
+      chmodSync(brewBin, 0o755);
+    }
+    const splashDir = join(dir, "splash-src");
+    mkdirSync(join(splashDir, "build"), { recursive: true });
+    writeFileSync(join(splashDir, "splash"), "#!/bin/sh\n");
+    chmodSync(join(splashDir, "splash"), 0o755);
+    if (opts.built) {
+      writeFileSync(join(splashDir, "build", "splash"), "#!/bin/sh\n");
+      chmodSync(join(splashDir, "build", "splash"), 0o755);
+    }
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "xcrun"), `#!/bin/bash\nexit ${opts.xcrunRc ?? 1}\n`);
+    chmodSync(join(bin, "xcrun"), 0o755);
+    const funcs = join(dir, "funcs.sh");
+    writeFileSync(funcs, extractFuncs());
+    const result = spawnSync("bash", ["-c", `source "$FUNCS"; ${command}`], {
+      encoding: "utf-8",
+      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
+             SPLASH_HOMEBREW_BIN: brewBin, PROJECT_DIR: process.cwd(),
+             SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
+    });
+    return { status: result.status, stdout: result.stdout.trim(), brewBin, splashDir };
+  }
+
+  it("uses the Homebrew binary when it is installed", () => {
+    const r = run({ homebrew: true }, 'echo "$SPLASH_BIN"');
+    expect(r.stdout).toBe(r.brewBin);
+  });
+
+  it("falls back to the source checkout without it", () => {
+    const r = run({ homebrew: false }, 'echo "$SPLASH_BIN"');
+    expect(r.stdout).toBe(join(r.splashDir, "splash"));
+  });
+
+  it("counts the Homebrew binary as runnable without Xcode: its kernels are precompiled", () => {
+    expect(run({ homebrew: true, xcrunRc: 1 }, "splash_runnable").status).toBe(0);
+  });
+
+  it("still requires a build or the Metal tools for a source checkout", () => {
+    expect(run({ homebrew: false, xcrunRc: 1 }, "splash_runnable").status).not.toBe(0);
+    expect(run({ homebrew: false, built: true, xcrunRc: 1 }, "splash_runnable").status).toBe(0);
+  });
+});
+
+describe("switch-stack.sh prepare installs Splash", () => {
+  it("from Homebrew when brew is available, the source checkout only as a fallback", () => {
+    const prepare = script.slice(script.indexOf("prepare() {"));
+    const brew = prepare.indexOf("brew install incoai/tap/splash");
+    const clone = prepare.indexOf('git clone "$SPLASH_REPO"');
+    expect(brew).toBeGreaterThan(-1);
+    expect(clone).toBeGreaterThan(brew);
   });
 });
