@@ -76,3 +76,15 @@ case "$2" in mlx) echo "http://localhost:8080 m" ;; splash) echo "http://localho
     expect(script).not.toMatch(/check_port 8080 "MLX chat"/);
   });
 });
+
+describe("check-services.sh gap-fill webhook check", () => {
+  it("never POSTs to the live webhook, which would start a research run", () => {
+    const lines = script.split("\n").filter((l) => l.includes("webhook/knowledge-gap"));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) expect(l).not.toMatch(/-X POST|-d '/);
+  });
+
+  it("tells a registered webhook from a missing one by n8n's answer to a GET", () => {
+    expect(script).toMatch(/Did you mean to make a POST request/);
+  });
+});

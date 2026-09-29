@@ -359,3 +359,34 @@ describe("knowledge gap workflow lets the app skip clearly irrelevant pages", ()
     expect(out.filter((i) => !i.json.error)).toHaveLength(0);
   });
 });
+
+// check-services.sh used to POST {"gap_id":"probe"} to the live webhook to prove
+// it answered: 26 runs searched the web for "undefined" and 19 stored junk in the
+// knowledge base (MDN's `undefined`, Wikipedia "Undefined", dictionaries, a news
+// front page). Any call without a real gap now ends before a search or a 27B call.
+describe("knowledge gap workflow only researches real gaps", () => {
+  it("validates the call right after the webhook", () => {
+    const next = workflow.connections["Knowledge Gap Webhook"].main[0]?.map((c) => c.node);
+    expect(next).toEqual(["Validate Gap"]);
+    expect(workflow.connections["Validate Gap"].main[0]?.map((c) => c.node)).toEqual(["Generate Search Queries (Ollama)"]);
+  });
+
+  const withBody = (body: Record<string, unknown>): Item[] => [
+    { json: { headers: {}, params: {}, query: {}, body, webhookUrl: "", executionMode: "production" } },
+  ];
+
+  it("passes a real gap through unchanged", () => {
+    const input = withBody({ gap_id: 82, search_topic: "Roche Kaiseraugst MES vendor", original_query: "q" });
+    expect(runCode("Validate Gap", input)).toEqual(input);
+  });
+
+  it.each([
+    ["the old health-check probe", { question: "probe", gap_id: "probe", confidence: 0.1 }],
+    ["no gap id", { search_topic: "Roche Kaiseraugst MES vendor" }],
+    ["no topic", { gap_id: 82 }],
+    ["a blank topic", { gap_id: 82, search_topic: "   " }],
+    ["a topic of undefined", { gap_id: 82, search_topic: "undefined" }],
+  ])("stops %s", (_label, body) => {
+    expect(runCode("Validate Gap", withBody(body))).toEqual([]);
+  });
+});
