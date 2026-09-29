@@ -130,7 +130,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   wording moved agreement 35% → 72%, and 16-bit → 4-bit moved it to 91%; thresholds alone never helped.
 - Keep `OLLAMA_NUM_PARALLEL=1` — each slot allocates its own 64K context.
 - Same for MLX: `switch-stack.sh` starts `mlx_lm.server` with 1 prefill / 2 decodes at a time, a
-  4 GiB prompt cache and a 2 GiB MLX buffer-cache cap (`run-jev.sh` caps the scorer at 1 GiB). The
+  4 GiB prompt cache and a 2 GiB MLX buffer-cache cap (`run-jev.sh` caps the scorer at 1 GiB,
+  `mlx-embed-server.py` the embedder at 512 MiB; uncapped, each grew to 36 GB under varied inputs). The
   defaults (8/32, uncapped) ran the GPU out of memory under a burst: the generation thread dies,
   the server keeps listening, and every request hangs until the watchdog restarts it.
   With one prefill at a time, a probe queues behind long requests: `/api/health` and the watchdog
