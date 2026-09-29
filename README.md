@@ -115,11 +115,11 @@ flowchart LR
     Q["Chat question"] --> R["Parallel retrieval<br/>ChromaDB · in-memory · Neo4j · news"]
     R --> A["27B answer<br/>streamed to the user"]
     A --> BG["After done<br/>background"]
-    BG --> D["Gap detector, one 27B call<br/>in scope? answered?"]
+    BG --> D["Gap detector, one 27B call<br/>in scope? answered?<br/>asked-for thing named?"]
     BG -. "shadow_detection" .-> S["System One<br/>same question, recorded only"]
     S --> DS[("detection_shadow")]
     D --> RL[("request_log<br/>every turn")]
-    D -- "in scope and not answered<br/>2 h cooldown per topic" --> GL[("gap_log")]
+    D -- "in scope and not answered,<br/>or a named thing it asked for is missing<br/>2 h cooldown per topic" --> GL[("gap_log")]
     GL --> WH["n8n webhook<br/>gap_id, topic, question"]
 
     style A fill:#064e3b,stroke:#22d3ee,color:#e5e7eb

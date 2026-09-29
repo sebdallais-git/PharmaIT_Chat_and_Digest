@@ -19,6 +19,33 @@ describe("parseNeedsResearch", () => {
     expect(parseNeedsResearch(reply(false, true)).gap).toBe(false);
   });
 
+  // 2026-09-29, live on Splash: "Which system integrator is running Novartis' SAP S/4HANA
+  // migration?" was answered "no specific system integrator is named", then Novartis' vendor
+  // stack -- counted as answered, so no gap. A question asking for one specific named thing is
+  // a gap when the answer does not name it. Measured on 66 cases: false gaps on answers the
+  // user accepted 9 -> 7, and both live cases caught (v1: 0 of 2).
+  it("raises a gap when the question asks for a specific thing the answer does not name", () => {
+    const reply = (asks: boolean, names: boolean) =>
+      JSON.stringify({ in_scope: true, answered: true, asks_specific: asks, names_it: names, reason: "r", search_topic: "Novartis S/4HANA integrator" });
+    expect(parseNeedsResearch(reply(true, false))).toMatchObject({ parsed: true, gap: true });
+    expect(parseNeedsResearch(reply(true, true)).gap).toBe(false);
+    expect(parseNeedsResearch(reply(false, false)).gap).toBe(false);
+    const outOfScope = JSON.stringify({ in_scope: false, answered: true, asks_specific: true, names_it: false });
+    expect(parseNeedsResearch(outOfScope).gap).toBe(false);
+  });
+
+  // A reply without the two newer fields is read with the older rule, never thrown away:
+  // a partial answer from the model must not switch detection off
+  it("falls back to in-scope-and-unanswered when the specific-thing fields are missing", () => {
+    expect(parseNeedsResearch('{"in_scope": true, "answered": true}')).toMatchObject({ parsed: true, gap: false });
+    expect(parseNeedsResearch('{"in_scope": true, "answered": false}')).toMatchObject({ parsed: true, gap: true });
+  });
+
+  it("reads quoted booleans in the specific-thing fields too", () => {
+    const text = '{"in_scope": "true", "answered": "true", "asks_specific": "true", "names_it": "false"}';
+    expect(parseNeedsResearch(text).gap).toBe(true);
+  });
+
   it("reads the JSON out of surrounding text", () => {
     const text = 'Here is my verdict:\n{"in_scope": true, "answered": false, "reason": "says unknown", "search_topic": "x"}\nDone.';
     expect(parseNeedsResearch(text)).toMatchObject({ parsed: true, gap: true, reason: "says unknown" });
@@ -56,6 +83,13 @@ describe("needsResearchPrompt", () => {
   it("names small talk and personal questions as out of scope", () => {
     expect(prompt).toMatch(/small talk/i);
     expect(prompt).toMatch(/personal questions/i);
+  });
+
+  it("asks whether a specific named thing was asked for and actually named", () => {
+    expect(prompt).toMatch(/asks_specific/);
+    expect(prompt).toMatch(/names_it/);
+    expect(prompt).toMatch(/does not name it/);
+    expect(prompt).toMatch(/search_topic/); // the gap log and the n8n webhook need it
   });
 
   it("counts general knowledge and incomplete sources as answered", () => {
