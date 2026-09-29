@@ -299,6 +299,18 @@ The oMLX stack shares the MLX index and ChromaDB collection because their embedd
 
 Every index also records its stack, embedding model and dimension (1024), plus a completeness marker written only when a rebuild ran to the end. Search on a mismatched, incomplete or rebuilding index is refused rather than answered with meaningless matches.
 
+### Memory limits
+
+MLX keeps every freed GPU buffer for reuse and sets no cap of its own, and the defaults of `mlx_lm.server` work on 8 prompts and 32 replies at once. On one 48 GB Mac, under varied real inputs, each of the three MLX processes grew to about 36 GB by itself; together they pushed the 27B into swap until it froze or ran out of GPU memory. Each is now capped, measured on the same real inputs before and after:
+
+| Process | Cap | Uncapped | Capped |
+|---|---|---|---|
+| 27B chat (`:8080`) | 2 GiB buffer cache, 1 prompt / 2 replies at a time, 4 GiB prompt cache | 6 concurrent 7.5k-token requests: all failed, GPU out of memory at 36 GB | all 6 answered, 27 GB peak, same total time |
+| jev scorer (`:8010`) | 1 GiB | 36 GB within 30 page checks | 4.2 GB, same latency |
+| Embedder (`:8081`) | 512 MiB | 36 GB within 90 embeddings | 1.5 GB, slightly faster |
+
+Because the 27B now takes one prompt at a time, a health probe can queue behind a long request: `/api/health` and the watchdog read GPU load when their probe times out, and a server keeping the GPU busy is reported `busy` (healthy), not wedged.
+
 ### 64K context
 
 `ollama/qwen3.8-pharma.Modelfile` sets `num_ctx 65536` and MLX is started with `--prompt-cache-bytes`. The model is a hybrid architecture: only 16 of its 64 layers keep a KV cache, so 64K costs about 4 GB instead of the 1 GB a 16K context used. Ollama's OpenAI API cannot set the context per request, so one shared size keeps a single copy of the model loaded. Keep `OLLAMA_NUM_PARALLEL` at 1 — each parallel slot allocates its own 64K context.
@@ -1003,7 +1015,7 @@ Everything works with defaults. `scripts/switch-stack.sh` and `npm run dev` set 
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_PROVIDER` | `ollama` | Active stack: `ollama`, `mlx` or `omlx` |
+| `LLM_PROVIDER` | `ollama` | Active stack: `ollama`, `mlx`, `omlx` or `splash` |
 | `PORT` | `3000` | HTTP port |
 | `HTTPS_PORT` | `3443` | HTTPS port (used when `certs/key.pem` and `certs/cert.pem` exist) |
 | `HOST` | `0.0.0.0` | Bind address |
@@ -1019,7 +1031,12 @@ Everything works with defaults. `scripts/switch-stack.sh` and `npm run dev` set 
 | `NEO4J_PASSWORD` | `pharma2024` | Neo4j password |
 | `APP_URL` | `http://localhost:3000` | App URL used by `scripts/reindex-stack.ts` |
 | `PHARMAITCHAT_API_TOKEN` | *(none)* | Token for `/v1` and operations routes; without it they accept only same-machine requests addressed as localhost |
-| `MLX_PROMPT_CACHE_BYTES` | `8589934592` | Memory cap for `mlx_lm.server`'s prompt cache (set by `switch-stack.sh`) |
+| `MLX_PROMPT_CACHE_BYTES` | `4294967296` | Memory cap for `mlx_lm.server`'s prompt cache (set by `switch-stack.sh`) |
+| `MLX_CACHE_LIMIT` | `2147483648` | MLX buffer-cache cap for the 27B chat server (`switch-stack.sh`) |
+| `MLX_PROMPT_CONCURRENCY` / `MLX_DECODE_CONCURRENCY` | `1` / `2` | How many prompts the 27B reads, and replies it generates, at once; extra requests queue (`switch-stack.sh`) |
+| `JEV_MLX_CACHE_LIMIT` | `1073741824` | MLX buffer-cache cap for the jev scorer (`scripts/run-jev.sh`) |
+| `MLX_EMBED_CACHE_LIMIT` | `536870912` | MLX buffer-cache cap for the embedding server (`python/mlx-embed-server.py`) |
+| `WATCHDOG_BUSY_CPU` / `WATCHDOG_BUSY_GPU` | `5` / `30` | Above either (%), a chat server that misses the watchdog's probe is busy, not wedged |
 | `MCP_HOST` / `MCP_PORT` | `127.0.0.1` / `3200` | Where `pharmaitchat-mcp` listens (`scripts/run-mcp.sh`); a non-loopback host requires `data/run/mcp-token` |
 | `MCP_TOKEN` | *(none)* | Bearer token agents send to `pharmaitchat-mcp`; read from `data/run/mcp-token` by `run-mcp.sh` |
 
@@ -1141,7 +1158,7 @@ npm --prefix mcp run typecheck
 
 | Symptom | Fix |
 |---|---|
-| Nothing answers after a reboot | The app and the model stack have no launch agent. Run `scripts/start-services.sh` or `scripts/switch-stack.sh ollama` |
+| Nothing answers after a reboot | The `com.pharmaitchat.stack` launch agent starts ChromaDB, the active stack and the app at login. Check `bash scripts/check-services.sh`; restart it with `launchctl kickstart -k gui/$UID/com.pharmaitchat.stack` |
 | `Models for mlx are missing` | Run `scripts/switch-stack.sh prepare` once |
 | `Models for splash are missing` | Run `scripts/switch-stack.sh prepare` once — clones Splash and downloads the 17.4 GB model |
 | Splash won't start, or fails with an unsupported-hardware error | Splash needs an Apple M3 or newer and **macOS 26.4 or later**, with 36 GB unified memory minimum (48 GB recommended); check `sw_vers` and the Mac model before filing it as a bug |
@@ -1151,10 +1168,16 @@ npm --prefix mcp run typecheck
 | `/api/graph/rebuild` returns `409` | Graph rebuild only works on the Ollama stack: `scripts/switch-stack.sh ollama` |
 | Reindex, `/v1` or `/api/llm/complete` rejected during a benchmark | Wait for it to finish, or `POST /api/bench/stop` |
 | Health is `degraded` | A supporting service (ChromaDB, SearXNG or Neo4j) is down; chat still works |
+| Hermes does not answer on Telegram | First check you are writing to the right bot (`@…Hermes_bot`, the chat that receives its startup notice and daily reports): Hermes only sees messages sent to its own bot. Then check `check-services.sh` and `~/.hermes/logs/agent.log` for `inbound message` |
+| The UI's stack selector is disabled | `check-services.sh`, line `UI stack switch`, gives the reason: the app has no Telegram credentials (restart the `com.pharmaitchat.stack` launch agent), or the Hermes `pharmaitchat-switch` plugin is not ready (restart the gateway) |
 | `401 Unauthorized` on `/api/*` or `/v1/*` | Send `Authorization: Bearer <token>`, or reach the app as `localhost` from the same machine |
 | Mic button missing or blocked on iPad | Use HTTPS on port 3443 with certificates in `certs/` that the device trusts |
-| `npm run dev` fails on port 3000 | `prepare` and `switch-stack.sh ollama\|mlx\|omlx\|splash` already start the app in the background (log in `data/logs/app.log`) |
-| Switch or rebuild failed | Check `data/logs/` (`mlx-chat.log`, `mlx-embed.log`, `omlx.log`, `splash.log`, `reindex-<stack>.log`, `app.log`) |
+| `npm run dev` fails on port 3000 | The app already runs in the `com.pharmaitchat.stack` launch agent, under `tsx watch` (log in `data/logs/stack.log`); a stack switch hands it back to that job. Without the launch agent, `switch-stack.sh` starts it in the background (log in `data/logs/app.log`) |
+| Switch or rebuild failed | Check `data/logs/` (`mlx-chat.log`, `mlx-embed.log`, `omlx.log`, `splash.log`, `reindex-<stack>.log`, `app.log`). `mlx-chat.log` is appended across restarts, with a `=== … starting mlx_lm.server` line per start |
+| A stack shows as `(unavailable)` in the selector | `bash scripts/switch-stack.sh availability` says why, using the same checks as a switch: models missing (`prepare`), or Splash unable to build its engine. The switch is refused before any Telegram confirmation is sent |
+| `Splash cannot build its engine: Xcode's Metal compiler is missing` | Splash compiles its Metal kernels on its first start and needs full Xcode, not just the Command Line Tools: install Xcode, then `sudo xcode-select -s /Applications/Xcode.app` |
+| Chat and Hermes hang; `mlx-chat.log` shows `[METAL] … Insufficient Memory` | The 27B ran out of GPU memory and its generation thread died while the server kept listening; the watchdog restarts it. Check memory with `top -o mem`: an uncapped MLX process (the 27B, the jev scorer or the embedder) can grow to ~36 GB. All three are capped by default; see [Memory limits](#memory-limits) |
+| Health shows `llm_chat: busy` | Not a fault: the 27B takes one prompt at a time and the probe queued behind a long request while the GPU was working. It counts as healthy, and the watchdog counts no strike |
 
 </details>
 
