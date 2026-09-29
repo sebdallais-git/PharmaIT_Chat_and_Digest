@@ -9,26 +9,39 @@ search:
     - html
     - json
 
-# The default general-web engines (Google, DuckDuckGo, Startpage, Brave) all
-# answered this machine with CAPTCHAs, "access denied" or rate limits on
-# 2026-09-26, and every gap-fill search came back empty. These engines are off
-# by default but tolerate self-hosted instances better; the defaults stay on.
+# General web search goes through Brave's Search API only; every engine that
+# scrapes a public search page is off. On 2026-09-26 the defaults (Google,
+# DuckDuckGo, Startpage, Brave) all answered this machine with CAPTCHAs, access
+# denied or rate limits, so Bing, Mojeek, Qwant, Yahoo and Presearch were
+# switched on as a fallback. Once the Brave API was keyed they only added noise:
+# on 2026-09-29 (gap #82) Bing, whose results always rank first, returned a
+# wrong results page -- pension forums, casino spam, unrelated LinkedIn
+# profiles -- which filled the workflow's top 3 per query and crowded out the
+# Brave API's relevant results, and the rest were suspended. Without a key in
+# data/run/brave-api-key, general web search returns nothing.
 engines:
+  - name: google
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: brave
+    disabled: true
   - name: bing
-    disabled: false
+    disabled: true
   - name: mojeek
-    disabled: false
+    disabled: true
   - name: qwant
-    disabled: false
+    disabled: true
   - name: yahoo
-    disabled: false
+    disabled: true
   - name: presearch
-    disabled: false
-  # Every engine above that scrapes a public search page refused this machine
-  # too (CAPTCHAs, access denied, suspensions). Brave's Search API
-  # authenticates with a key instead of rate-limiting by address. The key never
-  # goes in this file: scripts/setup-searxng.sh renders data/run/brave-api-key
-  # into the container's copy, replacing the two marked lines below.
+    disabled: true
+  # Brave's Search API authenticates with a key instead of rate-limiting by
+  # address. The key never goes in this file: scripts/setup-searxng.sh renders
+  # data/run/brave-api-key into the container's copy, replacing the two marked
+  # lines below.
   - name: braveapi
     api_key: ""  # placeholder: brave-api-key
     inactive: true  # placeholder: brave-api-inactive
