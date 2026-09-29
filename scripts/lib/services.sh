@@ -62,7 +62,14 @@ is_project_pid() {
     done
   fi
   cmd="$(ps -ww -p "$pid" -o command= 2>/dev/null)" || return 1
-  [[ "$cmd" == *"$PROJECT_DIR/"* ]]
+  [[ "$cmd" == *"$PROJECT_DIR/"* ]] && return 0
+  # Servers installed outside the project (Homebrew's Splash) are recognised by their install
+  # path; switch-stack.sh sets these. Space-separated; paths with spaces are not supported.
+  local marker
+  for marker in ${PROJECT_PROCESS_MARKERS:-}; do
+    [[ "$cmd" == *"$marker"* ]] && return 0
+  done
+  return 1
 }
 
 # PIDs listening on a TCP port, one per line (empty when nothing listens)
