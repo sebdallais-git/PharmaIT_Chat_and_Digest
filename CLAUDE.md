@@ -123,6 +123,10 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - Measure any scorer prompt/model change with the replay harness before shipping: question
   wording moved agreement 35% → 72%, and 16-bit → 4-bit moved it to 91%; thresholds alone never helped.
 - Keep `OLLAMA_NUM_PARALLEL=1` — each slot allocates its own 64K context.
+- Same for MLX: `switch-stack.sh` starts `mlx_lm.server` with 1 prefill / 2 decodes at a time, a
+  4 GiB prompt cache and a 2 GiB MLX buffer-cache cap (`run-jev.sh` caps the scorer at 1 GiB). The
+  defaults (8/32, uncapped) ran the GPU out of memory under a burst: the generation thread dies,
+  the server keeps listening, and every request hangs until the watchdog restarts it.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
   `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`).
