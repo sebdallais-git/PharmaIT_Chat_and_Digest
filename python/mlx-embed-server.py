@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import mlx.core as mx
@@ -19,6 +20,17 @@ from mlx_lm import load
 
 MAX_TOKENS = 8192
 EOS_TOKEN = "<|endoftext|>"
+
+
+def cache_limit_bytes() -> int:
+    """MLX keeps freed GPU buffers for reuse with no cap, and every embedding is a forward pass over a
+    different number of tokens: uncapped, a test instance grew from 0.9 GB to 36 GB within 90 varied
+    requests (2026-09-29), enough to push the 27B beside it into swap. 512 MiB held it at 1.5 GB with
+    no loss of speed. Overridable with MLX_EMBED_CACHE_LIMIT (bytes)."""
+    raw = os.environ.get("MLX_EMBED_CACHE_LIMIT", "536870912").strip()
+    if not raw.isdigit():
+        raise SystemExit(f"MLX_EMBED_CACHE_LIMIT must be a byte count, got {raw!r}")
+    return int(raw)
 
 
 class Embedder:
@@ -95,6 +107,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8081)
     args = parser.parse_args()
 
+    mx.set_cache_limit(cache_limit_bytes())
     embedder = Embedder(args.model)
     # Single-threaded on purpose: MLX evaluation isn't safe to run from several threads
     server = HTTPServer((args.host, args.port), make_handler(embedder))
