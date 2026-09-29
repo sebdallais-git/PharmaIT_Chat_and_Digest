@@ -533,15 +533,37 @@ mcp_service() {
   esac
 }
 
+# The launchd job that runs start-services.sh at login: ChromaDB, the active stack and the app
+STACK_JOB_LABEL="com.pharmaitchat.stack"
+# The job reads $PROJECT_DIR/data/run/active-stack, so only a run using that directory can hand
+# the app to it; any other RUN_DIR (every test sandbox) starts the app itself. A test that reached
+# start_app with the real launchctl restarted the live job twice on 2026-09-29 before this guard.
+stack_job_loaded() {
+  [ "$RUN_DIR" = "$PROJECT_DIR/data/run" ] || return 1
+  launchctl print "gui/$(id -u)/$STACK_JOB_LABEL" >/dev/null 2>&1
+}
+
 start_app() {
   cd "$PROJECT_DIR"
-  # N8N_WEBHOOK_URL: same default as start-services.sh, or the gap loop stops
-  # working after the first stack switch
-  LLM_PROVIDER="$1" CHROMADB_URL="$CHROMA_URL" PHARMAITCHAT_API_TOKEN="$(api_token)" \
-    TELEGRAM_BOT_TOKEN="$(telegram_value bot-token)" TELEGRAM_CHAT_ID="$(telegram_value chat-id)" \
-    N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-5678}/webhook/knowledge-gap}" \
-    nohup npx tsx src/server.ts >"$LOG_DIR/app.log" 2>&1 &
-  echo $! >"$RUN_DIR/app.pid"
+  if stack_job_loaded; then
+    # launchd owns the app: started here it ran without tsx watch (merged code was not picked up)
+    # and unsupervised, beside a job that still believed it owned the app. Record the stack it
+    # must run -- start-services.sh reads it -- and have launchd restart the job, which brings
+    # the app back under tsx watch with the same environment it gets at login.
+    echo "$1" >"$RUN_DIR/active-stack"
+    rm -f "$RUN_DIR/app.pid"
+    launchctl kickstart -k "gui/$(id -u)/$STACK_JOB_LABEL" \
+      || { log "launchd would not restart $STACK_JOB_LABEL"; return 1; }
+  else
+    # No launchd job (a development machine): start the app directly.
+    # N8N_WEBHOOK_URL: same default as start-services.sh, or the gap loop stops
+    # working after the first stack switch
+    LLM_PROVIDER="$1" CHROMADB_URL="$CHROMA_URL" PHARMAITCHAT_API_TOKEN="$(api_token)" \
+      TELEGRAM_BOT_TOKEN="$(telegram_value bot-token)" TELEGRAM_CHAT_ID="$(telegram_value chat-id)" \
+      N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-5678}/webhook/knowledge-gap}" \
+      nohup npx tsx src/server.ts >"$LOG_DIR/app.log" 2>&1 &
+    echo $! >"$RUN_DIR/app.pid"
+  fi
 
   local waited=0 status=""
   while [ "$waited" -lt 180 ]; do
@@ -657,6 +679,9 @@ switch_to() {
   show_logs
   if [ "$previous" != "$target" ]; then
     log "Rolling back to $previous..."
+    # start_app records the stack it hands to launchd: put the previous one back first, so a
+    # reboot never comes up on the stack that just failed
+    echo "$previous" >"$RUN_DIR/active-stack"
     stop_app || true
     if ! stop_stack "$target"; then
       log "Could not stop $target; not starting $previous to avoid running both stacks"

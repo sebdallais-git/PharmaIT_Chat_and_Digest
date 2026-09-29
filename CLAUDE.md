@@ -114,7 +114,12 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   `scripts/check-stale-sessions.sh` (read-only; `--quiet` for the verdict only) before and after
   a rename: it lists stale routed sessions, dead-name calls and cron jobs that name the old
   server. Rotate each flagged session from inside its own chat (`/new`), then re-run.
-- The app runs under `tsx watch`: saving a file in `src/` reloads the live app.
+- The app runs under `tsx watch` in the `com.pharmaitchat.stack` launchd job: saving a file in `src/`
+  reloads the live app. A stack switch hands the app back to that job (`start_app` →
+  `launchctl kickstart -k`) rather than starting its own copy.
+- A test that reaches `switch-stack.sh` functions must stub `launchctl` and set its own
+  `PHARMALLM_RUN_DIR`: `start_app` only hands off to launchd when `RUN_DIR` is the project's own
+  `data/run`. A test without that restarted the live stack job twice on 2026-09-29.
 - Neo4j and SearXNG run in **colima**, not Docker Desktop (`scripts/lib/services.sh` starts it).
 - Editing the n8n workflow JSON does nothing until deployed: export a backup → `launchctl bootout`
   → `n8n import:workflow` → `n8n publish:workflow` → `launchctl bootstrap`.
