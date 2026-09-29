@@ -347,26 +347,26 @@ flowchart LR
 
 ### RAG answers (the web chat workload)
 
-All three stacks measured on the same day, **2026-09-19**, on the **same workstation-class machine** — one local box, 48 GB unified memory. Full pipeline through `POST /api/chat`: 23 questions from `bench/questions.json`, one cold run each after a warm-up question outside the set, temperature 0, no web search, `max_tokens` 1024, background LLM jobs paused. The stacks were switched between runs on that one machine (macOS 26.4); only the stack changed, and nothing else ran while a run was in flight.
+Ollama, MLX and oMLX measured on the same day, **2026-09-19** (Splash on 2026-09-29, see below), on the **same workstation-class machine** — one local box, 48 GB unified memory. Full pipeline through `POST /api/chat`: 23 questions from `bench/questions.json`, one cold run each after a warm-up question outside the set, temperature 0, no web search, `max_tokens` 1024, background LLM jobs paused. The stacks were switched between runs on that one machine (macOS 26.4); only the stack changed, and nothing else ran while a run was in flight.
 
 | Metric (median) | 🦙 Ollama | 🍎 MLX | ⚡ oMLX | 💦 Splash |
 |---|---:|---:|---:|---:|
-| Time to first token | 19.1 s | 18.4 s | **17.5 s** | *not yet measured* |
-| Decode speed | 12.4 tok/s | 13.2 tok/s | **15.2 tok/s** | *not yet measured* |
-| Total time per answer | 99.6 s | 92.3 s | **82.5 s** | *not yet measured* |
-| Query embedding | 31 ms | **19 ms** | 21 ms | *not yet measured* |
-| Retrieval | 76 ms | **44 ms** | 68 ms | *not yet measured* |
-| Peak system memory used | 42,845 MB | **37,409 MB** | 41,009 MB | *not yet measured* |
-| Model process memory | 28,459 MB | **16,184 MB** | 17,119 MB | *not yet measured* |
-| Answers hitting the 1024-token cap | 15 / 23 | 11 / 23 | 10 / 23 | *not yet measured* |
-| Failed runs | 0 / 23 | 0 / 23 | 0 / 23 | *not yet measured* |
-| Version | Ollama 0.34.0 | mlx 0.32.2, mlx-lm 0.31.3 | oMLX 0.7.0.dev3 | *not yet measured* |
+| Time to first token | 19.1 s | 18.4 s | 17.5 s | **12.1 s** |
+| Decode speed | 12.4 tok/s | 13.2 tok/s | 15.2 tok/s | **40.1 tok/s** |
+| Total time per answer | 99.6 s | 92.3 s | 82.5 s | **36.0 s** |
+| Query embedding | 31 ms | **19 ms** | 21 ms | 30 ms |
+| Retrieval | 76 ms | **44 ms** | 68 ms | **44 ms** |
+| Peak system memory used | 42,845 MB | **37,409 MB** | 41,009 MB | 43,712 MB |
+| Model process memory | 28,459 MB | 16,184 MB | 17,119 MB | 6,552 MB* |
+| Answers hitting the 1024-token cap | 15 / 23 | 11 / 23 | 10 / 23 | 11 / 23 |
+| Failed runs | 0 / 23 | 0 / 23 | 0 / 23 | 0 / 23 |
+| Version | Ollama 0.34.0 | mlx 0.32.2, mlx-lm 0.31.3 | oMLX 0.7.0.dev3 | Splash 1.1.0 (Homebrew) |
 
-**oMLX generates fastest** — 23% quicker decode than Ollama and 15% quicker than MLX, which compounds into a 17% shorter answer than Ollama end to end. **MLX stays leanest**: lowest peak memory and the fastest retrieval, because its embedding server is a separate process rather than sharing one with chat as oMLX does. Ollama's memory figure is honest now that the sampler follows its `llama-server` children — it genuinely holds the most.
+**Among the three measured on 2026-09-19, oMLX generates fastest** — 23% quicker decode than Ollama and 15% quicker than MLX, which compounds into a 17% shorter answer than Ollama end to end. **MLX stays leanest**: lowest peak memory and the fastest retrieval, because its embedding server is a separate process rather than sharing one with chat as oMLX does. Ollama's memory figure is honest now that the sampler follows its `llama-server` children — it genuinely holds the most.
 
 The oMLX and MLX rows come from the *same* ChromaDB collection and the same on-disk index: the two stacks share them, so these numbers compare generation, not two different corpora.
 
-**Splash has no benchmark numbers here yet.** It runs on this machine (Homebrew 1.1.0, first switched to on 2026-09-29: ready in about 23 s, six concurrent 7.5k-token requests all answered within its own memory budget), but `npx tsx scripts/benchmark-stack.ts` has not been run on it, so there is no comparable row. The columns above are placeholders, not zeros.
+**Splash answers 2.5× faster than the next stack**: 36 s per answer against oMLX's 82.5 s and MLX's 92.3 s, from a decode speed of 40 tok/s — it pairs the 27B with a trained draft model that proposes tokens ahead (speculative decoding). It was measured on **2026-09-29**, ten days after the others, on the same machine; MLX was re-run the same day and matched its 2026-09-19 numbers within 1% (13.1 tok/s, 92.3 s), so the columns compare. The cost is memory: the highest peak system use of the four (43.7 GB). \*Splash maps its weights from disk and keeps GPU memory outside the process, so its process figure undercounts; compare the system row. Splash serves chat only and borrows MLX's embedding server, hence the same retrieval.
 
 ### Long prompts (the agent workload)
 
