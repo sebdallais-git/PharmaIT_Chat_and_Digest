@@ -224,15 +224,15 @@ describe("hermes-setup.sh install-config", () => {
 });
 
 describe("hermes-setup.sh install-cron", () => {
-  it("creates all five jobs when none exist", () => {
+  it("creates all six jobs when none exist", () => {
     const box = sandbox();
 
     const result = setup(box, ["install-cron"]);
 
     expect(result.status).toBe(0);
     const calls = readFileSync(box.calls, "utf-8").trim().split("\n");
-    // 5 jobs plus the one `config set` the script-mode job needs (C1(b)).
-    expect(calls).toHaveLength(6);
+    // 6 jobs plus the one `config set` the watchlist ingest needs (C1(b)).
+    expect(calls).toHaveLength(7);
     expect(calls[0]).toContain("hermes [cron] [create] [0 6 * * *] [Scheduled job: morning news digest.");
     expect(calls[0]).toContain("[--name] [pharmaitchat-news-digest] [--deliver] [telegram]");
     expect(calls[2]).toContain("[--name] [pharmaitchat-health-watch]");
@@ -251,9 +251,9 @@ describe("hermes-setup.sh install-cron", () => {
     expect(result.status).toBe(0);
     const calls = readFileSync(box.calls, "utf-8");
     expect(calls).toContain("hermes [cron] [edit] [abc123] [--schedule] [0 9,19 * * *] [--prompt]");
-    // 5 defined, 1 (health-watch) already exists and is edited: the other
-    // 3 prompt-mode jobs plus the script-mode watchlist ingest are created.
-    expect(calls.match(/\[create\]/g)).toHaveLength(4);
+    // 6 defined, 1 (health-watch) already exists and is edited: the other
+    // 3 prompt-mode jobs plus the two script-mode jobs are created.
+    expect(calls.match(/\[create\]/g)).toHaveLength(5);
   });
 
   it("installs the watchlist ingest as a script-mode job: wrapper copied, no LLM step, --deliver local with a Telegram failure override", () => {
@@ -280,6 +280,12 @@ describe("hermes-setup.sh install-cron", () => {
       "hermes [cron] [create] [30 2 * * *] [--name] [pharmaitchat-watchlist-ingest] " +
         "[--script] [pharmaitchat-watchlist-ingest.sh] [--no-agent] [--deliver] [local] [--failure-deliver] [telegram]",
     );
+    // The KB canary job has no timeout of its own: no second `config set`
+    expect(calls[6]).toBe(
+      "hermes [cron] [create] [0 5 * * *] [--name] [pharmaitchat-kb-canary] " +
+        "[--script] [pharmaitchat-kb-canary.sh] [--no-agent] [--deliver] [local] [--failure-deliver] [telegram]",
+    );
+    expect(readFileSync(join(box.home, "scripts", "pharmaitchat-kb-canary.sh"), "utf-8")).toContain(`PROJECT_DIR="${projectDir}"`);
   });
 
   // C1(b): Hermes kills a --no-agent script's process group at
@@ -397,6 +403,51 @@ describe("hermes/scripts/pharmaitchat-watchlist-ingest.sh", () => {
     const log = readFileSync(logPath(box), "utf-8");
     expect(log).toContain("first run output");
     expect(log).toContain("second run output");
+  });
+});
+
+describe("hermes/scripts/pharmaitchat-kb-canary.sh", () => {
+  // Copies the wrapper into a temp project, as install-cron does, with an
+  // `npx` stub standing in for scripts/kb-canary.ts: no tsx, no app, no model.
+  function canaryBox(stdout: string, stderr: string, exitCode: number) {
+    const root = mkdtempSync(join(tmpdir(), "kb-canary-wrapper-"));
+    dirs.push(root);
+    const tempProject = join(root, "project");
+    const binDir = join(root, "bin");
+    mkdirSync(tempProject);
+    mkdirSync(binDir);
+    const template = readFileSync(join(projectDir, "hermes", "scripts", "pharmaitchat-kb-canary.sh"), "utf-8");
+    const script = join(root, "pharmaitchat-kb-canary.sh");
+    writeFileSync(script, template.replace(/__PROJECT_DIR__/g, tempProject));
+    const npx = join(binDir, "npx");
+    const stdoutLines = stdout ? ["cat <<'CANARYOUT'", stdout, "CANARYOUT"] : [];
+    writeFileSync(npx, ["#!/bin/bash", ...stdoutLines, "cat >&2 <<'CANARYERR'", stderr, "CANARYERR", `exit ${exitCode}`].join("\n"));
+    chmodSync(npx, 0o755);
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const logDir = join(tempProject, "data", "logs");
+    const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
+    return { result, log };
+  }
+
+  it("stays silent when every canary passed, keeping the per-canary lines in the log", () => {
+    const { result, log } = canaryBox("", "ok   merck-notpetya 30s chunks=5", 0);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(log).toContain("ok   merck-notpetya 30s chunks=5");
+  });
+
+  it("prints the failure summary for Telegram and keeps it in the log", () => {
+    const { result, log } = canaryBox("KB canary: 7/8 passed\n- roche-mes: missing Rockwell (5 chunks)", "FAIL roche-mes", 1);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("KB canary: 7/8 passed\n- roche-mes: missing Rockwell (5 chunks)\n");
+    expect(log).toContain("FAIL roche-mes");
+    expect(log).toContain("missing Rockwell");
+  });
+
+  it("still says something when the script failed without a summary", () => {
+    const { result } = canaryBox("", "SyntaxError", 2);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toContain("KB canary failed (exit 2)");
   });
 });
 

@@ -139,13 +139,14 @@ describe("hermes/config.template.yaml", () => {
 });
 
 describe("hermes/cron/jobs.json", () => {
-  it("defines the five scheduled jobs delivered to Telegram", () => {
+  it("defines the six scheduled jobs delivered to Telegram", () => {
     expect(jobs.map((job) => job.name)).toEqual([
       "pharmaitchat-news-digest",
       "pharmaitchat-gap-resolution",
       "pharmaitchat-health-watch",
       "pharmaitchat-feedback-digest",
       "pharmaitchat-watchlist-ingest",
+      "pharmaitchat-kb-canary",
     ]);
     // Two health runs a day, not three: every Hermes step is a full cold prefill (~160 s of GPU)
     expect(jobs.map((job) => job.schedule)).toEqual([
@@ -154,6 +155,7 @@ describe("hermes/cron/jobs.json", () => {
       "0 9,19 * * *",
       "0 8 * * 1",
       "30 2 * * *",
+      "0 5 * * *",
     ]);
     for (const job of jobs) {
       expect(job.schedule.split(" ")).toHaveLength(5);
@@ -200,6 +202,22 @@ describe("hermes/cron/jobs.json", () => {
     // Not merely greater: the run still fetches ~150 feeds around its tagging
     // budget, and the fetching is not what the budget measures.
     expect(timeoutMs).toBeGreaterThanOrEqual(DEFAULT_INGEST_BUDGET_MS * 2);
+  });
+
+  // Replaced the n8n KB health monitor (2026-09-29): after the 02:30 ingest,
+  // before the 06:00 digest, silent unless a canary fails
+  it("runs the KB canaries daily at 05:00 as a script-mode job, alerting only on failure", () => {
+    const canaryJob = jobs.find((job) => job.name === "pharmaitchat-kb-canary");
+    expect(canaryJob).toMatchObject({
+      schedule: "0 5 * * *",
+      kind: "script",
+      script: "pharmaitchat-kb-canary.sh",
+      deliver: "local",
+      failure_deliver: "telegram",
+    });
+    const wrapper = readFileSync(join(hermesDir, "scripts", "pharmaitchat-kb-canary.sh"), "utf-8");
+    expect(wrapper).toContain("__PROJECT_DIR__");
+    expect(wrapper).toContain("scripts/kb-canary.ts");
   });
 
   it("ships the watchlist ingest's wrapper script next to jobs.json", () => {

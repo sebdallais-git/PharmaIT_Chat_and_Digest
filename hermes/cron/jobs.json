@@ -32,5 +32,14 @@
     "deliver": "local",
     "failure_deliver": "telegram",
     "script_timeout_seconds": 7200
+  },
+  {
+    "name": "pharmaitchat-kb-canary",
+    "schedule": "0 5 * * *",
+    "kind": "script",
+    "script": "pharmaitchat-kb-canary.sh",
+    "no_agent": true,
+    "deliver": "local",
+    "failure_deliver": "telegram"
   }
 ]

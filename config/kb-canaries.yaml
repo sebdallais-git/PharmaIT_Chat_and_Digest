@@ -1,0 +1,57 @@
+# KB canaries: questions whose answers the knowledge base is known to hold.
+# scripts/kb-canary.ts asks each one daily (Hermes job pharmaitchat-kb-canary,
+# 05:00) as a benchmark chat -- no gap detection, no request logging -- and a
+# canary passes when at least one chunk was retrieved and every `expect` group
+# has one of its terms in the answer (case-insensitive substring). A failing
+# canary is asked once more before it counts.
+#
+# Pick facts that are stable and specific: a name or a figure, not a phrase the
+# model could paraphrase. Check a new canary against the live stack before
+# adding it. All eight were checked on 2026-09-29 on Splash (18-41 s each).
+
+canaries:
+  # Curated knowledge/ files: these should never change
+  - id: merck-notpetya
+    question: Which malware hit Merck in 2017, and what did the attack cost?
+    expect:
+      - NotPetya
+      - ["1.4 billion", "1.4B"]
+
+  - id: astrazeneca-lazarus
+    question: Which North Korean hacking group targeted AstraZeneca?
+    expect:
+      - Lazarus
+
+  - id: bayer-winnti
+    question: Which APT group compromised Bayer in 2019?
+    expect:
+      - Winnti
+
+  # Retrieval ranks watchlist news above vendor-netapp-pharma-cyber.md here, and
+  # the news uses NetApp's newer product name: both names are right
+  - id: netapp-ransomware-detection
+    question: Which NetApp ONTAP feature detects ransomware on its own?
+    expect:
+      - ["Autonomous Ransomware Protection", "ARP", "Ransomware Resilience"]
+
+  - id: pure-safemode
+    question: What is Pure Storage's immutable snapshot feature called?
+    expect:
+      - SafeMode
+
+  - id: dell-cyber-recovery
+    question: How does Dell PowerProtect Cyber Recovery protect backup data?
+    expect:
+      - vault
+      - ["air-gap", "air gap", "isolat"]
+
+  - id: nis2-essential
+    question: How does the NIS2 directive classify pharmaceutical companies?
+    expect:
+      - essential entit
+
+  # Stored by the gap loop (gap #82, 2026-09-29): checks gap-loop knowledge survives reindexes
+  - id: roche-kaiseraugst-mes
+    question: Which company supplies the manufacturing execution system at Roche's Kaiseraugst site?
+    expect:
+      - Rockwell
