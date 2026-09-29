@@ -984,7 +984,9 @@ describe("switch-stack.sh start_app", () => {
       // npx stands in for the app: record its environment instead of starting it
       writeFileSync(join(binDir, "npx"), `#!/bin/bash\necho "WEBHOOK=\${N8N_WEBHOOK_URL-<unset>}" >"${envOut}"\n`);
       writeFileSync(join(binDir, "curl"), '#!/bin/bash\necho \'{"status":"healthy"}\'\n');
-      for (const f of ["npx", "curl"]) chmodSync(join(binDir, f), 0o755);
+      // Never the real launchctl: it would restart the live stack job
+      writeFileSync(join(binDir, "launchctl"), "#!/bin/bash\nexit 1\n");
+      for (const f of ["npx", "curl", "launchctl"]) chmodSync(join(binDir, f), 0o755);
 
       const funcsFile = join(dir, "funcs.sh");
       writeFileSync(funcsFile, extractFuncs());
@@ -1101,5 +1103,115 @@ describe("switch-stack.sh knows every stack", () => {
   // embedding server AND run parity against it -- not against :8000.
   it("runs the parity guard for splash against the embedding server", () => {
     expect(script).toMatch(/splash\)\s*start_splash && check_embedding_parity/);
+  });
+});
+
+// After a stack switch the app ran as `nohup npx tsx src/server.ts` from the
+// switch script: no watch mode (merged code was not picked up -- #40 looked
+// broken on 2026-09-29 until the app was restarted) and no launchd
+// supervision, beside a launchd job that still believed it owned the app. When
+// the com.pharmaitchat.stack job is loaded, start_app now hands the app back
+// to it: record the stack it must run, then restart the job.
+describe("switch-stack.sh start_app", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function startApp(opts: { jobLoaded: boolean; kickstartRc?: number; sandboxRunDir?: boolean }) {
+    const dir = mkdtempSync(join(tmpdir(), "start-app-"));
+    dirs.push(dir);
+    // A throwaway project whose data/run is RUN_DIR, as on a real install; sandboxRunDir
+    // instead points PHARMALLM_RUN_DIR elsewhere, as every other test harness does
+    const project = join(dir, "project");
+    const runDir = opts.sandboxRunDir ? join(dir, "run") : join(project, "data", "run");
+    const bin = join(dir, "bin");
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(join(project, "data", "logs"), { recursive: true });
+    mkdirSync(bin);
+    const calls = join(dir, "calls.log");
+    const stub = (name: string, body: string) => {
+      writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`);
+      chmodSync(join(bin, name), 0o755);
+    };
+    stub("launchctl", `echo "launchctl $*" >>"${calls}"
+case "$1" in
+  print) exit ${opts.jobLoaded ? 0 : 1} ;;
+  kickstart) exit ${opts.kickstartRc ?? 0} ;;
+esac`);
+    stub("npx", `echo "npx $*" >>"${calls}"`);
+    stub("curl", `echo '{"status": "healthy"}'`);
+    stub("sleep", "exit 0");
+    const funcs = join(dir, "funcs.sh");
+    writeFileSync(funcs, extractFuncs());
+    const result = spawnSync("bash", ["-c", 'source "$FUNCS"; start_app mlx'], {
+      encoding: "utf-8",
+      env: {
+        PATH: `${bin}:/usr/bin:/bin`,
+        HOME: dir,
+        FUNCS: funcs,
+        ...(opts.sandboxRunDir ? { PHARMALLM_RUN_DIR: runDir } : {}),
+        PROJECT_DIR: project,
+        SCRIPT_DIR: join(process.cwd(), "scripts"),
+      },
+    });
+    // The no-launchd path starts npx in the background (nohup ... &): give it a moment to log
+    const readCalls = (): string => {
+      try {
+        return readFileSync(calls, "utf-8");
+      } catch {
+        return "";
+      }
+    };
+    const deadline = Date.now() + 3000;
+    while ((!opts.jobLoaded || opts.sandboxRunDir) && !readCalls().includes("npx ") && Date.now() < deadline) {
+      spawnSync("sleep", ["0.05"]);
+    }
+    const log = readCalls();
+    const activeStack = (() => {
+      try {
+        return readFileSync(join(runDir, "active-stack"), "utf-8").trim();
+      } catch {
+        return null;
+      }
+    })();
+    return { status: result.status, calls: log, activeStack };
+  }
+
+  it("hands the app to the launchd stack job when it is loaded", () => {
+    const { status, calls, activeStack } = startApp({ jobLoaded: true });
+    expect(status).toBe(0);
+    expect(activeStack).toBe("mlx"); // start-services.sh reads it to pick the stack
+    expect(calls).toMatch(/launchctl kickstart -k gui\/\d+\/com\.pharmaitchat\.stack/);
+    expect(calls).not.toContain("npx ");
+  });
+
+  it("fails when launchd will not restart the job", () => {
+    expect(startApp({ jobLoaded: true, kickstartRc: 1 }).status).not.toBe(0);
+  });
+
+  // The guard that would have stopped the 2026-09-29 incident on its own
+  it("never hands the app to launchd from a sandbox with its own run directory", () => {
+    const { calls } = startApp({ jobLoaded: true, sandboxRunDir: true });
+    expect(calls).not.toContain("kickstart");
+    expect(calls).toContain("npx tsx");
+  });
+
+  it("starts the app itself on a machine without the launchd job", () => {
+    const { status, calls } = startApp({ jobLoaded: false });
+    expect(status).toBe(0);
+    expect(calls).toContain("npx tsx");
+    expect(calls).not.toContain("kickstart");
+  });
+});
+
+describe("switch-stack.sh rollback", () => {
+  // start_app records the stack it hands to launchd, so a failed switch must put
+  // the previous stack back before anything else: a reboot reads this file
+  it("records the previous stack as active before rolling back", () => {
+    const rollback = script.slice(script.indexOf('log "Rolling back to $previous..."'));
+    const record = rollback.indexOf('echo "$previous" >"$RUN_DIR/active-stack"');
+    expect(record).toBeGreaterThan(-1);
+    expect(record).toBeLessThan(rollback.indexOf("stop_app || true"));
   });
 });
