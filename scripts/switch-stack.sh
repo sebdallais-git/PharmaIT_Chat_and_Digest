@@ -88,6 +88,14 @@ SPLASH_HOMEBREW_BIN="${SPLASH_HOMEBREW_BIN:-/opt/homebrew/bin/splash}"
 if [ -z "${SPLASH_BIN:-}" ]; then
   if [ -x "$SPLASH_HOMEBREW_BIN" ]; then SPLASH_BIN="$SPLASH_HOMEBREW_BIN"; else SPLASH_BIN="$SPLASH_DIR/splash"; fi
 fi
+# Its server runs as .../Cellar/splash/<version>/libexec/python/bin/python3 .../libexec/server/server.py:
+# no project path in the command line, and the pid file is gone while it is still shutting down,
+# so without this a switch away from it called it "another program" and started the next stack
+# beside it. is_project_pid (lib/services.sh) also claims processes running from these paths.
+if [ "$SPLASH_BIN" = "$SPLASH_HOMEBREW_BIN" ] && [ -x "$SPLASH_BIN" ]; then
+  SPLASH_LIBEXEC="$(cd "$(dirname "$(readlink -f "$SPLASH_BIN")")/.." 2>/dev/null && pwd -P)/libexec/"
+  PROJECT_PROCESS_MARKERS="${PROJECT_PROCESS_MARKERS:-} $SPLASH_LIBEXEC"
+fi
 SPLASH_REPO="https://github.com/incoai/splash"
 # Pinned, like OMLX_VERSION above, to the commit installed and switched to on this machine on
 # 2026-09-29. It defaulted to main until then, which took whatever was newest and made benchmark

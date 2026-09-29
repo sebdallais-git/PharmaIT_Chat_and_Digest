@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { thinkingBody } from "../src/services/thinking.js";
@@ -1055,6 +1055,45 @@ describe("services.sh is_project_pid", () => {
     }
   });
 
+  // 2026-09-29: switching away from a Homebrew Splash, stop_pidfile_process sent it TERM and
+  // removed its pid file; while it was still shutting down, stop_port saw a listener whose
+  // command line (/opt/homebrew/Cellar/splash/…/libexec/server/server.py) carries no project
+  // path, called it "another program", left it alone and let MLX start beside it.
+  it("claims a process running from a marked install path, such as Homebrew's Splash", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pidcheck-"));
+    const runDir = join(dir, "run");
+    mkdirSync(runDir, { recursive: true });
+    const marker = join(dir, "Cellar", "splash", "1.1.0", "libexec") + "/";
+    const child = spawn("bash", ["-c", "sleep 30; :", join(marker, "server", "server.py")], { stdio: "ignore" });
+    try {
+      const pid = String(child.pid);
+      expect(ask(pid, runDir)).toBe("foreign");
+      expect(askWithMarkers(pid, runDir, marker)).toBe("ours");
+    } finally {
+      child.kill();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function askWithMarkers(pid: string, runDir: string, markers: string): string {
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -u; PROJECT_DIR="$1"; RUN_DIR="$2"; PROJECT_PROCESS_MARKERS="$4"; source "$1/scripts/lib/services.sh"; ` +
+          `if is_project_pid "$3"; then echo ours; else echo foreign; fi`,
+        "bash",
+        process.cwd(),
+        runDir,
+        pid,
+        markers,
+      ],
+      { encoding: "utf-8" }
+    );
+    expect(result.status).toBe(0);
+    return result.stdout.trim();
+  }
+
   it("does not claim a pid that is neither recorded nor running from the project", () => {
     const dir = mkdtempSync(join(tmpdir(), "pidcheck-"));
     const runDir = join(dir, "run");
@@ -1352,5 +1391,31 @@ describe("switch-stack.sh prepare installs Splash", () => {
     const clone = prepare.indexOf('git clone "$SPLASH_REPO"');
     expect(brew).toBeGreaterThan(-1);
     expect(clone).toBeGreaterThan(brew);
+  });
+});
+
+describe("switch-stack.sh marks a Homebrew Splash as the project's", () => {
+  it("adds the install's libexec directory to PROJECT_PROCESS_MARKERS", () => {
+    const dir = mkdtempSync(join(tmpdir(), "splash-marker-"));
+    try {
+      // Homebrew layout: bin/splash is a symlink into Cellar/splash/<version>/bin
+      const cellar = join(dir, "Cellar", "splash", "1.1.0");
+      mkdirSync(join(cellar, "bin"), { recursive: true });
+      mkdirSync(join(cellar, "libexec"), { recursive: true });
+      writeFileSync(join(cellar, "bin", "splash"), "#!/bin/sh\n");
+      chmodSync(join(cellar, "bin", "splash"), 0o755);
+      mkdirSync(join(dir, "bin"));
+      symlinkSync(join(cellar, "bin", "splash"), join(dir, "bin", "splash"));
+      const funcs = join(dir, "funcs.sh");
+      writeFileSync(funcs, extractFuncs());
+      const result = spawnSync("bash", ["-c", 'source "$FUNCS"; echo "$PROJECT_PROCESS_MARKERS"'], {
+        encoding: "utf-8",
+        env: { PATH: "/usr/bin:/bin", HOME: dir, FUNCS: funcs, SPLASH_HOMEBREW_BIN: join(dir, "bin", "splash"),
+               PROJECT_DIR: process.cwd(), SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
+      });
+      expect(result.stdout.trim()).toContain(realpathSync(join(cellar, "libexec")) + "/");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
