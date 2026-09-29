@@ -265,7 +265,7 @@ Every local model call — chat and embeddings alike — runs on **exactly one**
 | **Thinking** | off by default; off/low/medium/high per chat, via `reasoning_effort` | off by default; on/off per chat, via `chat_template_kwargs.enable_thinking` | off by default; on/off per chat, via `chat_template_kwargs.enable_thinking` | off by default (also server-side with `--default-reasoning-effort none`); off/low/medium/high per chat, via `reasoning_effort` |
 | **Graph rebuild** | ✅ supported | ❌ switch to Ollama first (`409`) | ❌ switch to Ollama first (`409`) — `python/graph_builder.py` calls Ollama directly | ❌ switch to Ollama first (`409`) — same reason |
 
-Splash has the steepest hardware bar of the four: **Apple M3 or newer, macOS 26.4 or later, 36 GB unified memory minimum (48 GB recommended)**. Its model, `incoai/Qwen3.8-27B-Splash`, is a 17.4 GB download under Apache-2.0 and **not gated** — unlike some Hugging Face models, no access token is needed to pull it.
+Splash has the steepest hardware bar of the four: **Apple M3 or newer, macOS 26.4 or later, 36 GB unified memory minimum (48 GB recommended)**. Its model, `incoai/Qwen3.8-27B-Splash`, is a 17.4 GB download under Apache-2.0 and **not gated** — unlike some Hugging Face models, no access token is needed to pull it. The engine itself comes from Homebrew (`brew install incoai/tap/splash`), whose Metal kernels are **precompiled**; a source checkout would compile them on first start and need full Xcode. `switch-stack.sh` prefers the Homebrew binary.
 
 ```bash
 scripts/switch-stack.sh mlx          # stop the other stacks, start MLX, restart the app (rolls back on failure)
@@ -276,7 +276,7 @@ scripts/switch-stack.sh splash       # fourth stack, port 8000 — chat only, bo
 scripts/switch-stack.sh ollama       # and back
 scripts/switch-stack.sh status       # active stack, ports, OLLAMA_NUM_PARALLEL and index counts
 scripts/switch-stack.sh ensure-stack ollama   # start a stack and its indexes without starting the app
-scripts/switch-stack.sh prepare      # one-time model downloads; also installs the oMLX venv and Splash checkout
+scripts/switch-stack.sh prepare      # one-time model downloads; also installs the oMLX venv and Splash (Homebrew)
 scripts/switch-stack.sh telegram     # store the Telegram credentials used to confirm UI-driven switches
 scripts/switch-stack.sh ollama-ctx   # recreate qwen3.8-pharma if its context differs from the Modelfile
 ```
@@ -366,7 +366,7 @@ All three stacks measured on the same day, **2026-09-19**, on the **same worksta
 
 The oMLX and MLX rows come from the *same* ChromaDB collection and the same on-disk index: the two stacks share them, so these numbers compare generation, not two different corpora.
 
-**Splash has no numbers here yet.** Nobody has run it on this machine: it needs `scripts/switch-stack.sh prepare` to fetch the model and `scripts/switch-stack.sh splash` to start it before `npx tsx scripts/benchmark-stack.ts` can produce a comparable row. The columns above are placeholders, not zeros.
+**Splash has no benchmark numbers here yet.** It runs on this machine (Homebrew 1.1.0, first switched to on 2026-09-29: ready in about 23 s, six concurrent 7.5k-token requests all answered within its own memory budget), but `npx tsx scripts/benchmark-stack.ts` has not been run on it, so there is no comparable row. The columns above are placeholders, not zeros.
 
 ### Long prompts (the agent workload)
 
@@ -719,9 +719,9 @@ npm install
 
 # 2. One-time setup: download the Ollama, MLX and Splash models (~50 GB total),
 #    create the MLX and oMLX venvs (oMLX reuses the same Hugging Face snapshots,
-#    so it adds no extra download), clone and verify Splash, then start ChromaDB,
+#    so it adds no extra download), install Splash from Homebrew, then start ChromaDB,
 #    build the active stack's indexes and launch the app
-scripts/switch-stack.sh prepare          # also installs the oMLX venv and Splash checkout
+scripts/switch-stack.sh prepare          # also installs the oMLX venv and Splash (Homebrew)
 ```
 
 When `prepare` finishes, PharmaITChat is running on the Ollama stack (the default):
@@ -1160,7 +1160,7 @@ npm --prefix mcp run typecheck
 |---|---|
 | Nothing answers after a reboot | The `com.pharmaitchat.stack` launch agent starts ChromaDB, the active stack and the app at login. Check `bash scripts/check-services.sh`; restart it with `launchctl kickstart -k gui/$UID/com.pharmaitchat.stack` |
 | `Models for mlx are missing` | Run `scripts/switch-stack.sh prepare` once |
-| `Models for splash are missing` | Run `scripts/switch-stack.sh prepare` once — clones Splash and downloads the 17.4 GB model |
+| `Models for splash are missing` | Run `scripts/switch-stack.sh prepare` once — installs Splash from Homebrew and downloads the 17.4 GB model |
 | Splash won't start, or fails with an unsupported-hardware error | Splash needs an Apple M3 or newer and **macOS 26.4 or later**, with 36 GB unified memory minimum (48 GB recommended); check `sw_vers` and the Mac model before filing it as a bug |
 | Search refused / `search_index` error in `/api/health` | The index belongs to another stack, is incomplete or is rebuilding. Wait for the rebuild, or `POST /api/knowledge/reindex` and poll `/api/knowledge/reindex/status` |
 | `Port 8080 is used by another program` | Free the MLX ports (`:8080`, `:8081`); the switch leaves foreign processes alone and rolls back |
