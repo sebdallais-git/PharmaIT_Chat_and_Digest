@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describeSwitch, formatCountdown, isStackSelectDisabled } from "../src/services/switch-labels.js";
+import { describeSwitch, formatCountdown, isStackSelectDisabled, stackOptionState } from "../src/services/switch-labels.js";
 import { STACK_NAMES } from "../src/config/llm-stacks.js";
 import type { SwitchStatus } from "../src/services/switch-labels.js";
 
@@ -231,5 +231,40 @@ describe("the browser stack selector", () => {
     for (const stack of STACK_NAMES) {
       expect(block).toMatch(new RegExp(`\\b${stack}\\s*:`));
     }
+  });
+});
+
+// A stack the switch script says cannot start is shown disabled with the reason,
+// so nobody picks Splash only to be told Xcode is missing
+describe("stackOptionState", () => {
+  const availability = {
+    mlx: { available: true },
+    splash: { available: false, reason: "Splash cannot build its engine: Xcode is missing" },
+  };
+  const cases = [
+    { name: "splash", status: { active: "mlx", availability } },
+    { name: "mlx", status: { active: "mlx", availability } },
+    { name: "ollama", status: { active: "mlx", availability } },
+    { name: "splash", status: { active: "splash", availability } },
+    { name: "splash", status: { active: "mlx", availability: null } },
+  ];
+
+  it("disables an unavailable stack and gives the reason", () => {
+    expect(stackOptionState("splash", { active: "mlx", availability })).toEqual({
+      disabled: true,
+      title: "Splash cannot build its engine: Xcode is missing",
+    });
+  });
+
+  it("leaves available, unlisted and active stacks selectable, and everything when availability is unknown", () => {
+    expect(stackOptionState("mlx", { active: "mlx", availability })).toEqual({ disabled: false, title: null });
+    expect(stackOptionState("ollama", { active: "mlx", availability })).toEqual({ disabled: false, title: null });
+    expect(stackOptionState("splash", { active: "splash", availability })).toEqual({ disabled: false, title: null });
+    expect(stackOptionState("splash", { active: "mlx", availability: null })).toEqual({ disabled: false, title: null });
+  });
+
+  it("keeps the browser copy identical to the module", () => {
+    const browser = loadBrowserFunction("stackOptionState") as (name: string, status: unknown) => unknown;
+    for (const c of cases) expect(browser(c.name, c.status)).toEqual(stackOptionState(c.name, c.status as never));
   });
 });

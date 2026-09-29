@@ -16,6 +16,8 @@ import { createHermesReadiness, hermesHome, queryGatewayStatus, readPluginReadyF
 import type { HermesReadinessChecker } from "../services/hermes-readiness.js";
 import { createStackSwitch, parseProgress } from "../services/stack-switch.js";
 import type { StackSwitch, SwitchProgress } from "../services/stack-switch.js";
+import { createAvailabilityReader, runAvailabilityScript } from "../services/stack-availability.js";
+import type { StackAvailability } from "../services/stack-availability.js";
 import { createTelegramSender, isTelegramConfigured, readTelegramConfig } from "../services/telegram-notify.js";
 import type { TelegramSender } from "../services/telegram-notify.js";
 
@@ -29,6 +31,8 @@ export interface StackRouterDeps {
   readProgress(): SwitchProgress | null;
   telegramConfigured(): boolean;
   hermes: HermesReadinessChecker;
+  // Which stacks can start (scripts/switch-stack.sh availability); null when unknown
+  availability(): Promise<StackAvailability | null>;
 }
 
 export function createStackRouter(deps: StackRouterDeps): Router {
@@ -40,6 +44,13 @@ export function createStackRouter(deps: StackRouterDeps): Router {
       // Derived from STACK_NAMES rather than spelled out, so this message cannot drift from
       // isStackName again the way it did when splash was added but this string was not updated.
       res.status(400).json({ error: `Unknown stack (expected one of: ${STACK_NAMES.join(", ")})` });
+      return;
+    }
+    // Before anything is pending or sent: asking to confirm a switch the script will refuse
+    // (Splash without Xcode, a stack whose models were never downloaded) only wastes a tap
+    const unavailable = (await deps.availability())?.[target];
+    if (unavailable && !unavailable.available) {
+      res.status(409).json({ reason: "stack_unavailable", error: unavailable.reason ?? `${target} cannot start` });
       return;
     }
     if (!deps.telegramConfigured()) {
@@ -125,6 +136,7 @@ export function createStackRouter(deps: StackRouterDeps): Router {
       pending: pending ? { target: pending.target, expires_at: pending.expiresAt } : null,
       cancelled: deps.switcher.lastCancelled(),
       progress: deps.readProgress(),
+      availability: await deps.availability(),
     });
   });
 
@@ -183,4 +195,8 @@ export default createStackRouter({
     readPluginReadyFile: () => readPluginReadyFile(join(hermesHome(), "pharmaitchat-switch.ready.json")),
     now: () => Date.now(),
   }),
+  availability: (() => {
+    const reader = createAvailabilityReader({ run: runAvailabilityScript, now: () => Date.now(), ttlMs: 30_000 });
+    return () => reader.get();
+  })(),
 });

@@ -1215,3 +1215,68 @@ describe("switch-stack.sh rollback", () => {
     expect(record).toBeLessThan(rollback.indexOf("stop_app || true"));
   });
 });
+
+// The UI offered Splash while it could not start: the switch refused (after a
+// Telegram confirmation nobody should have been asked for). `availability`
+// reports, per stack, the same checks switch_to runs, so the UI and the
+// /switch route can refuse up front.
+describe("switch-stack.sh availability", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("is a read-only command of the script", () => {
+    expect(script).toMatch(/^\s+availability\) stack_availability ;;$/m);
+  });
+
+  function availability(): Record<string, string> {
+    const dir = mkdtempSync(join(tmpdir(), "availability-"));
+    dirs.push(dir);
+    const project = join(dir, "project");
+    const home = join(dir, "home");
+    const bin = join(dir, "bin");
+    // MLX installed: its server and both models; Splash's model downloaded but never built
+    mkdirSync(join(project, "python", "mlx-venv", "bin"), { recursive: true });
+    writeFileSync(join(project, "python", "mlx-venv", "bin", "mlx_lm.server"), "#!/bin/sh\n");
+    chmodSync(join(project, "python", "mlx-venv", "bin", "mlx_lm.server"), 0o755);
+    mkdirSync(join(project, "python", "splash-src"), { recursive: true });
+    writeFileSync(join(project, "python", "splash-src", "splash"), "#!/bin/sh\n");
+    chmodSync(join(project, "python", "splash-src", "splash"), 0o755);
+    const snap = (repo: string) =>
+      mkdirSync(join(home, ".cache", "huggingface", "hub", `models--${repo.replace("/", "--")}`, "snapshots", "abc"), { recursive: true });
+    snap(shellVar("MLX_CHAT_MODEL"));
+    snap(shellVar("MLX_EMBED_MODEL"));
+    snap("incoai/Qwen3.8-27B-Splash");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "xcrun"), "#!/bin/bash\nexit 1\n"); // no Metal toolchain
+    chmodSync(join(bin, "xcrun"), 0o755);
+    const funcs = join(dir, "funcs.sh");
+    writeFileSync(funcs, extractFuncs());
+    const result = spawnSync("bash", ["-c", 'source "$FUNCS"; stack_availability'], {
+      encoding: "utf-8",
+      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, FUNCS: funcs, PROJECT_DIR: project,
+             PHARMALLM_RUN_DIR: join(dir, "run"), SCRIPT_DIR: join(process.cwd(), "scripts") },
+    });
+    expect(result.status).toBe(0);
+    return Object.fromEntries(
+      result.stdout.trim().split("\n").map((l) => [l.slice(0, l.indexOf(" ")), l.slice(l.indexOf(" ") + 1)]),
+    );
+  }
+
+  function shellVar(name: string): string {
+    const m = script.match(new RegExp(`^${name}="(?:\\$\\{${name}:-)?([^"}]+)\\}?"`, "m"));
+    if (!m) throw new Error(`${name} not found`);
+    return m[1];
+  }
+
+  it("says ok, or why not, for every stack, with the switch's own wording", () => {
+    const a = availability();
+    expect(Object.keys(a).sort()).toEqual(["mlx", "ollama", "omlx", "splash"]);
+    expect(a.mlx).toBe("ok");
+    expect(a.ollama).toBe("models for ollama are missing (run scripts/switch-stack.sh prepare)");
+    expect(a.splash).toBe(
+      "Splash cannot build its engine: Xcode's Metal compiler is missing (install Xcode; the Command Line Tools are not enough)",
+    );
+  });
+});

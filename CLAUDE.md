@@ -37,7 +37,8 @@ npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it fro
 There is **no lint script and no ESLint config** — do not run `npm run lint`.
 
 Stack operations go through `scripts/switch-stack.sh` (`ollama|mlx|omlx|splash|status|prepare|
-ensure-stack <s>|ollama-ctx|telegram|mcp start|stop`). The active stack is recorded in
+ensure-stack <s>|availability|ollama-ctx|telegram|mcp start|stop`). `availability` (read-only) says which
+stacks can start and why not; the UI disables the others and `/api/stack/switch` refuses them. The active stack is recorded in
 `data/run/active-stack`. Everything comes back after a reboot: the launchd job
 `com.pharmaitchat.stack` runs `start-services.sh` (app, active stack, ChromaDB, colima
 containers). `switch-stack.sh <stack>` itself starts the app in the background (log in
