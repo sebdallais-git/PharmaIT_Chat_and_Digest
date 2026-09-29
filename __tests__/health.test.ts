@@ -8,6 +8,7 @@ import {
   CRITICAL_CHECKS,
   GENERATION_PROBE_TIMEOUT_MS,
   isScorerConfigured,
+  parseGpuUtilization,
   probeGeneration,
   probeUrl,
   scorerInstallPaths,
@@ -67,6 +68,9 @@ describe("probeUrl", () => {
   });
 });
 
+// Never the real GPU in a test: this Mac's is busy whenever a model is working
+const idleGpu = { gpuUtilization: async () => 0 };
+
 describe("generation probe", () => {
   // /v1/models answers from a wedged server: on 2026-09-22 MLX sat at 0% CPU
   // accepting connections and serving /v1/models while a 5-token generation
@@ -88,7 +92,7 @@ describe("generation probe", () => {
     // Never responds: the wedged case, which a /v1/models probe would pass.
     const server = await startFakeServer(() => {});
     try {
-      const check = await probeGeneration({ chatBaseUrl: server.baseUrl, chatModel: "test-chat-model" }, 300);
+      const check = await probeGeneration({ chatBaseUrl: server.baseUrl, chatModel: "test-chat-model" }, 300, idleGpu);
       expect(check.status).toBe("unreachable");
     } finally {
       await server.close();
@@ -112,11 +116,60 @@ describe("generation probe", () => {
     // out behind a long chat turn. The check stays down but says so.
     const server = await startFakeServer(() => {});
     try {
-      const check = await probeGeneration({ chatBaseUrl: server.baseUrl, chatModel: "m" }, 300);
+      const check = await probeGeneration({ chatBaseUrl: server.baseUrl, chatModel: "m" }, 300, idleGpu);
       expect(check.detail).toMatch(/busy/);
     } finally {
       await server.close();
     }
+  });
+});
+
+// With mlx_lm.server limited to one prefill at a time (switch-stack.sh), the
+// 20 s probe queues behind any long request and timed out on 2026-09-29 while
+// Hermes' 07:00 job ran: health said "unhealthy" with the GPU at 86-98%. A
+// wedged server (its generation thread dead after a Metal OOM) leaves the GPU
+// idle, so GPU load tells the two apart.
+describe("generation probe tells busy from wedged", () => {
+  it("reports busy, not unreachable, when it times out while the GPU is working", async () => {
+    const server = await startFakeServer(() => {});
+    try {
+      const check = await probeGeneration({ chatBaseUrl: server.baseUrl, chatModel: "m" }, 300, {
+        gpuUtilization: async () => 97,
+      });
+      expect(check.status).toBe("busy");
+      expect(check.detail).toMatch(/97%/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("still reports unreachable when it times out with the GPU idle, or unreadable", async () => {
+    const server = await startFakeServer(() => {});
+    try {
+      const target = { chatBaseUrl: server.baseUrl, chatModel: "m" };
+      expect((await probeGeneration(target, 300, { gpuUtilization: async () => 2 })).status).toBe("unreachable");
+      expect((await probeGeneration(target, 300, { gpuUtilization: async () => null })).status).toBe("unreachable");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("counts a busy chat server as healthy: it is working, just queued", () => {
+    const up = { status: "ok" as const };
+    expect(aggregateHealth({ llm_chat: { status: "busy" }, llm_embed: up, search_index: up })).toBe("healthy");
+  });
+});
+
+describe("parseGpuUtilization", () => {
+  it("reads the busiest GPU from ioreg's IOAccelerator listing", () => {
+    const text = '| "PerformanceStatistics" = {"Device Utilization %"=12,"Renderer Utilization %"=3}\n' +
+      '| "PerformanceStatistics" = {"Device Utilization %"=98,"Tiler Utilization %"=40}';
+    expect(parseGpuUtilization(text)).toBe(98);
+  });
+
+  it("gives null when there is nothing to read", () => {
+    expect(parseGpuUtilization("")).toBeNull();
+    expect(parseGpuUtilization("no statistics here")).toBeNull();
   });
 });
 

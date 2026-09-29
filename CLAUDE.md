@@ -127,6 +127,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   4 GiB prompt cache and a 2 GiB MLX buffer-cache cap (`run-jev.sh` caps the scorer at 1 GiB). The
   defaults (8/32, uncapped) ran the GPU out of memory under a burst: the generation thread dies,
   the server keeps listening, and every request hangs until the watchdog restarts it.
+  With one prefill at a time, a probe queues behind long requests: `/api/health` and the watchdog
+  treat a timeout with the GPU ≥ 30% (`ioreg` "Device Utilization %") as busy, not wedged.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
   `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`).

@@ -1,5 +1,6 @@
 // Stack-aware health checks: only the active stack's endpoints are probed
 
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,8 +10,10 @@ import type { StackConfig } from "../config/llm-stacks.js";
 // opposed to one that is installed and down ("unreachable"). The distinction
 // matters because a probe cannot draw it: a port nobody ever listened on and a
 // service that just crashed look identical from the outside.
+// "busy" is a chat server that did not answer the probe in time because it is
+// working through another request: it counts as healthy (see probeGeneration).
 export interface HealthCheck {
-  status: "ok" | "error" | "unreachable" | "not_configured";
+  status: "ok" | "busy" | "error" | "unreachable" | "not_configured";
   latency_ms?: number;
   detail?: string;
 }
@@ -30,6 +33,28 @@ export function stackProbeUrls(stack: StackConfig): { llm_chat: string; llm_embe
   };
 }
 
+// Above this GPU load a chat server that misses the probe is working, not wedged
+export const GPU_BUSY_PERCENT = 30;
+
+/** The busiest GPU's "Device Utilization %" from `ioreg -r -d 1 -c IOAccelerator`. */
+export function parseGpuUtilization(text: string): number | null {
+  const values = [...text.matchAll(/"Device Utilization %"=(\d+)/g)].map((m) => Number(m[1]));
+  return values.length === 0 ? null : Math.max(...values);
+}
+
+// Null on any failure: an unreadable GPU must never turn a real outage into "busy"
+export function readGpuUtilization(): Promise<number | null> {
+  return new Promise((resolveUtil) => {
+    execFile("ioreg", ["-r", "-d", "1", "-c", "IOAccelerator"], { timeout: 3000 }, (err, stdout) => {
+      resolveUtil(err ? null : parseGpuUtilization(stdout));
+    });
+  });
+}
+
+export interface GenerationProbeDeps {
+  gpuUtilization(): Promise<number | null>;
+}
+
 /**
  * Ask the model for a single token.
  *
@@ -42,6 +67,7 @@ export function stackProbeUrls(stack: StackConfig): { llm_chat: string; llm_embe
 export async function probeGeneration(
   stack: Pick<StackConfig, "chatBaseUrl" | "chatModel">,
   timeoutMs: number = GENERATION_PROBE_TIMEOUT_MS,
+  deps: GenerationProbeDeps = { gpuUtilization: readGpuUtilization },
 ): Promise<HealthCheck> {
   const start = Date.now();
   try {
@@ -65,6 +91,13 @@ export async function probeGeneration(
     // export makes this time out too. It cannot tell the two apart; say so.
     // By name, not instanceof: the DOMException may come from another realm.
     if (typeof err === "object" && err !== null && "name" in err && err.name === "TimeoutError") {
+      // mlx_lm.server takes one prefill at a time (switch-stack.sh), so the probe
+      // queues behind any long request. A wedged server -- its generation thread
+      // dead after a Metal OOM -- leaves the GPU idle; a busy one keeps it working.
+      const gpu = await deps.gpuUtilization();
+      if (gpu !== null && gpu >= GPU_BUSY_PERCENT) {
+        return { status: "busy", detail: `no token within ${timeoutMs / 1000}s, but the GPU is at ${gpu}%: working through another request` };
+      }
       return { status: "unreachable", detail: `no token within ${timeoutMs / 1000}s: busy with another request, or wedged` };
     }
     return { status: "unreachable" };
@@ -85,11 +118,13 @@ export function aggregateHealth(checks: Record<string, HealthCheck>): HealthStat
   const entries = Object.entries(checks);
   // Critical first, and strictly "ok": nothing excuses a critical check, least
   // of all a claim that it was never configured.
-  const criticalDown = entries.some(([name, check]) => CRITICAL_CHECKS.includes(name) && check.status !== "ok");
+  // "busy" is the one exception: the server is working, and the request queues.
+  const working = (status: HealthCheck["status"]): boolean => status === "ok" || status === "busy";
+  const criticalDown = entries.some(([name, check]) => CRITICAL_CHECKS.includes(name) && !working(check.status));
   if (criticalDown) return "unhealthy";
   // An optional dependency that was never installed is not a fault, so it does
   // not degrade the app. Anything installed and misbehaving still does.
-  const fine = entries.every(([, check]) => check.status === "ok" || check.status === "not_configured");
+  const fine = entries.every(([, check]) => working(check.status) || check.status === "not_configured");
   return fine ? "healthy" : "degraded";
 }
 

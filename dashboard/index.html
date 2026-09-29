@@ -72,6 +72,7 @@ tr:hover td{background:rgba(15,52,96,0.3)}
 .health-card-latency{font-size:11px;color:#666}
 .health-card .status-ok{color:#4caf50}
 .health-card .status-down{color:#f44336}
+.health-card .status-busy{color:#ff9800}
 
 /* Latency bar */
 .latency-bar{height:4px;border-radius:2px;background:#0f3460;margin-top:6px;overflow:hidden}
@@ -499,14 +500,16 @@ function renderHealthCards(health) {
   }
   for (const [name, info] of Object.entries(checks)) {
     const ok = info.status === 'ok';
+    // A chat server that missed the probe while the GPU works is queued, not down
+    const busy = info.status === 'busy';
     const lat = info.latency_ms !== undefined ? info.latency_ms : null;
     const barPct = lat !== null ? Math.min(lat / 50 * 100, 100) : 0;
     const barClass = lat !== null ? (lat < 10 ? 'fast' : lat < 30 ? 'medium' : 'slow') : 'fast';
     const card = document.createElement('div');
-    card.className = 'health-card ' + (ok ? 'ok' : 'down');
+    card.className = 'health-card ' + (ok || busy ? 'ok' : 'down');
     if (info.detail) card.title = info.detail;
     const n = document.createElement('div'); n.className = 'health-card-name'; n.textContent = (icons[name] || '') + ' ' + name; card.appendChild(n);
-    const s = document.createElement('div'); s.className = 'health-card-status ' + (ok ? 'status-ok' : 'status-down'); s.textContent = ok ? 'Online' : info.status; card.appendChild(s);
+    const s = document.createElement('div'); s.className = 'health-card-status ' + (ok ? 'status-ok' : busy ? 'status-busy' : 'status-down'); s.textContent = ok ? 'Online' : busy ? 'Busy' : info.status; card.appendChild(s);
     if (lat !== null) {
       const l = document.createElement('div'); l.className = 'health-card-latency'; l.textContent = lat + 'ms'; card.appendChild(l);
       const bar = document.createElement('div'); bar.className = 'latency-bar';
