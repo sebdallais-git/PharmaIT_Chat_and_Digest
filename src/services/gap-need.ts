@@ -27,6 +27,14 @@
 // A wording that caught it ("even if it then lists loosely related context")
 // brought the false gaps back to 17, so this one was chosen.
 //
+// Since 2026-09-29 a third rule: a question asking for one specific named thing (which company,
+// system, vendor...) is a gap when the answer does not name it, even if it offers related
+// context. Live on Splash, "Which system integrator is running Novartis' SAP S/4HANA migration?"
+// got "no specific system integrator is named" plus Novartis' vendor stack, counted as answered.
+// On the same 66 cases: false gaps on answers the user accepted 9 -> 7, both live cases caught
+// (v1: 0 of 2), must-catch unchanged at 9 of 11 (the Sandoz ERP answer mentions SAP, and the
+// model reads that as naming it).
+//
 // checkConfidence stays as it is: gap RESOLUTION still asks the strict
 // question, since there the point is whether the research delivered the facts.
 
@@ -48,12 +56,14 @@ export function needsResearchPrompt(question: string, answer: string): string {
 Question: ${question}
 Answer: ${answer}
 
-Decide two things:
+Decide four things:
 1. in_scope: is the question about that domain, or about companies, people, products or events in it? Greetings, small talk, personal questions (such as a favourite colour), requests about the conversation itself (such as "make it shorter") and general trivia are NOT in scope.
 2. answered: did the answer give the user a substantive response, such as facts, names, figures, examples, or the requested writing, comparison or advice, even if it draws on general knowledge or notes that its sources are incomplete? Answer false ONLY if the answer mainly says the information is not available or that it does not know, refuses, or gives nothing but vague generalities.
+3. asks_specific: does the question ask for one specific named thing -- which company, vendor, system, product, person, date or figure -- rather than a list, a comparison, an explanation or advice?
+4. names_it: if asks_specific, does the answer actually name that thing (not a different or related one)? An answer saying the specific thing is not in its sources does not name it.
 
 Respond with ONLY a JSON object, no other text:
-{"in_scope": true/false, "answered": true/false, "reason": "brief explanation", "search_topic": "2-5 word web search query for the missing information, or empty"}`;
+{"in_scope": true/false, "answered": true/false, "asks_specific": true/false, "names_it": true/false, "reason": "brief explanation", "search_topic": "2-5 word web search query for the missing information, or empty"}`;
 }
 
 const UNREADABLE: NeedsResearchVerdict = {
@@ -84,11 +94,15 @@ export function parseNeedsResearch(text: string): NeedsResearchVerdict {
   const inScope = readBoolean(raw.in_scope);
   const answered = readBoolean(raw.answered);
   if (inScope === null || answered === null) return UNREADABLE;
+  // Optional: without them the older rule applies, so a partial reply never switches detection off
+  const asksSpecific = readBoolean(raw.asks_specific);
+  const namesIt = readBoolean(raw.names_it);
+  const missingThing = asksSpecific === true && namesIt === false;
   return {
     parsed: true,
     inScope,
     answered,
-    gap: inScope && !answered,
+    gap: inScope && (!answered || missingThing),
     reason: String(raw.reason ?? ""),
     search_topic: String(raw.search_topic ?? ""),
   };
