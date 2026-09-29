@@ -81,7 +81,13 @@ OMLX_CACHE_MAX_GB="${OMLX_CACHE_MAX_GB:-20}"
 SPLASH_PORT="${SPLASH_PORT:-8000}"
 SPLASH_CHAT_MODEL="${SPLASH_CHAT_MODEL:-incoai/Qwen3.8-27B-Splash}"
 SPLASH_DIR="${SPLASH_DIR:-$PROJECT_DIR/python/splash-src}"
-SPLASH_BIN="${SPLASH_BIN:-$SPLASH_DIR/splash}"
+# Splash's Homebrew package (brew install incoai/tap/splash) ships its Metal kernels
+# precompiled; the source checkout compiles them on first start and needs full Xcode.
+# Prefer the package when it is installed.
+SPLASH_HOMEBREW_BIN="${SPLASH_HOMEBREW_BIN:-/opt/homebrew/bin/splash}"
+if [ -z "${SPLASH_BIN:-}" ]; then
+  if [ -x "$SPLASH_HOMEBREW_BIN" ]; then SPLASH_BIN="$SPLASH_HOMEBREW_BIN"; else SPLASH_BIN="$SPLASH_DIR/splash"; fi
+fi
 SPLASH_REPO="https://github.com/incoai/splash"
 # Pinned, like OMLX_VERSION above, to the commit installed and switched to on this machine on
 # 2026-09-29. It defaulted to main until then, which took whatever was newest and made benchmark
@@ -142,6 +148,8 @@ models_ready() {
 # them its server dies in the build while a switch waits 600 s for it with every stack stopped
 # (seen 2026-09-29). Once built, the toolchain is no longer needed.
 splash_runnable() {
+  # A packaged Splash (Homebrew) has its kernels precompiled: nothing to build
+  [ "$SPLASH_BIN" != "$SPLASH_DIR/splash" ] && [ -x "$SPLASH_BIN" ] && return 0
   [ -x "$SPLASH_DIR/build/splash" ] && return 0
   local tool
   for tool in clang++ metal metallib; do
@@ -760,6 +768,11 @@ prepare() {
   fi
 
   # Splash: a pinned checkout plus a 17.4 GB model package.
+  # The Homebrew package ships precompiled kernels; a source checkout needs full Xcode to build them
+  if [ ! -x "$SPLASH_BIN" ] && command -v brew >/dev/null 2>&1; then
+    log "Installing Splash from Homebrew (incoai/tap/splash)"
+    brew tap incoai/tap && brew install incoai/tap/splash && SPLASH_BIN="$SPLASH_HOMEBREW_BIN"
+  fi
   if [ ! -x "$SPLASH_BIN" ]; then
     log "Installing Splash $SPLASH_VERSION into $SPLASH_DIR"
     rm -rf "$SPLASH_DIR"
