@@ -1,7 +1,9 @@
-node_modules/
+# No trailing slash: "node_modules/" matches only a directory, so a worktree's node_modules symlink got committed
+node_modules
 dist/
 knowledge/.index.json
 .env
+certs/
 *.log
 knowledge/.agent-state.json
 data/
