@@ -520,6 +520,37 @@ Stated plainly, because a README that implies otherwise wastes the reader's time
 
 ---
 
+## Your role
+
+Every answer and every digest is framed by **who is asking**: your title and company, the accounts you cover, and the lines you sell (storage, servers, networking, backup, end-user computing, security). There is no selector. You set it by chatting, in the web chat or on Telegram:
+
+| You say | What happens |
+|---|---|
+| "I am the Dell GAM for Roche, Novartis and Sandoz" | A new role: it keeps what you said and asks only for what is missing (the lines you sell, a focus), then saves it and makes it active |
+| "I'm now HLS principal at Everpure" | Starts another role the same way, even in the middle of answering questions for the first |
+| "switch to my Dell role" | Makes a saved role active and shows its details |
+| "add Lonza to my accounts, I don't sell networking" | Edits the active role and says what changed |
+| "what is my role?" | Shows the active role |
+
+One role is active for both the web chat and Telegram. While it is, the chat model is told who you are and to answer for that seller: what the news means for your accounts, and your company's products first.
+
+```mermaid
+flowchart LR
+    M["Message<br/>web chat or Telegram"] --> K{"About your role?<br/>keyword check, or an<br/>onboarding question is open"}
+    K -- "no" --> CHAT["Normal answer<br/>with your role in the prompt"]
+    K -- "yes" --> X["27B reads it into validated changes<br/>(onboarding answers are parsed without it)"]
+    X -- "not about the role" --> CHAT
+    X --> E["Role engine<br/>switch · onboard · update · show"]
+    E --> S[("data/run/roles.json<br/>mode 600")]
+    E --> R["Reply: a question,<br/>or the role's details"]
+```
+
+- **The model never holds the state.** It turns a free-form message into a checked set of changes (portfolio values limited to the six lines); the engine decides what to ask or save. Answers to an onboarding question are parsed without the model, so they are instant.
+- **An ordinary question costs nothing extra.** Only messages that look like role talk ("I am … at …", "my accounts", "switch to …") reach the model, and one that turns out not to be about the role goes on to the normal answer.
+- **Measured live** (Splash, 2026-09-30): the Dell role came out of one sentence plus two answers; switching, editing and "what is my role?" each took 3–4 s; ordinary questions were never caught.
+- **On Telegram** Hermes passes such messages to the `my_role` tool verbatim and relays the reply. Scheduled Hermes jobs cannot call it.
+- **Benchmarks and the KB canaries** skip roles entirely, so their answers stay comparable.
+
 ## Chat, retrieval and the knowledge base
 
 Ask a question in the browser at `http://localhost:3000` (or by voice, or on Telegram) and four retrieval paths run in parallel before the model sees anything.
@@ -676,7 +707,7 @@ PharmaITChat serves AI agents in two ways: as a set of tools, and as a model pro
 
 | | Endpoint | Purpose |
 |---|---|---|
-| 🧰 **MCP tools** | `pharmaitchat-mcp` at `http://<host>:3200/mcp` | 16 tools over Streamable HTTP: search, full RAG answers, add knowledge, graph, gaps, health, metrics, news agent, background reindex, feedback |
+| 🧰 **MCP tools** | `pharmaitchat-mcp` at `http://<host>:3200/mcp` | 19 tools over Streamable HTTP: search, full RAG answers, add knowledge, graph, gaps, health, metrics, news agent, background reindex, feedback, exports, your role |
 | 🧠 **Model gateway** | `http://<host>:3000/v1` or `https://<host>:3443/v1` | OpenAI-compatible chat completions on the active stack, tools and streaming supported |
 
 ### The MCP server
@@ -861,7 +892,7 @@ flowchart TB
         AG["AI agents<br/>Hermes, Claude Desktop"]
     end
 
-    MCP["pharmaitchat-mcp :3200<br/>16 tools, Streamable HTTP<br/>MCP_TOKEN + payload compaction"]
+    MCP["pharmaitchat-mcp :3200<br/>19 tools, Streamable HTTP<br/>MCP_TOKEN + payload compaction"]
 
     subgraph APP["PharmaITChat :3000 / :3443"]
         direction TB

@@ -114,7 +114,7 @@ describe("hermes/config.template.yaml", () => {
     for (const toolset of ["web", "search", "memory", "terminal", "file", "skills", "pharmaitchat"]) {
       expect(cron).not.toContain(toolset);
     }
-    expect(at("mcp_servers.pharmaitchat_cron.tools.exclude")).toEqual(["start_reindex", "add_knowledge"]);
+    expect(at("mcp_servers.pharmaitchat_cron.tools.exclude")).toEqual(["start_reindex", "add_knowledge", "my_role"]);
     // Same endpoint and credentials as the interactive server, only the tool filter differs
     expect(at("mcp_servers.pharmaitchat_cron.url")).toBe(at("mcp_servers.pharmaitchat.url"));
     expect(at("mcp_servers.pharmaitchat_cron.headers.Authorization")).toBe(

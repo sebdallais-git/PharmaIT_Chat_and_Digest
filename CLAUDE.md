@@ -87,12 +87,16 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   Entity ids and the 10 IT domains are a closed vocabulary; invented values are dropped. Per-feed
   errors don't advance the watermark; 250-item cap and 45-min budget, overflow is deferred.
 - **Surfaces**: `/api/*` routes, `/v1` OpenAI-compatible gateway onto the active stack
-  (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 16 tools),
+  (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 19 tools),
   `hermes/` (Telegram agent config, cron jobs, plugin), `public/` + `dashboard/` (plain
   HTML/JS/CSS — no React, no bundler).
 - **Auth** (`api/auth.ts`): static files and UI routes open; everything else needs
   `Authorization: Bearer $PHARMAITCHAT_API_TOKEN`, or, with no token set, a same-machine request
   with a localhost Host header.
+- **Roles** (`role-store.ts`, `role-dialogue.ts`, `api/role.ts`, MCP `my_role`): the user's title,
+  company, accounts and portfolio lines, set by chatting (no selector) and stored in
+  `data/run/roles.json`. The active role is appended to the chat system prompt; benchmark
+  requests skip it. Only keyword-matched messages or an open onboarding reach the role engine.
 - Storage: ChromaDB (:8100), Neo4j (`neo4j-driver`), `better-sqlite3`. No Prisma/PostgreSQL.
 
 ## Conventions

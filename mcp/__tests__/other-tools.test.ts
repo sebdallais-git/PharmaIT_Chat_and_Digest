@@ -19,7 +19,7 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<u
 }
 
 describe("tool list", () => {
-  it("exposes exactly the 18 PharmaITChat tools", async () => {
+  it("exposes exactly the 19 PharmaITChat tools", async () => {
     const { tools } = await harness.client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "add_knowledge",
@@ -32,6 +32,7 @@ describe("tool list", () => {
       "graph_stats",
       "knowledge_status",
       "list_knowledge_gaps",
+      "my_role",
       "news_agent_status",
       "record_feedback",
       "reindex_status",
@@ -241,3 +242,21 @@ describe("list_knowledge_gaps limit", () => {
   });
 });
 
+
+describe("my_role", () => {
+  it("passes the user's message verbatim and returns the reply as plain text", async () => {
+    harness.pharma.on("POST", "/api/role/message", (_req, res) =>
+      sendJson(res, 200, { reply: "Which accounts do you cover?" }),
+    );
+
+    const result = await call("my_role", { message: "I am the Dell GAM" });
+
+    expect(toolText(result)).toBe("Which accounts do you cover?");
+    expect(harness.pharma.requests[0].body).toEqual({ message: "I am the Dell GAM" });
+  });
+
+  it("reports an app error as a tool error", async () => {
+    harness.pharma.on("POST", "/api/role/message", (_req, res) => sendJson(res, 500, { error: "boom" }));
+    expect(isToolError(await call("my_role", { message: "x" }))).toBe(true);
+  });
+});

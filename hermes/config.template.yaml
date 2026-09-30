@@ -52,6 +52,8 @@ mcp_servers:
       exclude:
         - start_reindex
         - add_knowledge
+        # Scheduled jobs must never change who the user is
+        - my_role
       resources: false
       prompts: false
 
