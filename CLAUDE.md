@@ -33,6 +33,7 @@ npx tsx scripts/replay-detection.ts [--backfill [--limit N] [--all] | --question
 npx tsx scripts/replay-page-relevance.ts        # gap workflow page pre-check vs the 27B's keep/discard in n8n history
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
 npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
+npx tsx scripts/digest.ts [--request "…"]     # digest agent in-process; Mondays 07:30 Hermes job sends "last week" to Telegram
 ```
 
 There is **no lint script and no ESLint config** — do not run `npm run lint`.
@@ -87,7 +88,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   Entity ids and the 10 IT domains are a closed vocabulary; invented values are dropped. Per-feed
   errors don't advance the watermark; 250-item cap and 45-min budget, overflow is deferred.
 - **Surfaces**: `/api/*` routes, `/v1` OpenAI-compatible gateway onto the active stack
-  (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 19 tools),
+  (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 20 tools),
   `hermes/` (Telegram agent config, cron jobs, plugin), `public/` + `dashboard/` (plain
   HTML/JS/CSS — no React, no bundler).
 - **Auth** (`api/auth.ts`): static files and UI routes open; everything else needs
@@ -97,6 +98,10 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   company, accounts and portfolio lines, set by chatting (no selector) and stored in
   `data/run/roles.json`. The active role is appended to the chat system prompt; benchmark
   requests skip it. Only keyword-matched messages or an open onboarding reach the role engine.
+- **Digests** (`digest-request.ts`, `digest-builder.ts`, `digest-agent.ts`, `api/digest.ts`, MCP
+  `make_digest`, chat on digest wording): deterministic selection over `watchlist.db`, 4 short
+  27B calls whose bullets must cite item numbers, rendered to a budget (Telegram 3,900 chars;
+  action items never cut). Framed by the active role.
 - Storage: ChromaDB (:8100), Neo4j (`neo4j-driver`), `better-sqlite3`. No Prisma/PostgreSQL.
 
 ## Conventions
@@ -143,7 +148,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   treat a timeout with the GPU ≥ 30% (`ioreg` "Device Utilization %") as busy, not wedged.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
-  `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`, `kb-canary-<date>.log`).
+  `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`, `kb-canary-<date>.log`,
+  `weekly-digest-<date>.log`).
 
 ## Git
 

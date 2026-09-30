@@ -139,7 +139,7 @@ describe("hermes/config.template.yaml", () => {
 });
 
 describe("hermes/cron/jobs.json", () => {
-  it("defines the six scheduled jobs delivered to Telegram", () => {
+  it("defines the seven scheduled jobs delivered to Telegram", () => {
     expect(jobs.map((job) => job.name)).toEqual([
       "pharmaitchat-news-digest",
       "pharmaitchat-gap-resolution",
@@ -147,6 +147,7 @@ describe("hermes/cron/jobs.json", () => {
       "pharmaitchat-feedback-digest",
       "pharmaitchat-watchlist-ingest",
       "pharmaitchat-kb-canary",
+      "pharmaitchat-weekly-digest",
     ]);
     // Two health runs a day, not three: every Hermes step is a full cold prefill (~160 s of GPU)
     expect(jobs.map((job) => job.schedule)).toEqual([
@@ -156,6 +157,7 @@ describe("hermes/cron/jobs.json", () => {
       "0 8 * * 1",
       "30 2 * * *",
       "0 5 * * *",
+      "30 7 * * 1",
     ]);
     for (const job of jobs) {
       expect(job.schedule.split(" ")).toHaveLength(5);
@@ -218,6 +220,22 @@ describe("hermes/cron/jobs.json", () => {
     const wrapper = readFileSync(join(hermesDir, "scripts", "pharmaitchat-kb-canary.sh"), "utf-8");
     expect(wrapper).toContain("__PROJECT_DIR__");
     expect(wrapper).toContain("scripts/kb-canary.ts");
+  });
+
+  // Monday 07:30, clear of the daily 07:00 gap-resolution job that also uses the 27B.
+  // Its stdout is the message, so it is delivered to Telegram every time.
+  it("sends the weekly digest to Telegram on Monday mornings as a script-mode job", () => {
+    expect(jobs.find((job) => job.name === "pharmaitchat-weekly-digest")).toMatchObject({
+      schedule: "30 7 * * 1",
+      kind: "script",
+      script: "pharmaitchat-weekly-digest.sh",
+      deliver: "telegram",
+      failure_deliver: "telegram",
+    });
+    const wrapper = readFileSync(join(hermesDir, "scripts", "pharmaitchat-weekly-digest.sh"), "utf-8");
+    expect(wrapper).toContain("__PROJECT_DIR__");
+    expect(wrapper).toContain('scripts/digest.ts --request "digest of last week"');
+    expect(wrapper).toContain("data/run/active-stack");
   });
 
   it("ships the watchlist ingest's wrapper script next to jobs.json", () => {
