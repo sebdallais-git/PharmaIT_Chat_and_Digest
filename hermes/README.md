@@ -4,10 +4,10 @@ Everything needed to run [Hermes Agent](https://hermes-agent.nousresearch.com/) 
 
 | File | Purpose |
 |---|---|
-| `config.template.yaml` | Hermes config: the app's `/v1` model with 64k context, a `pharmaitchat` MCP server (15 tools, no `start_reindex`), a `pharmaitchat_cron` server for scheduled runs (14 tools, also no `add_knowledge`), Docker sandbox without network, local SearXNG search, deny approvals when unattended |
+| `config.template.yaml` | Hermes config: the app's `/v1` model with 64k context, a `pharmaitchat` MCP server (19 tools, no `start_reindex`), a `pharmaitchat_cron` server for scheduled runs (17 tools, no `my_role`, also no `add_knowledge`), Docker sandbox without network, local SearXNG search, deny approvals when unattended |
 | `SOUL.md` | Assistant role and tool policy |
-| `cron/jobs.json` | The five scheduled jobs: watchlist ingest 02:30, news digest 06:00, gap resolution 07:00, health watch 09/19 (silent when healthy), feedback digest Monday 08:00 |
-| `scripts/pharmaitchat-watchlist-ingest.sh` | The watchlist ingest job's script body; `install-cron` copies it into `~/.hermes/scripts/` with the repo's path baked in |
+| `cron/jobs.json` | The seven scheduled jobs: watchlist ingest 02:30, KB canaries 05:00, gap resolution 07:00, weekly digest Monday 07:30, daily briefing Tuesday–Friday 07:30, health watch 09/19 (silent when healthy), feedback digest Monday 08:00 |
+| `scripts/pharmaitchat-watchlist-ingest.sh` | The watchlist ingest job's script body (the canary, weekly-digest and daily-briefing jobs have one each alongside it); `install-cron` copies it into `~/.hermes/scripts/` with the repo's path baked in |
 | `plugins/pharmaitchat-switch/` | Plugin that receives the Telegram **Switch** / **Cancel** buttons for a stack switch |
 | `tests/test_pharmaitchat_switch.py` | The plugin's unit tests (`npm run test:hermes-plugin`) |
 | `com.pharmaitchat.mcp.plist.template` | launchd service for `pharmaitchat-mcp` |
@@ -73,9 +73,11 @@ scripts/hermes-setup.sh check          # read-only status; prints variable names
 
 | Job | Schedule | What it does |
 |---|---|---|
-| `pharmaitchat-watchlist-ingest` | 02:30 daily | `--no-agent` script mode — no LLM agent step. Runs `~/.hermes/scripts/pharmaitchat-watchlist-ingest.sh`, which calls `scripts/watchlist.ts ingest` in the repo. `--deliver local --failure-deliver telegram`: silent on success, Telegram only on failure. Full output in `data/logs/watchlist-ingest-<date>.log`. `script_timeout_seconds` is 7200; the ingest stops itself at a 45-minute budget well before that |
-| `pharmaitchat-news-digest` | 06:00 daily | Calls `run_news_agent`, then `knowledge_status`, and reports in at most 10 lines |
-| `pharmaitchat-gap-resolution` | 07:00 daily | Re-checks at most 3 triggered gaps, oldest first; `[SILENT]` when there are none |
+| `pharmaitchat-watchlist-ingest` | 02:30 daily | The nightly watchlist run (script mode, no agent). Silent unless it fails |
+| `pharmaitchat-kb-canary` | 05:00 daily | Asks the KB canary questions (script mode). Silent unless one fails |
+| `pharmaitchat-gap-resolution` | 07:00 daily | Re-checks at most 3 triggered knowledge gaps, oldest first; `[SILENT]` when there are none |
+| `pharmaitchat-weekly-digest` | Monday 07:30 | Last week's digest for your role, ending with action items (script mode) |
+| `pharmaitchat-daily-briefing` | Tuesday–Friday 07:30 | Yesterday's news about your accounts and what to do about it (script mode). Silent on a day with nothing actionable |
 | `pharmaitchat-health-watch` | 09:00 and 19:00 | Reports failing checks; `[SILENT]` while healthy |
 | `pharmaitchat-feedback-digest` | Monday 08:00 | Weekly rating trends and the worst-rated answers |
 

@@ -141,7 +141,7 @@ describe("hermes/config.template.yaml", () => {
 describe("hermes/cron/jobs.json", () => {
   it("defines the seven scheduled jobs delivered to Telegram", () => {
     expect(jobs.map((job) => job.name)).toEqual([
-      "pharmaitchat-news-digest",
+      "pharmaitchat-daily-briefing",
       "pharmaitchat-gap-resolution",
       "pharmaitchat-health-watch",
       "pharmaitchat-feedback-digest",
@@ -151,7 +151,7 @@ describe("hermes/cron/jobs.json", () => {
     ]);
     // Two health runs a day, not three: every Hermes step is a full cold prefill (~160 s of GPU)
     expect(jobs.map((job) => job.schedule)).toEqual([
-      "0 6 * * *",
+      "30 7 * * 2-5",
       "0 7 * * *",
       "0 9,19 * * *",
       "0 8 * * 1",
@@ -236,6 +236,22 @@ describe("hermes/cron/jobs.json", () => {
     expect(wrapper).toContain("__PROJECT_DIR__");
     expect(wrapper).toContain('scripts/digest.ts --request "digest of last week"');
     expect(wrapper).toContain("data/run/active-stack");
+  });
+
+  // Replaced the 06:00 "news digest" job (2026-09-30), which called the retired
+  // news agent and reported "0 new articles" every morning. Tuesday to Friday:
+  // Monday gets the weekly digest at the same time.
+  it("sends a weekday briefing Tuesday to Friday at 07:30, silent on a quiet day", () => {
+    expect(jobs.find((job) => job.name === "pharmaitchat-news-digest")).toBeUndefined();
+    expect(jobs.find((job) => job.name === "pharmaitchat-daily-briefing")).toMatchObject({
+      schedule: "30 7 * * 2-5",
+      kind: "script",
+      script: "pharmaitchat-daily-briefing.sh",
+      deliver: "telegram",
+      failure_deliver: "telegram",
+    });
+    const wrapper = readFileSync(join(hermesDir, "scripts", "pharmaitchat-daily-briefing.sh"), "utf-8");
+    expect(wrapper).toContain('scripts/digest.ts --request "briefing of yesterday" --briefing');
   });
 
   it("ships the watchlist ingest's wrapper script next to jobs.json", () => {

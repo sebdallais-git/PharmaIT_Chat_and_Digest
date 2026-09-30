@@ -233,8 +233,10 @@ describe("hermes-setup.sh install-cron", () => {
     const calls = readFileSync(box.calls, "utf-8").trim().split("\n");
     // 7 jobs plus the one `config set` the watchlist ingest needs (C1(b)).
     expect(calls).toHaveLength(8);
-    expect(calls[0]).toContain("hermes [cron] [create] [0 6 * * *] [Scheduled job: morning news digest.");
-    expect(calls[0]).toContain("[--name] [pharmaitchat-news-digest] [--deliver] [telegram]");
+    expect(calls[0]).toBe(
+      "hermes [cron] [create] [30 7 * * 2-5] [--name] [pharmaitchat-daily-briefing] " +
+        "[--script] [pharmaitchat-daily-briefing.sh] [--no-agent] [--deliver] [telegram] [--failure-deliver] [telegram]",
+    );
     expect(calls[2]).toContain("[--name] [pharmaitchat-health-watch]");
   });
 
@@ -252,7 +254,7 @@ describe("hermes-setup.sh install-cron", () => {
     const calls = readFileSync(box.calls, "utf-8");
     expect(calls).toContain("hermes [cron] [edit] [abc123] [--schedule] [0 9,19 * * *] [--prompt]");
     // 7 defined, 1 (health-watch) already exists and is edited: the other
-    // 3 prompt-mode jobs plus the three script-mode jobs are created.
+    // 2 prompt-mode jobs plus the four script-mode jobs are created.
     expect(calls.match(/\[create\]/g)).toHaveLength(6);
   });
 
@@ -453,6 +455,48 @@ describe("hermes/scripts/pharmaitchat-kb-canary.sh", () => {
     const { result } = canaryBox("", "SyntaxError", 2);
     expect(result.status).toBe(2);
     expect(result.stdout).toContain("KB canary failed (exit 2)");
+  });
+});
+
+describe("hermes/scripts/pharmaitchat-daily-briefing.sh", () => {
+  function briefingBox(stdout: string, exitCode: number) {
+    const root = mkdtempSync(join(tmpdir(), "daily-briefing-wrapper-"));
+    dirs.push(root);
+    const tempProject = join(root, "project");
+    const binDir = join(root, "bin");
+    mkdirSync(join(tempProject, "data", "run"), { recursive: true });
+    mkdirSync(binDir);
+    writeFileSync(join(tempProject, "data", "run", "active-stack"), "splash\n");
+    const template = readFileSync(join(projectDir, "hermes", "scripts", "pharmaitchat-daily-briefing.sh"), "utf-8");
+    const script = join(root, "pharmaitchat-daily-briefing.sh");
+    writeFileSync(script, template.replace(/__PROJECT_DIR__/g, tempProject));
+    const npx = join(binDir, "npx");
+    const stdoutLines = stdout ? ["cat <<'BRIEFOUT'", stdout, "BRIEFOUT"] : [];
+    writeFileSync(npx, ["#!/bin/bash", 'echo "stack=$LLM_PROVIDER args=$*" >&2', ...stdoutLines, `exit ${exitCode}`].join("\n"));
+    chmodSync(npx, 0o755);
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const logDir = join(tempProject, "data", "logs");
+    const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
+    return { result, log };
+  }
+
+  it("sends the briefing when there is account news", () => {
+    const { result, log } = briefingBox("**Briefing · yesterday**\n- Roche: ...", 0);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("**Briefing · yesterday**\n- Roche: ...\n");
+    expect(log).toContain("stack=splash args=tsx scripts/digest.ts --request briefing of yesterday --briefing");
+  });
+
+  // Empty stdout is silent: a day with nothing about the accounts sends nothing
+  it("prints nothing on a quiet day", () => {
+    const { result } = briefingBox("", 0);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("still speaks up when the briefing failed", () => {
+    expect(briefingBox("Weekly digest failed: stack down", 1).result.stdout).toBe("Weekly digest failed: stack down\n");
+    expect(briefingBox("", 2).result.stdout).toContain("Daily briefing failed (exit 2)");
   });
 });
 

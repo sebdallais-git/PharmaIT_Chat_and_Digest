@@ -1,9 +1,12 @@
 [
   {
-    "name": "pharmaitchat-news-digest",
-    "schedule": "0 6 * * *",
+    "name": "pharmaitchat-daily-briefing",
+    "schedule": "30 7 * * 2-5",
+    "kind": "script",
+    "script": "pharmaitchat-daily-briefing.sh",
+    "no_agent": true,
     "deliver": "telegram",
-    "prompt": "Scheduled job: morning news digest. Call run_news_agent once and wait for it to finish. Then call knowledge_status. Reply with a digest of at most 10 lines: how many items were added, and the most notable pharma and cyber items with their sources. If run_news_agent fails, reply with one line saying why."
+    "failure_deliver": "telegram"
   },
   {
     "name": "pharmaitchat-gap-resolution",

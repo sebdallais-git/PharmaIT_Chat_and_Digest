@@ -225,6 +225,10 @@ Each bullet: "- **<line>** · <account>: <one concrete next step>", e.g. who to 
 ${bulletRules(35)}`;
 }
 
+// A bullet that says there is nothing to say. Live on 2026-09-30 the model wrote
+// six "No action; item is unrelated" action items for one mis-tagged story.
+const EMPTY_BULLET = /\b(no action|no relevant|not relevant|unrelated|nothing to (report|do)|no (news|update)s?\b)/i;
+
 /** Keeps bullets that cite at least one known item; strips references to unknown ones. */
 export function parseBullets(reply: string, known: Set<number>, max: number): string[] {
   const bullets: string[] = [];
@@ -242,7 +246,7 @@ export function parseBullets(reply: string, known: Set<number>, max: number): st
         return "";
       })
       .trim();
-    if (cited && text.length > 0) bullets.push(text);
+    if (cited && text.length > 0 && !EMPTY_BULLET.test(text)) bullets.push(text);
     if (bullets.length >= max) break;
   }
   return bullets;
@@ -270,9 +274,16 @@ export async function writeProse(
   watchlist: Watchlist,
   period: string,
   complete: CompleteFn,
+  briefing = false,
 ): Promise<DigestProse> {
   const { sections, numbered } = selection;
   const known = (entries: NumberedItem[]) => new Set(entries.map((e) => e.n));
+  if (briefing) {
+    // Accounts and what to do about them: two calls, not four
+    const accounts = await write(complete, accountsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 5, 450);
+    const actions = await write(complete, actionsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 6, 500);
+    return { headline: [], accounts, infrastructure: [], actions };
+  }
   const top = [...numbered].sort((a, b) => byImportance(a.item, b.item)).slice(0, 10);
   const forActions = [...sections.accounts, ...sections.infrastructure, ...sections.cyber, ...sections.rdMfg].slice(0, 18);
   const headline = top.length ? await write(complete, headlinePrompt(top, role, watchlist, period), known(top), 4, 300) : [];
@@ -297,6 +308,8 @@ export interface RenderOptions {
   period: string;
   role: Role | null;
   now: Date;
+  // The weekday briefing: accounts and action items only, no footer
+  briefing?: boolean;
 }
 
 interface Variant {
@@ -331,7 +344,7 @@ function renderVariant(selection: DigestSelection, prose: DigestProse, footer: D
   const byNumber = new Map(selection.numbered.map((e) => [e.n, e.item]));
   const refs = (text: string) => renderRefs(text, byNumber, variant.links);
   const who = options.role ? ` for ${roleLabel(options.role)}` : "";
-  const out: string[] = [`**Digest · ${options.period}**${who}`];
+  const out: string[] = [`**${options.briefing ? "Briefing" : "Digest"} · ${options.period}**${who}`];
   if (!options.role) out.push('_No role set: tell me who you are ("I am the Dell GAM for Roche, Novartis and Sandoz") for targeted action items._');
 
   if (selection.numbered.length === 0) {
@@ -351,6 +364,8 @@ function renderVariant(selection: DigestSelection, prose: DigestProse, footer: D
     if (prose.actions.length) out.push("", "**Action items**", ...prose.actions.map((b) => `- ${refs(b)}`));
   }
 
+  // The weekly digest reports coverage and failing feeds; repeating them every morning is noise
+  if (options.briefing) return out.join("\n");
   const notes: string[] = [`${selection.itemsInPeriod} items in the period`];
   if (selection.unmatchedAccounts.length) notes.push(`not in the watchlist: ${selection.unmatchedAccounts.join(", ")}`);
   const failing = footer.failingFeeds.slice(0, 3).map((f) => `${f.feedId.split(":")[0]} (${f.failures}×)`);
@@ -401,15 +416,32 @@ export interface DigestResult {
   items: number;
 }
 
-export async function buildDigest(request: DigestRequest, deps: DigestDeps, budget: number): Promise<DigestResult> {
+export interface DigestOptions {
+  // Yesterday's account news and action items only; empty when there is none
+  briefing?: boolean;
+}
+
+export async function buildDigest(request: DigestRequest, deps: DigestDeps, budget: number, options: DigestOptions = {}): Promise<DigestResult> {
   const items = deps.itemsInPeriod(request.from.toISOString(), request.to.toISOString());
-  const selection = selectDigestItems(items, request, deps.watchlist, deps.role);
-  const prose = await writeProse(selection, deps.role, deps.watchlist, request.label, deps.complete);
+  let selection = selectDigestItems(items, request, deps.watchlist, deps.role);
+  if (options.briefing) {
+    const quiet = { markdown: "", period: request.label, items: 0 };
+    // Importance 1 is the tagger's "barely relevant", where mis-tagged stories sit.
+    // An empty result is how the Hermes job stays silent on a quiet day.
+    const accounts = selection.sections.accounts.filter((e) => (e.item.importance ?? 0) >= 2);
+    if (accounts.length === 0) return quiet;
+    const empty = { accounts, infrastructure: [], industry: [], cyber: [], aiCloud: [], rdMfg: [] };
+    selection = { ...selection, sections: empty, numbered: accounts };
+  }
+  const prose = await writeProse(selection, deps.role, deps.watchlist, request.label, deps.complete, options.briefing === true);
+  // A briefing exists to prompt action: with none left, say nothing
+  if (options.briefing && prose.actions.length === 0) return { markdown: "", period: request.label, items: 0 };
   const markdown = renderDigest(selection, prose, { failingFeeds: deps.failingFeeds() }, {
     budget,
     period: request.label,
     role: deps.role,
     now: deps.now(),
+    briefing: options.briefing === true,
   });
   return { markdown, period: request.label, items: selection.numbered.length };
 }

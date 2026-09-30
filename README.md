@@ -101,10 +101,10 @@ Everything that runs on its own, what starts it, and whether it is live on this 
 | [Chat turn and gap detection](#chat-turn-and-gap-detection) | Every chat message | App | Live |
 | [Gap auto-fill v2](#gap-auto-fill-v2) · `n8n/knowledge_gap_workflow_v2.json` | Webhook from the gap detector | n8n (18 nodes) | **Live**, active |
 | [KB canaries](#kb-canaries) · `config/kb-canaries.yaml` | 05:00 daily | Hermes, script mode | Live |
-| [Digest agent](#digests) · `scripts/digest.ts` | Asked in chat or Telegram · Mondays 07:30 | App · Hermes, script mode | Live |
+| [Digest agent](#digests) · `scripts/digest.ts` | Asked in chat or Telegram · Mondays 07:30 (weekly) · Tue–Fri 07:30 (briefing) | App · Hermes, script mode | Live |
 | [Gap auto-fill v1](#gap-auto-fill-v1) · `n8n/knowledge_gap_workflow.json` | Webhook | n8n (13 nodes) | Kept for reference, not imported |
 | [Nightly watchlist ingest](#the-nightly-run) | 02:30 daily | Hermes, script mode | Live |
-| [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 4 agent jobs | Hermes agent | Live |
+| [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 3 agent jobs + 4 script jobs | Hermes | Live |
 | [Stack switch](#stack-switch) | Web UI request | App + Telegram + Hermes plugin | Live |
 
 ### Chat turn and gap detection
@@ -209,19 +209,18 @@ flowchart LR
     H["Hermes gateway<br/>cron"] --> WL["02:30 · watchlist ingest<br/>script mode, no agent"]
     H --> KC["05:00 · KB canaries<br/>script mode, no agent"]
     H --> WD["Mon 07:30 · weekly digest<br/>script mode, no agent"]
-    H --> ND["06:00 · news digest"]
+    H --> DB["Tue–Fri 07:30 · daily briefing<br/>script mode, no agent"]
     H --> GR["07:00 · gap resolution"]
     H --> HW["09:00 and 19:00 · health watch"]
     H --> FD["Mon 08:00 · feedback digest"]
     WL --> WI["watchlist ingest script"]
-    ND --> T1["run_news_agent · knowledge_status"]
     GR --> T2["re-check at most 3 triggered gaps"]
     HW --> T3["system_health"]
     FD --> T4["feedback_report"]
     WI -- "only on failure" --> TG["Telegram"]
     KC -- "only on failure" --> TG
     WD -- "always: the digest is the message" --> TG
-    T1 --> TG
+    DB -- "only when there is something to act on" --> TG
     T2 --> TG
     T3 -- "only when unhealthy" --> TG
     T4 --> TG
@@ -584,7 +583,9 @@ flowchart LR
 - **Measured** (Splash, 2026-09-30, Dell GAM role): 35 items, 3,151 characters, 88 s over four calls; last week's digest from the script in 50 s. The first run gave all eight account slots to Roche (25 items against Novartis' 3 and Sandoz' 2) and cut the action items at the Telegram limit; both are fixed and tested.
 - **Action items are prompts, not facts**: they name product families from the model's own knowledge, which can be out of date.
 
-Run it by hand with `npx tsx scripts/digest.ts --request "digest of last week"`; the Monday job keeps each run in `data/logs/weekly-digest-<date>.log`.
+**Weekday briefing** (Tuesday to Friday, 07:30): yesterday's news about your accounts, with the account bullets and action items only. It is sent only when at least one real action item survives: importance-1 account items (the tagger's "barely relevant", where mis-tagged stories sit) are left out, and bullets that say "no action" or "unrelated" are dropped. Tested live on 2026-09-30, yesterday's only "Roche" item was a mis-tagged financial-analyst story, and the first version turned it into six "No action" lines; now that day is silent. It replaced the 06:00 "news digest" job, which reported the retired news agent's "0 new articles" every morning.
+
+Run either by hand: `npx tsx scripts/digest.ts --request "digest of last week"` or `--request "briefing of yesterday" --briefing`. Each scheduled run is kept in `data/logs/weekly-digest-<date>.log` or `daily-briefing-<date>.log`.
 
 ## Chat, retrieval and the knowledge base
 
@@ -704,10 +705,12 @@ scripts/hermes-setup.sh check           # read-only status; prints variable name
 
 | Job | Schedule | What it does |
 |---|---|---|
-| `pharmaitchat-watchlist-ingest` | 02:30 daily | The nightly watchlist run. Hermes `--no-agent` script mode — no LLM agent step — running `hermes/scripts/pharmaitchat-watchlist-ingest.sh`. Silent on success, Telegram only on failure |
-| `pharmaitchat-news-digest` | 06:00 daily | Calls `run_news_agent` and `knowledge_status`, then reports the knowledge base's state in at most 10 lines |
-| `pharmaitchat-gap-resolution` | 07:00 daily | Re-checks at most 3 triggered knowledge gaps, oldest first |
-| `pharmaitchat-health-watch` | 09:00 and 19:00 | Reports failing checks; replies `[SILENT]` and delivers nothing while healthy |
+| `pharmaitchat-watchlist-ingest` | 02:30 daily | The nightly watchlist run (script mode, no agent). Silent unless it fails |
+| `pharmaitchat-kb-canary` | 05:00 daily | Asks the KB canary questions (script mode). Silent unless one fails |
+| `pharmaitchat-gap-resolution` | 07:00 daily | Re-checks at most 3 triggered knowledge gaps, oldest first; `[SILENT]` when there are none |
+| `pharmaitchat-weekly-digest` | Monday 07:30 | Last week's digest for your role, ending with action items (script mode) |
+| `pharmaitchat-daily-briefing` | Tuesday–Friday 07:30 | Yesterday's news about your accounts and what to do about it (script mode). Silent on a day with nothing actionable |
+| `pharmaitchat-health-watch` | 09:00 and 19:00 | Reports failing checks; `[SILENT]` while healthy |
 | `pharmaitchat-feedback-digest` | Monday 08:00 | Weekly rating trends and the worst-rated answers |
 
 - **Tool scope is the control.** Telegram and CLI runs get 15 of the 16 MCP tools (no `start_reindex`). Scheduled runs connect to a separate, write-limited `pharmaitchat_cron` server with 14 tools: no `start_reindex` and no `add_knowledge`. MCP calls are never approval-gated, so the tool list is what enforces this. Scheduled runs also get no web, memory, terminal or file toolsets.
