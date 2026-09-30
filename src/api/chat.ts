@@ -21,6 +21,8 @@ import { handleGapDetection } from "../services/gap-detector.js";
 import { createResponseEntry } from "../services/response-cache.js";
 import { logRequest, logChromaDBMiss } from "../services/request-log.js";
 import { isNeo4jAvailable, queryGraphForChat } from "../services/graph-store.js";
+import { openRoleStore } from "../services/role-store.js";
+import { activeRolePreamble, roleReplyFor } from "../services/role-dialogue.js";
 
 const router = Router();
 
@@ -154,6 +156,18 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.write(`data: ${JSON.stringify({ token: `Company names are now **${state}**. ${detail}` })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // The user's role is set by chatting ("I am the Dell GAM for Roche...", "add Lonza to my accounts")
+  const roleStore = openRoleStore();
+  const roleReply = await roleReplyFor(message, { benchmark: benchmark === true, store: roleStore });
+  if (roleReply !== null) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.write(`data: ${JSON.stringify({ token: roleReply })}\n\n`);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
     return;
@@ -343,7 +357,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
   sendReasoning(`Generating response with ${chatModel} on ${llm.stack.name.toUpperCase()}...`);
 
   const messages: ChatMessage[] = [
-    { role: "system", content: getSystemPrompt() + contextBlock },
+    { role: "system", content: getSystemPrompt() + activeRolePreamble({ benchmark: benchmark === true, store: roleStore }) + contextBlock },
     ...(history ?? []),
     { role: "user", content: message },
   ];
