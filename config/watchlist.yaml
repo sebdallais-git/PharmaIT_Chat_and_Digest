@@ -245,6 +245,8 @@ peers:
     verifiedAt: "2026-09-20"
   bayer:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=Bayer+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.bayer.com/en/investors/financial-reports"
     # no rss: bayer.com/en/rss and every /en/rss/* path (rss-mediacenter, rss.xml,
     # rss-corporate-news, press-releases) -- HTTP 403, still blocked after the R9 UA
@@ -280,6 +282,8 @@ peers:
     verifiedAt: "2026-09-20"
   hikma:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=Hikma+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.hikma.com/investors/results-and-presentations/"
     # no rss: hikma.com/news/feed/ and /feed/ -- HTTP 404, no feed link in page source;
     # regulatory announcements go through the LSE Regulatory News Service instead of a
@@ -288,6 +292,8 @@ peers:
     verifiedAt: "2026-09-20"
   fresenius-kabi:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=%22Fresenius+Kabi%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.fresenius.com/financial-results"
     # no rss: Fresenius Kabi (a division of Fresenius SE) has no newsroom feed of its
     # own (fresenius-kabi.com/news-room/rss and /rss both HTTP 404); ir_page above is
@@ -297,6 +303,8 @@ peers:
     verifiedAt: "2026-09-20"
   stada:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=STADA+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.stada.com/de/investor-relations/auf-einen-blick"
     # no rss: stada.com/media/newsroom/rss and /rss -- HTTP 404, no feed link tag;
     # still 404 after the R9 UA change.
@@ -305,7 +313,9 @@ peers:
     # not a shareholder IR page.
     verifiedAt: "2026-09-20"
   zentiva:
-    feeds: {}
+    feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=Zentiva+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
     # no rss: zentiva.com/news/newsroom/rss and /rss -- both HTTP 404, no feed link found.
     # no ir_page: /investors and /investor-relations both 404, no dedicated investor page found.
     # no edgar: not an SEC filer.
@@ -314,6 +324,8 @@ peers:
     verifiedAt: "2026-09-20"
   celltrion:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=Celltrion+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.celltrion.com/en-us/investment/notice"
     # no rss: candidates returned HTTP 200 HTML pages, not valid feeds -- the site is an
     # SPA that serves HTML for arbitrary paths.
@@ -321,6 +333,8 @@ peers:
     verifiedAt: "2026-09-20"
   samsung-bioepis:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=%22Samsung+Bioepis%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://samsungbiologics.com/ir/overview"
     # no rss: samsungbioepis.com/en/newsroom/rss and /rss both failed/404. Samsung Bioepis
     # has been a wholly-owned subsidiary of Samsung Biologics since April 2022 and has no
@@ -329,6 +343,8 @@ peers:
     verifiedAt: "2026-09-20"
   biocon:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=Biocon+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.biocon.com/investor-relations/financial-information/quarterly-reports/"
     # no rss: biocon.com/feed/ (found via rel=alternate) returns valid RSS under curl, but
     # this project's verifyFeed fails with a TLS chain error (biocon.com doesn't serve its
@@ -338,6 +354,8 @@ peers:
     verifiedAt: "2026-09-20"
   aurobindo:
     feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: ["https://news.google.com/rss/search?q=%22Aurobindo+Pharma%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
       ir_page: "https://www.aurobindo.com/investors/results-reports-presentations/results-announcements"
     # no rss: aurobindo.com/feed/ and /media/press-releases/feed/ -- both HTTP 404; no
     # feed link in page source.
@@ -395,7 +413,9 @@ vendors:
         # no edgar: private company
         verifiedAt: "2026-09-20"
     - anthropic:
-        feeds: {}
+        feeds:
+          # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+          rss: ["https://news.google.com/rss/search?q=Anthropic+(pharma+OR+pharmaceutical+OR+healthcare+OR+%22life+sciences%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
         # no rss: anthropic.com/rss.xml and /news/rss.xml -- both HTTP 404; no
         # rel=alternate feed tag found either
         # no edgar: private company
@@ -624,7 +644,9 @@ vendors:
         # verified empty. No edgar: private company.
         verifiedAt: "2026-09-20"
     - dotmatics:
-        feeds: {}
+        feeds:
+          # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+          rss: ["https://news.google.com/rss/search?q=Dotmatics+when:30d&hl=en-US&gl=US&ceid=US:en"]
         # no rss: dotmatics.com/news/rss.xml, /blog/feed, /feed, /feed.xml, /rss.xml,
         # blog.dotmatics.com/feed -- all failed, no autodiscovery link found
         # no edgar: private company (acquired by Siemens in 2025)
@@ -665,7 +687,9 @@ vendors:
         # returns HTML, not a feed
         verifiedAt: "2026-09-20"
     - koerber:
-        feeds: {}
+        feeds:
+          # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+          rss: ["https://news.google.com/rss/search?q=(K%C3%B6rber+OR+Koerber)+(pharma+OR+software+OR+MES+OR+%22Werum%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
         # no rss: koerber-pharma.com/?feed=rss2 responds but isn't a valid feed;
         # koerber-supplychain.com/feed/ -- HTTP 404; koerber.com and
         # koerber-technologies.com also checked with no working feed
@@ -689,7 +713,9 @@ vendors:
         # ir.emerson.com and emerson.com/en-us/news expose no working RSS
         verifiedAt: "2026-09-20"
     - tulip:
-        feeds: {}
+        feeds:
+          # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+          rss: ["https://news.google.com/rss/search?q=%22Tulip+Interfaces%22+when:30d&hl=en-US&gl=US&ceid=US:en"]
         # no rss: tulip.co/blog/feed and /press/feed -- both HTTP 404; site (Craft CMS)
         # has no feed autodiscovery link
         # no edgar: private company
