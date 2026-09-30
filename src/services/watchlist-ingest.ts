@@ -131,6 +131,9 @@ export interface IngestDeps {
   // kind's own logic (e.g. the ir_page R16 anomaly check) without flipping
   // the production default.
   disabledKinds?: ReadonlySet<Feed["kind"]>;
+  // Pause before retrying a refused feed (see fetchWithRetry). Defaults to
+  // REFUSED_FEED_RETRY_DELAY_MS; tests set 0.
+  retryDelayMs?: number;
 }
 
 export interface IngestResult {
@@ -291,6 +294,35 @@ interface FeedTask {
 }
 
 // ---- the run ----------------------------------------------------------------
+
+// Q4-hosted IR feeds (ir.veeva.com, ir.schrodinger.com) refuse about every
+// other request with a 403, whatever the pause: measured 2026-09-30, one retry
+// rescued 5 of 6 attempts and a second covers the rest. Before this the ingest
+// never retried and failed both feeds every night from 2026-09-20, while
+// verify-feeds (which retried once) kept reporting them ok. Only "refused"
+// statuses are retried: a 404, a 5xx or a timeout fails the same way again.
+const REFUSED_FEED_RETRY_DELAY_MS = 2000;
+const REFUSED_FEED_RETRIES = 2;
+const REFUSED_STATUS = /HTTP (403|429)$/;
+
+async function fetchWithRetry<T>(
+  fetchOnce: () => Promise<T>,
+  label: string,
+  deps: Pick<IngestDeps, "log" | "retryDelayMs">,
+): Promise<T> {
+  const delayMs = deps.retryDelayMs ?? REFUSED_FEED_RETRY_DELAY_MS;
+  for (let retry = 0; ; retry += 1) {
+    try {
+      return await fetchOnce();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const status = message.match(REFUSED_STATUS)?.[0];
+      if (status === undefined || retry >= REFUSED_FEED_RETRIES) throw err;
+      deps.log(`${label}: retrying after ${status} (${retry + 1}/${REFUSED_FEED_RETRIES})`);
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
 
 export function createIngestRun(deps: IngestDeps): (options?: IngestOptions) => Promise<IngestResult> {
   const limit = deps.limit > 0 ? deps.limit : DEFAULT_INGEST_LIMIT;
@@ -489,7 +521,7 @@ export function createIngestRun(deps: IngestDeps): (options?: IngestOptions) => 
             state.lastSeenAt ??
             new Date(startedAtMs - FIRST_RUN_BACKFILL_MS).toISOString();
 
-          const outcome = await task.fetch(since);
+          const outcome = await fetchWithRetry(() => task.fetch(since), task.label, deps);
           if (outcome.anomaly !== undefined) {
             anomalies.push(outcome.anomaly);
             deps.log(`anomaly: ${outcome.anomaly}`);

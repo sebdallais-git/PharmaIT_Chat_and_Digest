@@ -109,6 +109,7 @@ interface HarnessOptions {
   // can re-enable a disabled kind to exercise its own fetch/anomaly logic
   // (e.g. ir_page's R16 check), without changing what ships by default.
   disabledKinds?: ReadonlySet<Feed["kind"]>;
+  retryDelayMs?: number;
 }
 
 function makeHarness(options: HarnessOptions): Harness {
@@ -158,6 +159,8 @@ function makeHarness(options: HarnessOptions): Harness {
     edgarMinIntervalMs: options.edgarMinIntervalMs,
     budgetMs: options.budgetMs,
     disabledKinds: options.disabledKinds,
+    // No real pause between retries in tests
+    retryDelayMs: options.retryDelayMs ?? 0,
   };
 
   return {
@@ -851,6 +854,70 @@ describe("watchlist ingest", () => {
     expect(harness.store.getFeedState(feedIdFor(broken, brokenFeed)).lastSeenAt).toBeNull();
     expect(harness.store.getFeedState(feedIdFor(good, goodFeed)).lastSeenAt).toBe("2026-09-18T00:00:00.000Z");
     harness.store.close();
+  });
+
+  // ir.veeva.com and ir.schrodinger.com (Q4-hosted IR feeds) refuse about every
+  // other request with a 403. verify-feeds retried and reported them "ok"; the
+  // ingest did not, and failed both every night from 2026-09-20 to 09-30.
+  describe("retrying a feed the server refused", () => {
+    const q4Feed: Feed = { kind: "rss", url: "https://ir.veeva.com/rss/pressrelease.aspx" };
+    const veeva = makeEntity({ id: "veeva", name: "Veeva", feeds: [q4Feed] });
+    const item = rawItem({ title: "Veeva news", url: "https://ir.veeva.com/a", publishedAt: "2026-09-18T00:00:00.000Z" });
+
+    it.each(["HTTP 403", "HTTP 429"])("retries after %s and stores what the retry returns", async (status) => {
+      let calls = 0;
+      const harness = makeHarness({
+        watchlist: makeWatchlist([veeva]),
+        async rss() {
+          calls += 1;
+          if (calls === 1) throw new Error(`feed for "Veeva" (rss) failed: ${status}`);
+          return [item];
+        },
+      });
+
+      const result = await harness.run();
+
+      expect(calls).toBe(2);
+      expect(result.failedFeeds).toEqual([]);
+      expect(result.stored).toBe(1);
+      expect(harness.logs.some((line) => line.includes(`retrying after ${status}`))).toBe(true);
+      harness.store.close();
+    });
+
+    it("gives up after two retries and records one failure", async () => {
+      let calls = 0;
+      const harness = makeHarness({
+        watchlist: makeWatchlist([veeva]),
+        async rss() {
+          calls += 1;
+          throw new Error('feed for "Veeva" (rss) failed: HTTP 403');
+        },
+      });
+
+      const result = await harness.run();
+
+      expect(calls).toBe(3);
+      expect(result.failedFeeds).toEqual([feedIdFor(veeva, q4Feed)]);
+      expect(harness.store.getFeedState(feedIdFor(veeva, q4Feed)).consecutiveFailures).toBe(1);
+      harness.store.close();
+    });
+
+    // A dead URL or a server error fails the same way again: no point waiting
+    it.each(["HTTP 404", "HTTP 503", "timed out"])("does not retry %s", async (message) => {
+      let calls = 0;
+      const harness = makeHarness({
+        watchlist: makeWatchlist([veeva]),
+        async rss() {
+          calls += 1;
+          throw new Error(`feed for "Veeva" (rss) failed: ${message}`);
+        },
+      });
+
+      await harness.run();
+
+      expect(calls).toBe(1);
+      harness.store.close();
+    });
   });
 
   it("passes the stored watermark back to the adapter on the next run", async () => {
