@@ -77,7 +77,7 @@ Outbound traffic is limited to what the system goes out to *get* and the one cha
 |---|---|---|
 | 🏠 | **Local 27B LLM** | Qwen3.8 27B (4-bit) for chat and tagging, Qwen3-Embedding 0.6B (8-bit), 64K context, zero cloud calls |
 | 🔀 | **Four interchangeable stacks** | Ollama ⇄ MLX ⇄ oMLX ⇄ Splash by one script or from the web UI, Telegram-confirmed, with per-stack indexes and automatic rollback |
-| 👁️ | **Entity watchlist** | 76 watched entities — 3 customers, 28 peers, 45 IT vendors — across 46 RSS feeds, 49 EDGAR CIKs and 188 entity-less topic queries |
+| 👁️ | **Entity watchlist** | 76 watched entities — 3 customers, 28 peers, 45 IT vendors — across 59 RSS feeds, 49 EDGAR CIKs and 188 entity-less topic queries |
 | 🌙 | **Unattended nightly run** | 02:30: fetch, dedupe *before* the model, tag by entity and IT domain, store in SQLite and ChromaDB, alert only on failure |
 | 🔎 | **Hybrid retrieval** | ChromaDB, an in-memory vector + keyword index, Neo4j Graph RAG and live news, queried in parallel |
 | 🛡️ | **Embedding-parity guard** | A stack that shares another's index must prove its embeddings match (cosine ≥ 0.9999) or the switch is refused |
@@ -442,7 +442,7 @@ Most news tooling watches *topics*. PharmaITChat watches **named entities**: thr
 | **Peers** | 28 | The competitive sets each customer is measured against |
 | **IT vendors** | 45 | Grouped by the domain they sell into; networking and end-user computing added 2026-09-30 (Arista, HP Inc., Omnissa, Citrix, plus Nutanix) |
 | **Total watched entities** | **76** | |
-| **Verified RSS/Atom feeds** | 46 | Including Google News search feeds where a company publishes none |
+| **Verified RSS/Atom feeds** | 59 | Including Google News search feeds where a company publishes none; every entity has at least one active feed |
 | **EDGAR CIKs** | 49 | SEC filings, rate-limited to one shared 10 req/s gate |
 | **Entity-less topic queries** | 188 | Google News queries covering the same ground with no named subject |
 
@@ -519,7 +519,7 @@ Stated plainly, because a README that implies otherwise wastes the reader's time
 
 - **Monthly and quarterly digests, `search_watchlist` and `compare_entities`** from the [design spec](docs/superpowers/specs/2026-09-20-it-scene-watchlist-design.md) are not built; the [digest agent](#digests) covers any period on request and sends the weekly one.
 - **IR-page collection is disabled.** The adapter scanned hundreds of links per entity and recognised zero dates on 14 of 29 pages, for 4 stored items in a whole run — noise at a scale that masks real failures. It is switched off at the run level (`DISABLED_FEED_KINDS` in `src/services/watchlist-ingest.ts`), not deleted: every `ir_page` URL and the research behind it stays in the config.
-- **13 of the 76 entities have no active feed** — nine peers (Bayer, Hikma, Fresenius Kabi, Stada, Zentiva, Celltrion, Samsung Bioepis, Biocon, Aurobindo) and four vendors (Anthropic, Dotmatics, Körber, Tulip). The fix, already ruled on, is to give *every* entity a Google News feed derived from its name and aliases; the dedupe ladder collapses the overlap with RSS and EDGAR at no model cost.
+- **Every entity has an active feed** since 2026-09-30: the 13 that had none (nine peers, four vendors) got a Google News search feed. Peers use the customers' IT scope (name plus digital transformation, AI, CIO, data center, cloud migration, SAP or IT infrastructure), so Hikma and Zentiva are empty until they make IT news rather than filling up with share-price stories; vendors get their own disambiguated query ("Tulip Interfaces", Körber plus pharma/MES/Werum, Anthropic plus pharma/healthcare).
 
 ---
 
