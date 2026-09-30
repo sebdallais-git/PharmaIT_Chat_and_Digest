@@ -148,7 +148,10 @@ describe("buildTaggingPrompt", () => {
     expect(text).toContain("cyber = security incidents, controls, threat actors");
     expect(text).toContain("ai = AI/ML platforms, GPUs, AI factories, model deployment");
     expect(text).toContain("cloud = public/hybrid cloud adoption and migration");
-    expect(text).toContain("infrastructure = datacentre, compute, network, end-user computing");
+    expect(text).toContain("infrastructure = datacentre, servers, compute, HCI, power and cooling");
+    // Split out of infrastructure on 2026-09-30
+    expect(text).toContain("networking = switching, routing");
+    expect(text).toContain("euc = end-user computing: PCs, laptops");
     expect(text).toContain("mfg_it = manufacturing execution, OT/shop-floor systems, serialisation");
     expect(text).toContain("sap = SAP and ERP programmes");
     expect(text).toContain("data = data platforms, warehouses, lakehouses, analytics");

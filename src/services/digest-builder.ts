@@ -30,7 +30,7 @@ export const SECTION_TITLES: Record<SectionKey, string> = {
 
 const SECTION_ORDER: SectionKey[] = ["accounts", "infrastructure", "industry", "cyber", "aiCloud", "rdMfg"];
 const SECTION_CAPS: Record<SectionKey, number> = { accounts: 8, infrastructure: 8, industry: 5, cyber: 5, aiCloud: 5, rdMfg: 4 };
-const INFRA_DOMAINS: Domain[] = ["infrastructure", "storage", "backup"];
+const INFRA_DOMAINS: Domain[] = ["infrastructure", "storage", "backup", "networking", "euc"];
 const AI_CLOUD_DOMAINS: Domain[] = ["ai", "cloud", "data", "sap"];
 const RD_MFG_DOMAINS: Domain[] = ["rnd_it", "mfg_it"];
 

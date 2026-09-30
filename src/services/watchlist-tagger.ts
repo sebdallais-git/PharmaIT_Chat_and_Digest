@@ -28,13 +28,15 @@ const DOMAIN_GLOSSES: Record<Domain, string> = {
   cyber: "security incidents, controls, threat actors",
   ai: "AI/ML platforms, GPUs, AI factories, model deployment",
   cloud: "public/hybrid cloud adoption and migration",
-  infrastructure: "datacentre, compute, network, end-user computing",
+  infrastructure: "datacentre, servers, compute, HCI, power and cooling",
   rnd_it: "research informatics, lab data platforms, scientific computing",
   mfg_it: "manufacturing execution, OT/shop-floor systems, serialisation",
   sap: "SAP and ERP programmes",
   data: "data platforms, warehouses, lakehouses, analytics",
   storage: "primary/secondary storage systems",
   backup: "backup, recovery, cyber-vault",
+  networking: "switching, routing, LAN/WAN, SD-WAN, wireless, datacentre fabrics",
+  euc: "end-user computing: PCs, laptops, workstations, VDI, device management, digital workplace",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

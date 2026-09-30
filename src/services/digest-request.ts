@@ -80,7 +80,9 @@ export function parsePeriod(text: string, now: Date): { from: Date; to: Date; la
 const DOMAIN_WORDS: [Domain, RegExp][] = [
   ["storage", /\bstorage\b/i],
   ["backup", /\b(backup|data protection|cyber recovery)\b/i],
-  ["infrastructure", /\b(infrastructure|servers?|compute|data ?cent(er|re)s?|network(ing)?|hci)\b/i],
+  ["infrastructure", /\b(infrastructure|servers?|compute|data ?cent(er|re)s?|hci)\b/i],
+  ["networking", /\b(network(ing)?|switch(es|ing)|sd-?wan|wi-?fi)\b/i],
+  ["euc", /\b(euc|end[- ]user|pcs?|laptops?|workstations?|vdi|workplace)\b/i],
   ["cyber", /\b(cyber|security|ransomware|breach(es)?)\b/i],
   ["ai", /\b(ai|artificial intelligence|genai|llms?)\b/i],
   ["cloud", /\bcloud\b/i],

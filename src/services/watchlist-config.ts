@@ -20,6 +20,10 @@ export const DOMAINS = [
   "data",
   "storage",
   "backup",
+  // Split out of "infrastructure" on 2026-09-30: the user sells both lines, and
+  // lumped in with datacentre news neither showed up in a digest of its own
+  "networking",
+  "euc",
 ] as const;
 export type Domain = (typeof DOMAINS)[number];
 

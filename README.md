@@ -4,7 +4,7 @@
 
 ### The IT landscape around pharma — tracked, tagged and answered with a local LLM, VectorDB and neo4j based GraphRAG
 
-PharmaITChat watches the IT and security scene around three pharma customers, their competitors and the vendors that shape their tech stack — **71 named entities**, collected nightly, deduplicated across sources, tagged by a 27B model and stored in a knowledge base you can then ask questions of, in a browser or on Telegram.
+PharmaITChat watches the IT and security scene around three pharma customers, their competitors and the vendors that shape their tech stack — **76 named entities**, collected nightly, deduplicated across sources, tagged by a 27B model and stored in a knowledge base you can then ask questions of, in a browser or on Telegram.
 
 **Every model call happens on this machine.** Chat, embeddings, nightly tagging, retrieval, storage. No cloud LLM, no API key for the model, no per-token bill — and no question, answer or document handed to a cloud model. What goes out is the news the system fetches, the web searches it runs (see [Everything local](#everything-local-on-one-machine)) and the Telegram message it sends back.
 
@@ -77,7 +77,7 @@ Outbound traffic is limited to what the system goes out to *get* and the one cha
 |---|---|---|
 | 🏠 | **Local 27B LLM** | Qwen3.8 27B (4-bit) for chat and tagging, Qwen3-Embedding 0.6B (8-bit), 64K context, zero cloud calls |
 | 🔀 | **Four interchangeable stacks** | Ollama ⇄ MLX ⇄ oMLX ⇄ Splash by one script or from the web UI, Telegram-confirmed, with per-stack indexes and automatic rollback |
-| 👁️ | **Entity watchlist** | 71 watched entities — 3 customers, 28 peers, 40 IT vendors — across 37 RSS feeds, 46 EDGAR CIKs and 188 entity-less topic queries |
+| 👁️ | **Entity watchlist** | 76 watched entities — 3 customers, 28 peers, 45 IT vendors — across 46 RSS feeds, 49 EDGAR CIKs and 188 entity-less topic queries |
 | 🌙 | **Unattended nightly run** | 02:30: fetch, dedupe *before* the model, tag by entity and IT domain, store in SQLite and ChromaDB, alert only on failure |
 | 🔎 | **Hybrid retrieval** | ChromaDB, an in-memory vector + keyword index, Neo4j Graph RAG and live news, queried in parallel |
 | 🛡️ | **Embedding-parity guard** | A stack that shares another's index must prove its embeddings match (cosine ≥ 0.9999) or the switch is refused |
@@ -440,13 +440,13 @@ Most news tooling watches *topics*. PharmaITChat watches **named entities**: thr
 |---|---:|---|
 | **Customers** | 3 | Roche, Novartis, Sandoz |
 | **Peers** | 28 | The competitive sets each customer is measured against |
-| **IT vendors** | 40 | Grouped by the domain they sell into |
-| **Total watched entities** | **71** | |
-| **Verified RSS/Atom feeds** | 37 | Checked with `verify-feeds` on 2026-09-20 |
-| **EDGAR CIKs** | 46 | SEC filings, rate-limited to one shared 10 req/s gate |
+| **IT vendors** | 45 | Grouped by the domain they sell into; networking and end-user computing added 2026-09-30 (Arista, HP Inc., Omnissa, Citrix, plus Nutanix) |
+| **Total watched entities** | **76** | |
+| **Verified RSS/Atom feeds** | 46 | Including Google News search feeds where a company publishes none |
+| **EDGAR CIKs** | 49 | SEC filings, rate-limited to one shared 10 req/s gate |
 | **Entity-less topic queries** | 188 | Google News queries covering the same ground with no named subject |
 
-Ten IT domains carry the tagging vocabulary: `cyber`, `ai`, `cloud`, `infrastructure`, `rnd_it`, `mfg_it`, `sap`, `data`, `storage`, `backup`. The vocabulary is **closed** — an entity id or domain the model invents rather than picks is dropped at the tagger boundary and again at the storage boundary, never stored.
+Twelve IT domains carry the tagging vocabulary: `cyber`, `ai`, `cloud`, `infrastructure`, `rnd_it`, `mfg_it`, `sap`, `data`, `storage`, `backup`, and since 2026-09-30 `networking` and `euc` (end-user computing), split out of `infrastructure` so each line you sell shows up on its own. Items stored before then keep their old tags. Measured before shipping (50 stored items re-tagged with the old and new prompt on Splash): 6 of 20 infrastructure items moved to `networking` or `euc` (PCs, network articles), none of 10 untagged items picked up a new tag, and the other ten domains agreed on 445 of 450 item-domain pairs. The vocabulary is **closed** — an entity id or domain the model invents rather than picks is dropped at the tagger boundary and again at the storage boundary, never stored.
 
 ### The nightly run
 
@@ -519,7 +519,7 @@ Stated plainly, because a README that implies otherwise wastes the reader's time
 
 - **Monthly and quarterly digests, `search_watchlist` and `compare_entities`** from the [design spec](docs/superpowers/specs/2026-09-20-it-scene-watchlist-design.md) are not built; the [digest agent](#digests) covers any period on request and sends the weekly one.
 - **IR-page collection is disabled.** The adapter scanned hundreds of links per entity and recognised zero dates on 14 of 29 pages, for 4 stored items in a whole run — noise at a scale that masks real failures. It is switched off at the run level (`DISABLED_FEED_KINDS` in `src/services/watchlist-ingest.ts`), not deleted: every `ir_page` URL and the research behind it stays in the config.
-- **14 of the 71 entities therefore have no active feed** — customer `sandoz`, nine peers and four vendors. The fix, already ruled on, is to give *every* entity a Google News feed derived from its name and aliases; the dedupe ladder collapses the overlap with RSS and EDGAR at no model cost. That is the next thing built.
+- **13 of the 76 entities have no active feed** — nine peers (Bayer, Hikma, Fresenius Kabi, Stada, Zentiva, Celltrion, Samsung Bioepis, Biocon, Aurobindo) and four vendors (Anthropic, Dotmatics, Körber, Tulip). The fix, already ruled on, is to give *every* entity a Google News feed derived from its name and aliases; the dedupe ladder collapses the overlap with RSS and EDGAR at no model cost.
 
 ---
 
@@ -1163,7 +1163,7 @@ PharmaITChat/
 │   │   ├── switch-labels.ts      # Switch-status text ("OMLX stack ready (96 s)"), synced with public/app.js
 │   │   └── ...                   # feedback, request log, response cache, web search, file parser
 │   └── utils/batches.ts
-├── config/watchlist.yaml         # 71 entities (customers, peers, vendors) + 188 entity-less topic queries
+├── config/watchlist.yaml         # 76 entities (customers, peers, vendors) + 188 entity-less topic queries
 ├── mcp/                          # pharmaitchat-mcp: 16 MCP tools over Streamable HTTP
 │   ├── src/pharmaitchat-client.ts  # REST client for the app
 │   ├── src/tools/                # knowledge, graph, gaps, operations, feedback, compact.ts
@@ -1289,7 +1289,7 @@ npm --prefix mcp run typecheck
 
 <div align="center">
 
-**One machine. 71 entities watched every night. Zero cloud model calls.**
+**One machine. 76 entities watched every night. Zero cloud model calls.**
 
 Built by [@sebdallais-git](https://github.com/sebdallais-git).
 

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 PharmaITChat (renamed from PharmaLLM): local-first pharma IT intelligence. A nightly watchlist
-collects news on 71 entities, dedupes it, tags it with a local 27B model and stores it; a web
+collects news on 76 entities, dedupes it, tags it with a local 27B model and stores it; a web
 chat, an HTTP API, an MCP server and a Telegram agent (Hermes) answer questions over it.
 **Every model call is local** — no cloud LLM, no API keys for inference.
 
@@ -85,7 +85,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - **Watchlist** (`watchlist-*` services, `scripts/watchlist.ts`, `config/watchlist.yaml` is the
   only definition of entities/feeds/topics). Pipeline: adapters (RSS/Atom, Google News, EDGAR)
   → dedupe **before** the model → sequential tagging → SQLite `data/watchlist.db` + ChromaDB.
-  Entity ids and the 10 IT domains are a closed vocabulary; invented values are dropped. Per-feed
+  Entity ids and the 12 IT domains (incl. `networking` and `euc` since 2026-09-30) are a closed vocabulary; invented values are dropped. Per-feed
   errors don't advance the watermark; 250-item cap and 45-min budget, overflow is deferred.
 - **Surfaces**: `/api/*` routes, `/v1` OpenAI-compatible gateway onto the active stack
   (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 20 tools),
