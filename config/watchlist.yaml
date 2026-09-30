@@ -408,6 +408,10 @@ vendors:
   infrastructure:
     - dell:
         feeds:
+          # Added 2026-09-30: with EDGAR alone the user's own company had no news in
+          # the watchlist. Scoped to Dell's infrastructure product lines; the IR feed
+          # below still times out from this Mac (retried 2026-09-30).
+          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=%22Dell+Technologies%22+(PowerEdge+OR+PowerStore+OR+PowerScale+OR+PowerProtect+OR+PowerSwitch+OR+%22AI+Factory%22+OR+APEX)+when:30d"]
           edgar: "0001571996"
         # no rss: dell.com's own newsroom feed is dead
         # (dell.com/api/feeds.svc/rss/newsroom-press-releases geo-redirects to an HTML
@@ -443,6 +447,13 @@ vendors:
         # the site also 403-blocks bot/scraper requests to the newsroom HTML pages, so
         # no autodiscovery link could be extracted either
         verifiedAt: "2026-09-20"
+    - nutanix:
+        name: Nutanix
+        feeds:
+          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Nutanix+when:30d"]
+          edgar: "0001618732"
+        # no rss: nutanix.com/blog/feed and /blog/rss.xml 404; the IR feed timed out
+        verifiedAt: "2026-09-30"
   storage:
     # R8: Pure Storage Inc. renamed to Everpure, Inc. in SEC filings as of 2026-01-09
     # (SEC submissions API formerNames; corroborated by the "Everpure SafeMode
@@ -502,6 +513,43 @@ vendors:
         # no PowerProtect-specific feed exists; using Dell's general blog feed. edgar is
         # the same Dell Technologies Inc. filer as vendor id dell.
         verifiedAt: "2026-09-20"
+  # networking and euc were split out of infrastructure on 2026-09-30 (the user
+  # sells both lines). Feeds verified 2026-09-30 with the ingest's own fetcher;
+  # CIKs from sec.gov/files/company_tickers.json.
+  networking:
+    - arista:
+        name: Arista
+        aliases: ["Arista Networks"]
+        feeds:
+          rss: ["https://blogs.arista.com/blog/rss.xml"]
+          edgar: "0001596532"
+        # arista.com's press-release "feed" returns HTML; blogs.arista.com/rss.xml 404s
+        verifiedAt: "2026-09-30"
+  euc:
+    - hp-inc:
+        name: HP Inc.
+        aliases: ["HP Inc"]
+        feeds:
+          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=%22HP+Inc%22+(PC+OR+laptop+OR+workstation+OR+%22AI+PC%22+OR+Wolf)+when:30d"]
+          edgar: "0000047217"
+        # no rss: press.hp.com/.../press-releases.rss and hp.com/us-en/newsroom/rss.xml 404.
+        # Google News scoped to PCs; plain "HP" would also match HPE and printers
+        verifiedAt: "2026-09-30"
+    - omnissa:
+        name: Omnissa
+        aliases: ["VMware EUC", "Workspace ONE"]
+        feeds:
+          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Omnissa+when:30d"]
+        # no rss: omnissa.com/feed and /insights/feed 404. No edgar: private (KKR)
+        verifiedAt: "2026-09-30"
+    - citrix:
+        name: Citrix
+        aliases: ["Cloud Software Group"]
+        feeds:
+          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Citrix+when:30d"]
+        # no rss: citrix.com/blogs/feed and cloud.com/blog/feed 404. No edgar: private
+        # (Cloud Software Group). Much of its news is NetScaler CVEs, which matter for EUC too
+        verifiedAt: "2026-09-30"
   data:
     - snowflake:
         feeds:

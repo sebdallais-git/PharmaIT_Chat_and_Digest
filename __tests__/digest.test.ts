@@ -128,6 +128,15 @@ describe("parseDigestRequest", () => {
     expect(request).toMatchObject({ focusEntities: [], focusDomains: [], accountsOnly: false });
   });
 
+  // networking and euc were split out of infrastructure on 2026-09-30
+  it("reads networking and end-user computing words as their own domains", () => {
+    expect(parseDigestRequest("networking news this week", now, []).focusDomains).toEqual(["networking"]);
+    expect(parseDigestRequest("anything on laptops and VDI last month", now, []).focusDomains).toEqual(["euc"]);
+    expect(parseDigestRequest("server news", now, []).focusDomains).toEqual(["infrastructure"]);
+    // "medical devices" is pharma news, not end-user computing
+    expect(parseDigestRequest("medical devices digest this week", now, []).focusDomains).toEqual([]);
+  });
+
   it("reads 'my accounts' as accounts only", () => {
     expect(parseDigestRequest("digest for my accounts", now, watchlist.entities.values()).accountsOnly).toBe(true);
   });
@@ -164,6 +173,16 @@ describe("selectDigestItems", () => {
     expect(titles("aiCloud")).toEqual(["LLM news"]);
     expect(titles("rdMfg")).toEqual(["LIMS upgrade"]);
     expect(selection.numbered.map((e) => e.n)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("files networking and end-user computing news under the infrastructure scene", () => {
+    const selection = selectDigestItems(
+      [item({ title: "Arista switch", domains: ["networking"] }), item({ title: "HP AI PCs", domains: ["euc"] })],
+      request,
+      watchlist,
+      dellGam,
+    );
+    expect(selection.sections.infrastructure.map((e) => e.item.title)).toEqual(["Arista switch", "HP AI PCs"]);
   });
 
   it("ranks by importance, caps each section and drops low-importance market noise", () => {
