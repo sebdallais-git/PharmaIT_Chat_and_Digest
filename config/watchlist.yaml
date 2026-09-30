@@ -565,6 +565,9 @@ vendors:
         # a retry (verified ok:true, 10 items, both isolated and on a second attempt
         # after a same-run 403) -- likely light rate-limiting on this Q4 IR platform,
         # kept rather than dropped.
+        # The nightly ingest did not retry and failed this feed every night from
+        # 2026-09-20 to 09-30; measured then, the platform refuses about every other
+        # request. The ingest now retries a 403/429 twice (watchlist-ingest.ts).
         verifiedAt: "2026-09-20"
     - benchling:
         feeds:
@@ -589,6 +592,9 @@ vendors:
         # ok:true, 10 items, both isolated and on a second attempt after a same-run
         # 403) -- likely light rate-limiting on this Q4 IR platform, kept rather than
         # dropped.
+        # The nightly ingest did not retry and failed this feed every night from
+        # 2026-09-20 to 09-30; measured then, the platform refuses about every other
+        # request. The ingest now retries a 403/429 twice (watchlist-ingest.ts).
         verifiedAt: "2026-09-20"
     - certara:
         feeds:
