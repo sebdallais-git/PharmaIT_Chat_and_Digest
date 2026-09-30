@@ -124,6 +124,8 @@ export interface WatchlistStore {
   itemsInPeriod(from: string, to: string, options?: { entities?: string[]; domains?: Domain[] }): StoredItem[];
   countsByEntity(from: string, to: string): Array<{ entityId: string; items: number; maxImportance: number }>;
   getFeedState(feedId: string): FeedState;
+  // Feeds failing right now, worst first: the digest footer names them
+  failingFeeds(minFailures: number): Array<{ feedId: string; failures: number }>;
   // lastSeenAt/lastItemHash are nullable: a feed that fetched cleanly but
   // resolved nothing it is allowed to move past (an empty feed, or one whose
   // whole first batch was dropped by an ingest cap) has no watermark to
@@ -352,6 +354,9 @@ export function openWatchlistStore(path: string = join(process.cwd(), "data", "w
   `);
 
   const getFeedStateStmt = db.prepare(`SELECT * FROM feed_state WHERE feed_id = ?`);
+  const failingFeedsStmt = db.prepare(
+    `SELECT feed_id, consecutive_failures FROM feed_state WHERE consecutive_failures >= ? ORDER BY consecutive_failures DESC, feed_id ASC`,
+  );
   const insertFeedStateStmt = db.prepare(`INSERT OR IGNORE INTO feed_state (feed_id, last_seen_at, last_item_hash, consecutive_failures) VALUES (?, NULL, NULL, 0)`);
   // COALESCE(?, last_seen_at/last_item_hash): a null argument leaves the
   // existing column untouched instead of overwriting it with NULL (Task 8
@@ -536,6 +541,12 @@ export function openWatchlistStore(path: string = join(process.cwd(), "data", "w
       return countsByEntityStmt.all(from, to) as Array<{ entityId: string; items: number; maxImportance: number }>;
     },
 
+    failingFeeds(minFailures: number): Array<{ feedId: string; failures: number }> {
+      return (failingFeedsStmt.all(minFailures) as Array<{ feed_id: string; consecutive_failures: number }>).map((row) => ({
+        feedId: row.feed_id,
+        failures: row.consecutive_failures,
+      }));
+    },
     getFeedState(feedId: string): FeedState {
       insertFeedStateStmt.run(feedId);
       const row = getFeedStateStmt.get(feedId) as {

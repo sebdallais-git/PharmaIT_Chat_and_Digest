@@ -19,7 +19,7 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<u
 }
 
 describe("tool list", () => {
-  it("exposes exactly the 19 PharmaITChat tools", async () => {
+  it("exposes exactly the 20 PharmaITChat tools", async () => {
     const { tools } = await harness.client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "add_knowledge",
@@ -32,6 +32,7 @@ describe("tool list", () => {
       "graph_stats",
       "knowledge_status",
       "list_knowledge_gaps",
+      "make_digest",
       "my_role",
       "news_agent_status",
       "record_feedback",
@@ -258,5 +259,23 @@ describe("my_role", () => {
   it("reports an app error as a tool error", async () => {
     harness.pharma.on("POST", "/api/role/message", (_req, res) => sendJson(res, 500, { error: "boom" }));
     expect(isToolError(await call("my_role", { message: "x" }))).toBe(true);
+  });
+});
+
+describe("make_digest", () => {
+  it("passes the request verbatim and returns the digest markdown as plain text", async () => {
+    harness.pharma.on("POST", "/api/digest", (_req, res) =>
+      sendJson(res, 200, { markdown: "**Digest · the week of 21 Sept–27 Sept**", period: "p", items: 12 }),
+    );
+
+    const result = await call("make_digest", { request: "digest of last week" });
+
+    expect(toolText(result)).toBe("**Digest · the week of 21 Sept–27 Sept**");
+    expect(harness.pharma.requests[0].body).toEqual({ request: "digest of last week" });
+  });
+
+  it("reports a failed digest as a tool error", async () => {
+    harness.pharma.on("POST", "/api/digest", (_req, res) => sendJson(res, 503, { error: "Digest failed: stack down" }));
+    expect(isToolError(await call("make_digest", { request: "x" }))).toBe(true);
   });
 });

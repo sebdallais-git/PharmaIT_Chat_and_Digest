@@ -93,6 +93,21 @@ describe("watchlist store", () => {
     expect(store.getFeedState("f1")).toMatchObject({ consecutiveFailures: 0, lastItemHash: "h9" });
   });
 
+  // The digest footer names feeds that are failing right now, worst first
+  it("lists feeds failing at least N times in a row, worst first", () => {
+    store.recordFeedFailure("veeva:rss:x");
+    store.recordFeedFailure("veeva:rss:x");
+    store.recordFeedFailure("veeva:rss:x");
+    store.recordFeedFailure("roche:rss:y");
+    store.recordFeedFailure("ok:rss:z");
+    store.recordFeedSuccess("ok:rss:z", null, null);
+    expect(store.failingFeeds(1)).toEqual([
+      { feedId: "veeva:rss:x", failures: 3 },
+      { feedId: "roche:rss:y", failures: 1 },
+    ]);
+    expect(store.failingFeeds(2)).toEqual([{ feedId: "veeva:rss:x", failures: 3 }]);
+  });
+
   it("clears a failure streak without inventing a watermark", () => {
     // A feed that fetched cleanly but resolved nothing has no watermark to
     // record; stamping one would push its unseen backlog behind an exclusive

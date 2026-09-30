@@ -9,6 +9,7 @@ import { registerGraphTools } from "./tools/graph.js";
 import { registerKnowledgeTools } from "./tools/knowledge.js";
 import { registerOperationsTools } from "./tools/operations.js";
 import { registerRoleTools } from "./tools/role.js";
+import { registerDigestTools } from "./tools/digest.js";
 import type { ToolLogger, ToolOptions } from "./tools/result.js";
 
 export const SERVER_INFO = { name: "pharmaitchat", version: "1.0.0" };
@@ -23,5 +24,6 @@ export function buildMcpServer(client: PharmaITChatClient, log: ToolLogger, opti
   registerFeedbackTools(server, client, log);
   registerExportTools(server, client, log);
   registerRoleTools(server, client, log);
+  registerDigestTools(server, client, log, options);
   return server;
 }

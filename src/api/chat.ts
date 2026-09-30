@@ -23,6 +23,8 @@ import { logRequest, logChromaDBMiss } from "../services/request-log.js";
 import { isNeo4jAvailable, queryGraphForChat } from "../services/graph-store.js";
 import { openRoleStore } from "../services/role-store.js";
 import { activeRolePreamble, roleReplyFor } from "../services/role-dialogue.js";
+import { isDigestRequest } from "../services/digest-request.js";
+import { CHAT_DIGEST_BUDGET, runDigest } from "../services/digest-agent.js";
 
 const router = Router();
 
@@ -169,6 +171,23 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     res.setHeader("Cache-Control", "no-cache");
     res.write(`data: ${JSON.stringify({ token: roleReply })}\n\n`);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // "Make me a digest of what happened this week": the digest agent, built from the
+  // watchlist, not a 5-chunk RAG answer
+  if (benchmark !== true && isDigestRequest(message)) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.write(`data: ${JSON.stringify({ reasoning: "Building your digest from the watchlist (about a minute)...", sources: [] })}\n\n`);
+    try {
+      const digest = await runDigest(message, CHAT_DIGEST_BUDGET);
+      res.write(`data: ${JSON.stringify({ token: digest.markdown })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } catch (err) {
+      res.write(`data: ${JSON.stringify({ error: `Digest failed: ${err instanceof Error ? err.message : String(err)}` })}\n\n`);
+    }
     res.end();
     return;
   }

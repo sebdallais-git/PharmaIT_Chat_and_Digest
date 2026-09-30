@@ -41,5 +41,14 @@
     "no_agent": true,
     "deliver": "local",
     "failure_deliver": "telegram"
+  },
+  {
+    "name": "pharmaitchat-weekly-digest",
+    "schedule": "30 7 * * 1",
+    "kind": "script",
+    "script": "pharmaitchat-weekly-digest.sh",
+    "no_agent": true,
+    "deliver": "telegram",
+    "failure_deliver": "telegram"
   }
 ]

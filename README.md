@@ -101,6 +101,7 @@ Everything that runs on its own, what starts it, and whether it is live on this 
 | [Chat turn and gap detection](#chat-turn-and-gap-detection) | Every chat message | App | Live |
 | [Gap auto-fill v2](#gap-auto-fill-v2) · `n8n/knowledge_gap_workflow_v2.json` | Webhook from the gap detector | n8n (18 nodes) | **Live**, active |
 | [KB canaries](#kb-canaries) · `config/kb-canaries.yaml` | 05:00 daily | Hermes, script mode | Live |
+| [Digest agent](#digests) · `scripts/digest.ts` | Asked in chat or Telegram · Mondays 07:30 | App · Hermes, script mode | Live |
 | [Gap auto-fill v1](#gap-auto-fill-v1) · `n8n/knowledge_gap_workflow.json` | Webhook | n8n (13 nodes) | Kept for reference, not imported |
 | [Nightly watchlist ingest](#the-nightly-run) | 02:30 daily | Hermes, script mode | Live |
 | [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 4 agent jobs | Hermes agent | Live |
@@ -207,6 +208,7 @@ Hermes' cron runs these on the local 27B and reports on Telegram. Scheduled runs
 flowchart LR
     H["Hermes gateway<br/>cron"] --> WL["02:30 · watchlist ingest<br/>script mode, no agent"]
     H --> KC["05:00 · KB canaries<br/>script mode, no agent"]
+    H --> WD["Mon 07:30 · weekly digest<br/>script mode, no agent"]
     H --> ND["06:00 · news digest"]
     H --> GR["07:00 · gap resolution"]
     H --> HW["09:00 and 19:00 · health watch"]
@@ -218,6 +220,7 @@ flowchart LR
     FD --> T4["feedback_report"]
     WI -- "only on failure" --> TG["Telegram"]
     KC -- "only on failure" --> TG
+    WD -- "always: the digest is the message" --> TG
     T1 --> TG
     T2 --> TG
     T3 -- "only when unhealthy" --> TG
@@ -514,7 +517,7 @@ scripts/hermes-setup.sh install-cron
 
 Stated plainly, because a README that implies otherwise wastes the reader's time:
 
-- **Digests are next, not now.** `build_digest`, weekly/monthly/quarterly delivery, `search_watchlist` and `compare_entities` are designed in [`docs/superpowers/specs/2026-09-20-it-scene-watchlist-design.md`](docs/superpowers/specs/2026-09-20-it-scene-watchlist-design.md) and **not implemented**. The nightly run fills `data/watchlist.db` and ChromaDB; nothing yet reads them into a report or emails one.
+- **Monthly and quarterly digests, `search_watchlist` and `compare_entities`** from the [design spec](docs/superpowers/specs/2026-09-20-it-scene-watchlist-design.md) are not built; the [digest agent](#digests) covers any period on request and sends the weekly one.
 - **IR-page collection is disabled.** The adapter scanned hundreds of links per entity and recognised zero dates on 14 of 29 pages, for 4 stored items in a whole run — noise at a scale that masks real failures. It is switched off at the run level (`DISABLED_FEED_KINDS` in `src/services/watchlist-ingest.ts`), not deleted: every `ir_page` URL and the research behind it stays in the config.
 - **14 of the 71 entities therefore have no active feed** — customer `sandoz`, nine peers and four vendors. The fix, already ruled on, is to give *every* entity a Google News feed derived from its name and aliases; the dedupe ladder collapses the overlap with RSS and EDGAR at no model cost. That is the next thing built.
 
@@ -550,6 +553,38 @@ flowchart LR
 - **Measured live** (Splash, 2026-09-30): the Dell role came out of one sentence plus two answers; switching, editing and "what is my role?" each took 3–4 s; ordinary questions were never caught.
 - **On Telegram** Hermes passes such messages to the `my_role` tool verbatim and relays the reply. Scheduled Hermes jobs cannot call it.
 - **Benchmarks and the KB canaries** skip roles entirely, so their answers stay comparable.
+
+## Digests
+
+"Make me a digest of what happened this week" goes to the **digest agent**, not to the normal 5-chunk answer, in the web chat and on Telegram (`make_digest`). Every Monday at 07:30 Hermes sends last week's digest to Telegram by itself. Each digest is written for [your role](#your-role) and ends with **action items**: one per line you sell, tied to an account, turning the news into a next step.
+
+```mermaid
+flowchart LR
+    Q["'digest of last week'<br/>'storage at Novartis this month'"] --> P["Period and focus<br/>parsed without a model"]
+    P --> S[("watchlist.db<br/>items in the period")]
+    S --> SEL["Deterministic selection<br/>sections, importance, caps<br/>accounts round-robin"]
+    SEL --> W["4 short 27B calls<br/>headline · accounts ·<br/>infrastructure · action items"]
+    W --> V{"Every bullet cites<br/>real item numbers?"}
+    V -- "no" --> DROP["Bullet dropped"]
+    V -- "yes" --> R["Render within budget<br/>links, then lists give way;<br/>action items never cut"]
+    R --> OUT["Web chat (full)<br/>Telegram (≤ 3,900 chars)"]
+```
+
+| Section | What goes in |
+|---|---|
+| Headline | 3–4 bullets on the period's most important items for your role |
+| Your accounts | One bullet per account, items taken round-robin so a busy account cannot crowd out the others |
+| Infrastructure scene | Storage, servers, networking and backup news: competitor moves, launches, supply and pricing signals |
+| Pharma industry · Cyber · AI, cloud & data · R&D and manufacturing IT | The top items as a plain list, with links |
+| Action items | One per portfolio line: account, next step, which of your company's product families to lead with |
+| Footer | Items in the period, accounts the watchlist does not follow, feeds failing 3+ nights running |
+
+- **Selection is code, prose is the model's.** Which items go in is decided over the item store; the model writes about the items it is handed, and a bullet that cites no real item number is dropped. A failed model call leaves that section as a plain item list.
+- **Period and focus come from your wording**: "this week" (7 days), "last week" (Monday to Sunday), "yesterday", "this month", "last month", "last 10 days", "since Monday"; a company or a domain word ("storage", "cyber", "manufacturing") narrows it; "my accounts" keeps only your accounts and their peers.
+- **Measured** (Splash, 2026-09-30, Dell GAM role): 35 items, 3,151 characters, 88 s over four calls; last week's digest from the script in 50 s. The first run gave all eight account slots to Roche (25 items against Novartis' 3 and Sandoz' 2) and cut the action items at the Telegram limit; both are fixed and tested.
+- **Action items are prompts, not facts**: they name product families from the model's own knowledge, which can be out of date.
+
+Run it by hand with `npx tsx scripts/digest.ts --request "digest of last week"`; the Monday job keeps each run in `data/logs/weekly-digest-<date>.log`.
 
 ## Chat, retrieval and the knowledge base
 
@@ -707,7 +742,7 @@ PharmaITChat serves AI agents in two ways: as a set of tools, and as a model pro
 
 | | Endpoint | Purpose |
 |---|---|---|
-| 🧰 **MCP tools** | `pharmaitchat-mcp` at `http://<host>:3200/mcp` | 19 tools over Streamable HTTP: search, full RAG answers, add knowledge, graph, gaps, health, metrics, news agent, background reindex, feedback, exports, your role |
+| 🧰 **MCP tools** | `pharmaitchat-mcp` at `http://<host>:3200/mcp` | 20 tools over Streamable HTTP: search, full RAG answers, add knowledge, graph, gaps, health, metrics, news agent, background reindex, feedback, exports, your role, digests |
 | 🧠 **Model gateway** | `http://<host>:3000/v1` or `https://<host>:3443/v1` | OpenAI-compatible chat completions on the active stack, tools and streaming supported |
 
 ### The MCP server
@@ -892,7 +927,7 @@ flowchart TB
         AG["AI agents<br/>Hermes, Claude Desktop"]
     end
 
-    MCP["pharmaitchat-mcp :3200<br/>19 tools, Streamable HTTP<br/>MCP_TOKEN + payload compaction"]
+    MCP["pharmaitchat-mcp :3200<br/>20 tools, Streamable HTTP<br/>MCP_TOKEN + payload compaction"]
 
     subgraph APP["PharmaITChat :3000 / :3443"]
         direction TB
@@ -1011,6 +1046,9 @@ Job state lives in memory, so a server restart forgets it. The index completenes
 | `/api/dashboard/metrics` | GET | open | All dashboard metrics (30 s cache) |
 | `/api/dashboard/chromadb-misses` | GET | open | Recent ChromaDB misses and top missed queries |
 | `/api/dashboard/kb-health` | GET | token | KB canary status (`ok`, `failing`, `stale`, `never-run`), newest run and the last 30 pass counts |
+| `/api/role` | GET | token | The active role, every saved role, whether an onboarding is open |
+| `/api/role/message` | POST | token | One turn of the role conversation: `{message}` → `{reply}` |
+| `/api/digest` | POST | token | Build a digest: `{request?, budget?}` → `{markdown, period, items}` (default: the last 7 days, 3,900 characters) |
 | `/api/graph/health` | GET | token | Neo4j connection check with latency |
 | `/api/graph/stats` | GET | open | Node and relationship counts by type |
 | `/api/graph/search` | POST | token | Search by entity name, returns neighbors |

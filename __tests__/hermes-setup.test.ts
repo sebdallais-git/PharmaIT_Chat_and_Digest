@@ -224,15 +224,15 @@ describe("hermes-setup.sh install-config", () => {
 });
 
 describe("hermes-setup.sh install-cron", () => {
-  it("creates all six jobs when none exist", () => {
+  it("creates all seven jobs when none exist", () => {
     const box = sandbox();
 
     const result = setup(box, ["install-cron"]);
 
     expect(result.status).toBe(0);
     const calls = readFileSync(box.calls, "utf-8").trim().split("\n");
-    // 6 jobs plus the one `config set` the watchlist ingest needs (C1(b)).
-    expect(calls).toHaveLength(7);
+    // 7 jobs plus the one `config set` the watchlist ingest needs (C1(b)).
+    expect(calls).toHaveLength(8);
     expect(calls[0]).toContain("hermes [cron] [create] [0 6 * * *] [Scheduled job: morning news digest.");
     expect(calls[0]).toContain("[--name] [pharmaitchat-news-digest] [--deliver] [telegram]");
     expect(calls[2]).toContain("[--name] [pharmaitchat-health-watch]");
@@ -251,9 +251,9 @@ describe("hermes-setup.sh install-cron", () => {
     expect(result.status).toBe(0);
     const calls = readFileSync(box.calls, "utf-8");
     expect(calls).toContain("hermes [cron] [edit] [abc123] [--schedule] [0 9,19 * * *] [--prompt]");
-    // 6 defined, 1 (health-watch) already exists and is edited: the other
-    // 3 prompt-mode jobs plus the two script-mode jobs are created.
-    expect(calls.match(/\[create\]/g)).toHaveLength(5);
+    // 7 defined, 1 (health-watch) already exists and is edited: the other
+    // 3 prompt-mode jobs plus the three script-mode jobs are created.
+    expect(calls.match(/\[create\]/g)).toHaveLength(6);
   });
 
   it("installs the watchlist ingest as a script-mode job: wrapper copied, no LLM step, --deliver local with a Telegram failure override", () => {
@@ -286,6 +286,11 @@ describe("hermes-setup.sh install-cron", () => {
         "[--script] [pharmaitchat-kb-canary.sh] [--no-agent] [--deliver] [local] [--failure-deliver] [telegram]",
     );
     expect(readFileSync(join(box.home, "scripts", "pharmaitchat-kb-canary.sh"), "utf-8")).toContain(`PROJECT_DIR="${projectDir}"`);
+    // The weekly digest's stdout is the message itself: delivered to Telegram every time
+    expect(calls[7]).toBe(
+      "hermes [cron] [create] [30 7 * * 1] [--name] [pharmaitchat-weekly-digest] " +
+        "[--script] [pharmaitchat-weekly-digest.sh] [--no-agent] [--deliver] [telegram] [--failure-deliver] [telegram]",
+    );
   });
 
   // C1(b): Hermes kills a --no-agent script's process group at
@@ -448,6 +453,51 @@ describe("hermes/scripts/pharmaitchat-kb-canary.sh", () => {
     const { result } = canaryBox("", "SyntaxError", 2);
     expect(result.status).toBe(2);
     expect(result.stdout).toContain("KB canary failed (exit 2)");
+  });
+});
+
+describe("hermes/scripts/pharmaitchat-weekly-digest.sh", () => {
+  // The wrapper with an `npx` stub standing in for scripts/digest.ts: no tsx, no model
+  function digestBox(stdout: string, exitCode: number, activeStack = "splash") {
+    const root = mkdtempSync(join(tmpdir(), "weekly-digest-wrapper-"));
+    dirs.push(root);
+    const tempProject = join(root, "project");
+    const binDir = join(root, "bin");
+    mkdirSync(join(tempProject, "data", "run"), { recursive: true });
+    mkdirSync(binDir);
+    writeFileSync(join(tempProject, "data", "run", "active-stack"), `${activeStack}\n`);
+    const template = readFileSync(join(projectDir, "hermes", "scripts", "pharmaitchat-weekly-digest.sh"), "utf-8");
+    const script = join(root, "pharmaitchat-weekly-digest.sh");
+    writeFileSync(script, template.replace(/__PROJECT_DIR__/g, tempProject));
+    const npx = join(binDir, "npx");
+    const stdoutLines = stdout ? ["cat <<'DIGESTOUT'", stdout, "DIGESTOUT"] : [];
+    writeFileSync(npx, ["#!/bin/bash", 'echo "stack=$LLM_PROVIDER args=$*" >&2', ...stdoutLines, `exit ${exitCode}`].join("\n"));
+    chmodSync(npx, 0o755);
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const logDir = join(tempProject, "data", "logs");
+    const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
+    return { result, log };
+  }
+
+  it("prints the digest for Telegram, runs it on the active stack and keeps a log", () => {
+    const { result, log } = digestBox("**Digest · the week of 21 Sept–27 Sept**\n- item", 0);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("**Digest · the week of 21 Sept–27 Sept**\n- item\n");
+    expect(log).toContain("stack=splash");
+    expect(log).toContain('args=tsx scripts/digest.ts --request digest of last week');
+    expect(log).toContain("**Digest · the week of 21 Sept–27 Sept**");
+  });
+
+  it("passes on the script's failure line", () => {
+    const { result } = digestBox("Weekly digest failed: stack down", 1);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("Weekly digest failed: stack down\n");
+  });
+
+  it("still says something when the script died without output", () => {
+    const { result } = digestBox("", 2);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toContain("Weekly digest failed (exit 2)");
   });
 });
 
