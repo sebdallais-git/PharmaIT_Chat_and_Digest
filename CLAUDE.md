@@ -33,7 +33,8 @@ npx tsx scripts/replay-detection.ts [--backfill [--limit N] [--all] | --question
 npx tsx scripts/replay-page-relevance.ts        # gap workflow page pre-check vs the 27B's keep/discard in n8n history
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
 npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
-npx tsx scripts/digest.ts [--request "…"]     # digest agent in-process; Mondays 07:30 Hermes job sends "last week" to Telegram
+npx tsx scripts/digest.ts [--request "…"] [--briefing]   # digest agent in-process; Hermes sends the weekly digest Mon 07:30,
+                                               # the account briefing Tue–Fri 07:30 (silent when nothing is actionable)
 ```
 
 There is **no lint script and no ESLint config** — do not run `npm run lint`.
@@ -149,7 +150,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
   `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`, `kb-canary-<date>.log`,
-  `weekly-digest-<date>.log`).
+  `weekly-digest-<date>.log`, `daily-briefing-<date>.log`).
 
 ## Git
 

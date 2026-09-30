@@ -1,6 +1,9 @@
 // Builds a digest and prints it (markdown) on stdout.
 //
-//   npx tsx scripts/digest.ts [--request "digest of last week"] [--budget 3900]
+//   npx tsx scripts/digest.ts [--request "digest of last week"] [--budget 3900] [--briefing]
+//
+// --briefing: accounts and action items only, and nothing at all on a day with
+// no account news (the weekday Hermes job then stays silent).
 //
 // Runs the digest agent in this process against the active stack (like the
 // nightly ingest), not through the app's HTTP API: Node's fetch gives up on a
@@ -28,8 +31,8 @@ async function main(args: string[]): Promise<number> {
   process.env.LLM_PROVIDER = await resolveStackName(process.env, () =>
     readFile(join(process.cwd(), "data", "run", "active-stack"), "utf-8"),
   );
-  const digest = await runDigest(request, budget);
-  console.log(digest.markdown);
+  const digest = await runDigest(request, budget, new Date(), { briefing: args.includes("--briefing") });
+  if (digest.markdown) console.log(digest.markdown);
   console.error(`digest: ${digest.items} items, ${digest.markdown.length} chars, ${digest.period}`);
   return 0;
 }

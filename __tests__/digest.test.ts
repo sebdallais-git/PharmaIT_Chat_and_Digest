@@ -370,3 +370,100 @@ describe("POST /api/digest", () => {
     expect(failed).toEqual({ status: 503, body: { error: "Digest failed: stack down" } });
   });
 });
+
+// The weekday briefing (Tue-Fri 07:30) replaced the 06:00 "news digest" job,
+// which reported the retired news agent's "0 new articles" every morning
+describe("buildDigest in briefing mode", () => {
+  const deps = (items: StoredItem[], complete: CompleteFn) => ({
+    itemsInPeriod: () => items,
+    failingFeeds: () => [{ feedId: "veeva:rss:x", failures: 11 }],
+    watchlist,
+    role: dellGam,
+    complete,
+    now: () => now,
+  });
+
+  it("covers only the accounts and the action items, in two model calls", async () => {
+    const prompts: string[] = [];
+    const complete: CompleteFn = async (prompt) => {
+      prompts.push(prompt);
+      return "- Roche is buying GPUs [1]";
+    };
+    const result = await buildDigest(
+      parseDigestRequest("yesterday", now, []),
+      deps([item({ title: "Roche buys GPUs", entities: ["roche"], domains: ["ai"] }), item({ title: "NetApp launches array", domains: ["storage"] })], complete),
+      3900,
+      { briefing: true },
+    );
+    expect(prompts).toHaveLength(2);
+    expect(result.markdown).toContain("**Briefing · yesterday** for GAM at Dell");
+    expect(result.markdown).toContain("**Your accounts**");
+    expect(result.markdown).toContain("**Action items**");
+    expect(result.markdown).not.toContain("Infrastructure scene");
+    expect(result.markdown).not.toContain("NetApp");
+    // The weekly digest reports failing feeds; a daily note would repeat them every morning
+    expect(result.markdown).not.toContain("veeva");
+    expect(result.items).toBe(1);
+  });
+
+  // An empty stdout is how a Hermes script job stays silent
+  it("is empty, with no model call, on a day with no news about the accounts", async () => {
+    let calls = 0;
+    const result = await buildDigest(
+      parseDigestRequest("yesterday", now, []),
+      deps([item({ title: "NetApp launches array", domains: ["storage"] })], async () => {
+        calls++;
+        return "";
+      }),
+      3900,
+      { briefing: true },
+    );
+    expect(result).toEqual({ markdown: "", period: "yesterday", items: 0 });
+    expect(calls).toBe(0);
+  });
+});
+
+// Live on 2026-09-30: yesterday's only "Roche" item was a mis-tagged financial
+// analyst story, and the model wrote six "No action; unrelated" bullets that
+// would have gone to Telegram
+describe("empty bullets and quiet briefings", () => {
+  it("drops bullets that say there is nothing to do", () => {
+    const reply = [
+      "- **Storage** · Roche: No action; item [1] is unrelated to the company.",
+      "- No relevant news found for Roche [1]",
+      "- **Servers** · Roche: propose PowerEdge for the new AI lab [1]",
+    ].join("\n");
+    expect(parseBullets(reply, new Set([1]), 6)).toEqual(["**Servers** · Roche: propose PowerEdge for the new AI lab [1]"]);
+  });
+
+  const deps = (items: StoredItem[], reply: string) => ({
+    itemsInPeriod: () => items,
+    failingFeeds: () => [],
+    watchlist,
+    role: dellGam,
+    complete: async () => reply,
+    now: () => now,
+  });
+
+  it("stays silent when no action item survives", async () => {
+    const result = await buildDigest(
+      parseDigestRequest("yesterday", now, []),
+      deps([item({ title: "Analyst named Roche", entities: ["roche"], importance: 2 })], "- **Storage** · Roche: No action; unrelated [1]"),
+      3900,
+      { briefing: true },
+    );
+    expect(result.markdown).toBe("");
+  });
+
+  it("leaves out importance-1 account items, where tagging noise lives", async () => {
+    let calls = 0;
+    const result = await buildDigest(
+      parseDigestRequest("yesterday", now, []),
+      { ...deps([item({ title: "minor Roche mention", entities: ["roche"], importance: 1 })], ""), complete: async () => { calls++; return ""; } },
+      3900,
+      { briefing: true },
+    );
+    expect(result.markdown).toBe("");
+    expect(calls).toBe(0);
+  });
+});
