@@ -1,4 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseHostConfig } from "../../src/platform/host-config.js";
 import { bearerToken, isLoopbackAddress, isLoopbackHost, loadConfig, tokensMatch } from "../src/config.js";
 
 describe("loadConfig", () => {
@@ -76,5 +79,20 @@ describe("token helpers", () => {
     expect(tokensMatch("secret", "secret")).toBe(true);
     expect(tokensMatch("secret", "secreT")).toBe(false);
     expect(tokensMatch("secret", "much-longer-secret")).toBe(false);
+  });
+});
+
+describe("loadConfig reads the host profile", () => {
+  const fixture = readFileSync(join(process.cwd(), "..", "__tests__", "fixtures", "host.yaml"), "utf-8");
+
+  it("takes the MCP port and the app URL from it", () => {
+    const host = parseHostConfig(
+      fixture.replace("mcp:       { port: 3200", "mcp:       { port: 3300").replace("app:       { port: 3000", "app:       { port: 3100"),
+      "t.yaml",
+    );
+    const config = loadConfig({}, host);
+    expect(config.port).toBe(3300);
+    expect(config.host).toBe("127.0.0.1");
+    expect(config.pharmaitchatUrl).toBe("http://localhost:3100");
   });
 });
