@@ -589,7 +589,50 @@ describe("launchd PATH is the same whichever script renders a plist", () => {
     const box = sandbox();
     installJevFixture(box);
     expect(setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" }).status).toBe(0);
-    expect(plistPath(join(box.agentsDir, "com.pharmaitchat.jev.plist"))).toContain("/opt/homebrew/bin");
+    const jevPath = plistPath(join(box.agentsDir, "com.pharmaitchat.jev.plist"));
+    expect(jevPath).toContain("/opt/homebrew/bin");
+    // run-jev.sh sources scripts/lib/host.sh, which needs node: node's dir must come first
+    expect(jevPath?.split(":")[0]).toBe("/opt/fake/bin");
+  });
+
+  // Every job script sources scripts/lib/host.sh (or runs node itself): a plist whose PATH lacks
+  // node's dir starts a job that dies with "node not found" and loops under KeepAlive.
+  it("puts node's dir first in every plist hermes-setup.sh renders", () => {
+    const box = sandbox();
+    installJevFixture(box);
+    expect(setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" }).status).toBe(0);
+    const rendered = readdirSync(box.agentsDir).filter((f) => f.startsWith("com.pharmaitchat.") && f.endsWith(".plist"));
+    expect(rendered.sort()).toEqual(["com.pharmaitchat.jev.plist", "com.pharmaitchat.mcp.plist", "com.pharmaitchat.n8n.plist"]);
+    for (const file of rendered) {
+      expect([file, plistPath(join(box.agentsDir, file))?.split(":")[0]]).toEqual([file, "/opt/fake/bin"]);
+    }
+  });
+
+  it("puts node's dir first in every plist autostart.sh renders", () => {
+    const box = sandbox();
+    const agents = join(box.root, "autostart-agents");
+    mkdirSync(agents);
+    spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
+      encoding: "utf-8",
+      env: {
+        ...hostTestEnv(),
+        PATH: "/usr/bin:/bin",
+        HOME: box.root,
+        LAUNCH_AGENTS_DIR: agents,
+        LAUNCHCTL_BIN: "/usr/bin/true",
+        NODE_BIN: "/opt/fake/bin/node",
+      },
+    });
+    const rendered = readdirSync(agents).filter((f) => f.startsWith("com.pharmaitchat.") && f.endsWith(".plist"));
+    expect(rendered.sort()).toEqual([
+      "com.pharmaitchat.mcp.plist",
+      "com.pharmaitchat.mlx-watchdog.plist",
+      "com.pharmaitchat.n8n.plist",
+      "com.pharmaitchat.stack.plist",
+    ]);
+    for (const file of rendered) {
+      expect([file, plistPath(join(agents, file))?.split(":")[0]]).toEqual([file, "/opt/fake/bin"]);
+    }
   });
 
   it("leaves no script spelling out a launchd PATH of its own", () => {

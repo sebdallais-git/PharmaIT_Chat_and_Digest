@@ -203,7 +203,7 @@ install_services() {
   done
   log "Installed and started $N8N_LABEL"
 
-  install_jev_service
+  install_jev_service "$node_bin"
 
   "$HERMES_BIN" gateway install --force --start-now --start-on-login
   log "Installed the Hermes gateway service"
@@ -237,8 +237,10 @@ install_services() {
 # the Hermes gateway especially, still installs. This is an INSTALL-time distinction only:
 # scripts/run-jev.sh keeps its own hard guards at RUN time, since a scorer that cannot load a
 # gated model must fail loudly rather than start and hang. Do not soften that script.
+# $1: the node binary. run-jev.sh sources scripts/lib/host.sh, which runs node, so the plist PATH
+# needs node's dir first like the mcp/n8n plists; without it the job dies at start and KeepAlive loops.
 install_jev_service() {
-  local plist domain jev_dir
+  local node_bin="$1" plist domain jev_dir
   jev_dir="${JEV_DIR:-$PROJECT_DIR/../open-jev}"
   if [ ! -x "$jev_dir/.venv/bin/openjev" ]; then
     log "Skipping the jev scorer: no open-jev venv at $jev_dir (run: cd $jev_dir && make setup). The scorer is optional — chat is unaffected."
@@ -253,7 +255,7 @@ install_jev_service() {
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
       -e "s|__JEV_DIR__|$jev_dir|g" \
       -e "s|__JEV_HOST__|${JEV_HOST:-127.0.0.1}|g" \
-      -e "s|__PATH__|$(launchd_path)|g" \
+      -e "s|__PATH__|$(launchd_path "$node_bin")|g" \
       "$TEMPLATE_DIR/$JEV_LABEL.plist.template" >"$plist"
   domain="gui/$(id -u)"
   "$LAUNCHCTL_BIN" bootout "$domain/$JEV_LABEL" >/dev/null 2>&1 || true
