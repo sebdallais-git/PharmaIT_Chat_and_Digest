@@ -28,8 +28,8 @@ export interface EvidenceItem {
 
 export interface CompetitiveDeps {
   runCypher: RunCypher;
-  /** `domains` undefined means no domain filter; an empty list would match nothing. */
-  recentItems(entity: string, domains: Domain[] | undefined, limit: number): EvidenceItem[];
+  /** Always called with at least one domain: news is evidence only within a cited segment's domains. */
+  recentItems(entity: string, domains: Domain[], limit: number): EvidenceItem[];
   briefs(): BriefExcerpts;
   vendorAliases(): Record<string, string>;
 }
@@ -305,7 +305,14 @@ export async function competitivePosition(deps: CompetitiveDeps, query: Competit
       const [v, segment] = key.split("/");
       if (v === vendor) for (const d of SEGMENT_DOMAINS[segment as Segment] ?? []) domains.add(d);
     }
-    evidence[vendor] = deps.recentItems(vendor, domains.size > 0 ? [...domains].sort() : undefined, EVIDENCE_PER_VENDOR);
+    if (domains.size === 0) {
+      // Unfiltered, the vendor's newest items would come from any domain and
+      // read as evidence for a segment they say nothing about.
+      evidence[vendor] = [];
+      notes.push(`no segment-specific news for ${vendor}: no cited segment maps to a news domain`);
+      continue;
+    }
+    evidence[vendor] = deps.recentItems(vendor, [...domains].sort(), EVIDENCE_PER_VENDOR);
   }
 
   const answer: CompetitiveAnswer = {

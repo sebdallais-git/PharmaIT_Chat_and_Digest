@@ -145,8 +145,8 @@ describe("competitivePosition", () => {
     expect(result.answer.notes).toContain("brief problem: x.md: bad");
   });
 
-  function recordingItems(): { calls: Array<[string, Domain[] | undefined, number]>; fn: CompetitiveDeps["recentItems"] } {
-    const calls: Array<[string, Domain[] | undefined, number]> = [];
+  function recordingItems(): { calls: Array<[string, Domain[], number]>; fn: CompetitiveDeps["recentItems"] } {
+    const calls: Array<[string, Domain[], number]> = [];
     return {
       calls,
       fn: (entity, domains, limit): EvidenceItem[] => {
@@ -162,10 +162,29 @@ describe("competitivePosition", () => {
     expect(items.calls).toEqual([["dell", ["storage"], 3]]);
   });
 
-  it("does not filter by domain when no cited segment maps to one", async () => {
+  it("returns no news rather than off-topic news when no cited segment maps to a domain", async () => {
+    // hpe has no cited standing here; its newest items from any domain would
+    // be presented as evidence for a segment they say nothing about.
     const items = recordingItems();
-    await competitivePosition(deps({ recentItems: items.fn }), { vendor: "hpe" });
-    expect(items.calls).toEqual([["hpe", undefined, 3]]);
+    const result = await competitivePosition(deps({ recentItems: items.fn }), { vendor: "hpe" });
+    if (!result.ok) throw new Error(result.error);
+    expect(items.calls).toEqual([]);
+    expect(result.answer.evidence).toEqual({ hpe: [] });
+    expect(result.answer.notes).toContain("no segment-specific news for hpe: no cited segment maps to a news domain");
+  });
+
+  it("treats a vendor cited only in services as having no news domain", async () => {
+    const rows: Rows = {
+      ...ROWS,
+      positions: [{ vendor: "dell", segment: "services", position: "strong", confidence: "high", rationale: "r", asOf: "" }],
+    };
+    const items = recordingItems();
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows), recentItems: items.fn }), {
+      segment: "services",
+    });
+    if (!result.ok) throw new Error(result.error);
+    expect(items.calls).toEqual([]);
+    expect(result.answer.evidence).toEqual({ dell: [] });
   });
 
   it("passes the resolver's error through", async () => {
