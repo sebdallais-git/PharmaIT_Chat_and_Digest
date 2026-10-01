@@ -25,10 +25,10 @@ describe("tool list", () => {
       "add_knowledge",
       "artifact_status",
       "ask_pharmaitchat",
+      "competitive_position",
       "create_artifact",
       "dashboard_metrics",
       "feedback_report",
-      "graph_search",
       "graph_stats",
       "knowledge_status",
       "list_knowledge_gaps",
@@ -47,13 +47,26 @@ describe("tool list", () => {
 });
 
 describe("graph tools", () => {
-  it("searches an entity by name", async () => {
-    harness.pharma.on("POST", "/api/graph/search", (_req, res) => sendJson(res, 200, { results: [{ name: "LockBit" }] }));
+  it("asks for a vendor's competitive position, sending only the given fields", async () => {
+    harness.pharma.on("POST", "/api/graph/competitive-position", (_req, res) =>
+      sendJson(res, 200, { query: { vendor: "dell" }, accounts: [] }),
+    );
 
-    const result = await call("graph_search", { entity: "LockBit" });
+    const result = await call("competitive_position", { vendor: "Dell" });
 
-    expect(JSON.parse(toolText(result))).toEqual({ results: [{ name: "LockBit" }] });
-    expect(harness.pharma.requests[0].body).toEqual({ name: "LockBit" });
+    expect(JSON.parse(toolText(result))).toEqual({ query: { vendor: "dell" }, accounts: [] });
+    expect(harness.pharma.requests[0].body).toEqual({ vendor: "Dell" });
+  });
+
+  it("reports the server's message when the vendor is unknown", async () => {
+    harness.pharma.on("POST", "/api/graph/competitive-position", (_req, res) =>
+      sendJson(res, 400, { error: 'unknown vendor "lenovo" (known: dell, hpe)' }),
+    );
+
+    const result = await call("competitive_position", { vendor: "lenovo" });
+
+    expect(isToolError(result)).toBe(true);
+    expect(toolText(result)).toContain('unknown vendor "lenovo" (known: dell, hpe)');
   });
 
   it("returns graph stats", async () => {
