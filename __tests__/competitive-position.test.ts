@@ -13,13 +13,15 @@ function snapshot(overrides: Partial<GraphSnapshot> = {}): GraphSnapshot {
         name: "Roche",
         aliases: ["Genentech"],
         needs: ["rnd-compute", "cyber-resilience"],
+        // compute-standard is declared with nobody installed; data-protection is not declared at all.
+        declared: ["compute-ai", "compute-standard", "storage-block", "storage-file"],
         uses: [
           { segment: "storage-block", vendor: "dell" },
           { segment: "storage-file", vendor: "netapp" },
           { segment: "compute-ai", vendor: "hpe" },
         ],
       },
-      { id: "novartis", name: "Novartis", aliases: [], needs: ["ai-factory"], uses: [] },
+      { id: "novartis", name: "Novartis", aliases: [], needs: ["ai-factory"], declared: [], uses: [] },
     ],
     needSegments: {
       "rnd-compute": ["compute-ai", "compute-standard", "storage-file"],
@@ -98,13 +100,14 @@ describe("resolveCompetitivePosition — the Dell question", () => {
     ]);
   });
 
-  it("resolves incumbency per segment into defend, displace or greenfield", () => {
+  it("resolves incumbency per segment into defend, displace, greenfield or unknown", () => {
     const roche = answer.accounts.find((a) => a.account === "roche");
     const modes = Object.fromEntries((roche?.segments ?? []).map((s) => [s.segment, s.vendors[0]]));
     expect(modes["storage-block"]).toEqual({ vendor: "dell", mode: "defend", position: "leader" });
     expect(modes["storage-file"]).toEqual({ vendor: "dell", mode: "displace", position: "strong" });
     expect(modes["compute-ai"]).toEqual({ vendor: "dell", mode: "displace", position: null });
     expect(modes["compute-standard"]).toEqual({ vendor: "dell", mode: "greenfield", position: null });
+    expect(modes["data-protection"]).toEqual({ vendor: "dell", mode: "unknown", position: null });
   });
 
   it("records which needs put a segment in play, and who is installed there", () => {
@@ -114,9 +117,28 @@ describe("resolveCompetitivePosition — the Dell question", () => {
     expect(file?.incumbents).toEqual(["netapp"]);
   });
 
-  it("treats an account with no incumbents as greenfield everywhere", () => {
+  it("treats an undeclared segment as unknown, never as greenfield", () => {
+    // accounts.example.yaml says to omit a segment whose incumbent is not
+    // known; reading that silence as "nobody installed" would be false confidence.
     const novartis = answer.accounts.find((a) => a.account === "novartis");
-    expect(novartis?.segments.map((s) => s.vendors[0].mode)).toEqual(["greenfield", "greenfield", "greenfield"]);
+    expect(novartis?.segments.map((s) => s.vendors[0].mode)).toEqual(["unknown", "unknown", "unknown"]);
+  });
+
+  it("treats a segment declared with nobody installed as greenfield", () => {
+    const snap = snapshot({
+      accounts: [
+        {
+          id: "novartis",
+          name: "Novartis",
+          aliases: [],
+          needs: ["ai-factory"],
+          declared: ["compute-ai", "networking", "storage-file"],
+          uses: [],
+        },
+      ],
+    });
+    const novartis = ok(resolveCompetitivePosition(snap, { vendor: "dell" })).accounts[0];
+    expect(novartis.segments.map((s) => s.vendors[0].mode)).toEqual(["greenfield", "greenfield", "greenfield"]);
   });
 
   it("returns the vendor's market positions and the full standing for every cited pair", () => {
@@ -163,7 +185,16 @@ describe("resolveCompetitivePosition — other shapes", () => {
 
   it("keeps a segment the vendor holds even when no need implies it", () => {
     const snap = snapshot({
-      accounts: [{ id: "sandoz", name: "Sandoz", aliases: [], needs: [], uses: [{ segment: "storage-block", vendor: "dell" }] }],
+      accounts: [
+        {
+          id: "sandoz",
+          name: "Sandoz",
+          aliases: [],
+          needs: [],
+          declared: ["storage-block"],
+          uses: [{ segment: "storage-block", vendor: "dell" }],
+        },
+      ],
     });
     const answer = ok(resolveCompetitivePosition(snap, { vendor: "dell" }));
     expect(answer.accounts[0].segments).toEqual([
@@ -172,7 +203,7 @@ describe("resolveCompetitivePosition — other shapes", () => {
   });
 
   it("says so when an account declares no needs and no vendor pins a segment", () => {
-    const snap = snapshot({ accounts: [{ id: "sandoz", name: "Sandoz", aliases: [], needs: [], uses: [] }] });
+    const snap = snapshot({ accounts: [{ id: "sandoz", name: "Sandoz", aliases: [], needs: [], declared: [], uses: [] }] });
     const answer = ok(resolveCompetitivePosition(snap, { account: "sandoz" }));
     expect(answer.accounts[0].segments).toEqual([]);
     expect(answer.notes).toContain("sandoz declares no needs, so no segment is in play there");

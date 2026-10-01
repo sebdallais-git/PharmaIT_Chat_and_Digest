@@ -58,6 +58,29 @@ describe("parseAccounts", () => {
 `);
     expect(parseAccounts(blank)[0].incumbents).toEqual({});
   });
+
+  it("keeps a segment declared with an empty list: nobody installed, not unknown", () => {
+    const empty = yaml(`  novartis:
+    name: Novartis
+    needs: [ai-factory]
+    incumbents:
+      compute-ai: []
+`);
+    expect(parseAccounts(empty)[0].incumbents).toEqual({ "compute-ai": [] });
+  });
+});
+
+describe("config/accounts.example.yaml", () => {
+  // The file users copy is the documentation of omitted vs declared-empty
+  // segments; it has to parse, or the first rebuild fails on the example.
+  it("parses, and shows both an omitted and a declared-empty segment", () => {
+    const accounts = parseAccounts(readFileSync("config/accounts.example.yaml", "utf8"));
+    const roche = accounts.find((a) => a.id === "roche");
+    const novartis = accounts.find((a) => a.id === "novartis");
+
+    expect(roche?.incumbents["compute-ai"]).toBeUndefined();
+    expect(novartis?.incumbents["compute-ai"]).toEqual([]);
+  });
 });
 
 describe("accountToGraphFacts", () => {
@@ -81,6 +104,25 @@ describe("accountToGraphFacts", () => {
       "hpe",
       "lenovo",
     ]);
+  });
+
+  it("records every declared segment on the account, including an empty one", () => {
+    // An omitted segment means "incumbent unknown", a declared empty list
+    // "nobody installed". Neither leaves a USES edge, so the account node has to
+    // say which segments were declared or both would read as greenfield.
+    const account = parseAccounts(
+      yaml(`  roche:
+    name: Roche
+    needs: []
+    incumbents:
+      storage-file: [netapp]
+      compute-ai: []
+`),
+    )[0];
+    const node = accountToGraphFacts(account).nodes.find((n) => n.label === "Account");
+
+    expect(node?.properties.declaredSegments).toBe("compute-ai,storage-file");
+    expect(accountToGraphFacts({ ...account, incumbents: {} }).nodes[0].properties.declaredSegments).toBe("");
   });
 
   it("puts the segment on the USES edge so incumbency is per segment", () => {

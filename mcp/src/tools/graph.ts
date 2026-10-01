@@ -15,7 +15,8 @@ export function registerGraphTools(server: McpServer, client: PharmaITChatClient
       description:
         "How a vendor stands at the user's accounts, segment by segment, e.g. 'What is Dell doing best for my accounts?'. " +
         "For each account it resolves who is already installed in each segment first, then labels the vendor's mode there: " +
-        "defend (the vendor is installed), displace (a rival is) or greenfield (nobody is). Also returns the vendor's " +
+        "defend (the vendor is installed), displace (a rival is), greenfield (declared: nobody is) or unknown " +
+        "(who is installed is not recorded -- never read it as greenfield). Also returns the vendor's " +
         "position per segment with its rationale, confidence, short strong/weak claims from curated briefs, sources and " +
         "recent news. Positions are labels, not a ranking: never present vendors as ranked. " +
         "Give at least one of vendor, account or segment.",

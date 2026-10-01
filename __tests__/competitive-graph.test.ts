@@ -38,6 +38,7 @@ const ROWS: Rows = {
       id: "roche",
       name: "Roche",
       aliases: "Genentech,Chugai",
+      declaredSegments: "storage-block",
       needs: ["cyber-resilience"],
       uses: [{ segment: "storage-block", vendor: "dell" }],
     },
@@ -65,7 +66,7 @@ function deps(overrides: Partial<CompetitiveDeps> = {}): CompetitiveDeps {
 }
 
 describe("readGraphSnapshot", () => {
-  it("turns rows into a snapshot, splitting the comma-joined aliases", async () => {
+  it("turns rows into a snapshot, splitting the comma-joined aliases and declared segments", async () => {
     const snap = await readGraphSnapshot(fakeCypher(ROWS), { x: "dell" });
     expect(snap).toEqual({
       accounts: [
@@ -73,6 +74,7 @@ describe("readGraphSnapshot", () => {
           id: "roche",
           name: "Roche",
           aliases: ["Genentech", "Chugai"],
+          declared: ["storage-block"],
           needs: ["cyber-resilience"],
           uses: [{ segment: "storage-block", vendor: "dell" }],
         },
@@ -84,6 +86,15 @@ describe("readGraphSnapshot", () => {
       vendors: ["dell", "hpe"],
       vendorAliases: { x: "dell" },
     });
+  });
+
+  it("reads an account from a graph built before declaredSegments existed as declaring nothing", async () => {
+    // Until the operator rebuilds, every incumbent-less segment reads unknown:
+    // the honest default, never greenfield.
+    const legacy = { ...ROWS.accounts[0] };
+    delete legacy.declaredSegments;
+    const snap = await readGraphSnapshot(fakeCypher({ ...ROWS, accounts: [legacy] }), {});
+    expect(snap.accounts[0].declared).toEqual([]);
   });
 
   it("refuses a malformed row rather than printing 'undefined' into an answer", async () => {
@@ -108,7 +119,10 @@ describe("competitivePosition", () => {
       weak: [{ claim: "Claim 0.", detail: "detail" }],
       sources: ["https://example.test/s"],
     });
-    expect(Object.keys(result.answer.modes).sort()).toEqual(["defend", "greenfield"]);
+    expect(Object.keys(result.answer.modes).sort()).toEqual(["defend", "unknown"]);
+    expect(result.answer.modes.unknown).toBe(
+      "who is installed here is not recorded: find out before choosing defend, displace or greenfield",
+    );
   });
 
   it("says when a position has no curated brief behind it", async () => {

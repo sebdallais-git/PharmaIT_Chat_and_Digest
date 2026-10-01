@@ -76,7 +76,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   in scope and went unanswered (or asked for one named thing the answer does not name); only then does it trigger an
   n8n self-healing workflow. Graph rebuild (`POST /api/graph/rebuild`, `scripts/rebuild-vendor-graph.ts`) is deterministic — vendor briefs,
   `config/needs.yaml`, `config/accounts.local.yaml`, one write transaction — and works on every stack. MCP
-  `competitive_position` (`competitive-graph.ts`) answers "what is <vendor> doing best for my accounts", incumbency first.
+  `competitive_position` (`competitive-graph.ts`) answers "what is <vendor> doing best for my accounts", incumbency first:
+  defend / displace / greenfield (segment declared `[]`) / unknown (segment omitted from the accounts file).
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)
   → extract/check → store (`ingest-text.ts`) or `POST /api/knowledge/gaps/:id/unresolved`.
   The 27B decides resolution (`gap-resolution-verdict.ts`); the System One scorer

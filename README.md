@@ -1057,7 +1057,7 @@ Job state lives in memory, so a server restart forgets it. The index completenes
 | `/api/digest` | POST | token | Build a digest: `{request?, budget?}` → `{markdown, period, items}` (default: the last 7 days, 3,900 characters) |
 | `/api/graph/health` | GET | token | Neo4j connection check with latency |
 | `/api/graph/stats` | GET | open | Node and relationship counts by type |
-| `/api/graph/competitive-position` | POST | token | A vendor's standing per account segment: incumbency mode (defend / displace / greenfield), position, rationale, brief claims, recent news. Body: vendor?, account?, segment? |
+| `/api/graph/competitive-position` | POST | token | A vendor's standing per account segment: incumbency mode (defend / displace / greenfield / unknown — a segment the account does not declare is unknown, not greenfield), position, rationale, brief claims, recent news. Body: vendor?, account?, segment? |
 | `/api/graph/rebuild` | POST | token | Rebuild the graph from vendor briefs, needs and accounts (any stack; 409 while one is running) |
 | `/api/agent/status` | GET | open | News agent last run and the watchlist's topic list |
 | `/api/agent/run` | POST | open | Trigger the news agent now (reports zero — see the note above) |

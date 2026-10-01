@@ -10,13 +10,14 @@
 // carries little signal and ordering by it would invent one.
 import { SEGMENTS } from "./graph-schema.js";
 
-export type IncumbencyMode = "defend" | "displace" | "greenfield";
+export type IncumbencyMode = "defend" | "displace" | "greenfield" | "unknown";
 
 export const MODE_GUIDANCE: Record<IncumbencyMode, string> = {
   defend:
     "the vendor is installed: defend and expand through roadmap, lifecycle and adjacent attach; function gaps are tolerable",
   displace: "a rival is installed: displacing it needs a disqualifying weakness or a triggering event",
-  greenfield: "nobody is installed: function and price actually decide",
+  greenfield: "declared: nobody is installed, so function and price actually decide",
+  unknown: "who is installed here is not recorded: find out before choosing defend, displace or greenfield",
 };
 
 export interface CompetitiveQuery {
@@ -30,6 +31,11 @@ export interface SnapshotAccount {
   name: string;
   aliases: string[];
   needs: string[];
+  /**
+   * Segments whose incumbents the account declares, an empty list included.
+   * An incumbent-less segment outside this list is unknown, not greenfield.
+   */
+  declared: string[];
   uses: Array<{ segment: string; vendor: string }>;
 }
 
@@ -204,7 +210,13 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
       const vendors = names.map((v): VendorInSegment => {
         const position = cite(v, seg);
         if (position === null) notes.add(`no curated brief for ${v} in ${seg}: its position there is unknown, not absent`);
-        const mode: IncumbencyMode = incumbents.includes(v) ? "defend" : incumbents.length > 0 ? "displace" : "greenfield";
+        const mode: IncumbencyMode = incumbents.includes(v)
+          ? "defend"
+          : incumbents.length > 0
+            ? "displace"
+            : account.declared.includes(seg)
+              ? "greenfield"
+              : "unknown";
         return { vendor: v, mode, position };
       });
 

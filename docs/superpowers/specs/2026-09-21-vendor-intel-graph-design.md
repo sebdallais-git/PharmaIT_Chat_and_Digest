@@ -202,14 +202,15 @@ Resolution for `competitive_position(vendor: "dell")`:
 infrastructure sales, who already holds the account outweighs function and price, so the
 same competitive fact means opposite things depending on it -- Dell storage sitting
 mid-quadrant with shrinking hybrid lines is survivable where Dell is incumbent and
-disqualifying where a rival is. The tool therefore answers in one of three modes per
+disqualifying where a rival is. The tool therefore answers in one of four modes per
 segment:
 
 | Incumbency | Mode | What matters |
 |---|---|---|
 | The vendor | defend / expand | roadmap, lifecycle, adjacent attach; function gaps tolerable |
 | A rival | displace | needs a disqualifying weakness or a triggering event |
-| Nobody | greenfield | function and price actually decide |
+| Nobody (declared `[]`) | greenfield | function and price actually decide |
+| Not recorded (segment omitted) | unknown | find out who is installed before choosing a mode |
 
 Vendors are **not ranked** within a segment: `position` is a four-value label whose own
 evidence says the label carries little signal (six of eight vendors are Gartner Leaders).

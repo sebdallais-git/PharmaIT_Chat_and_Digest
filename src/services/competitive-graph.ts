@@ -39,7 +39,7 @@ export const ACCOUNTS_CYPHER = `
   OPTIONAL MATCH (a)-[:HAS_NEED]->(n:Need)
   WITH a, collect(DISTINCT n.id) AS needs
   OPTIONAL MATCH (a)-[u:USES]->(v:Vendor)
-  RETURN a.id AS id, a.name AS name, a.aliases AS aliases, needs,
+  RETURN a.id AS id, a.name AS name, a.aliases AS aliases, a.declaredSegments AS declaredSegments, needs,
          collect(CASE WHEN v IS NULL THEN null ELSE {segment: u.segment, vendor: v.id} END) AS uses
   ORDER BY id
 `;
@@ -127,6 +127,14 @@ function uses(value: unknown): SnapshotAccount["uses"] {
   });
 }
 
+// graph-accounts.ts stores lists comma-joined (Neo4j properties are scalars or lists of scalars).
+function commaList(value: unknown): string[] {
+  return (typeof value === "string" ? value : "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0);
+}
+
 export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Record<string, string>): Promise<GraphSnapshot> {
   const [accountRows, needRows, positionRows, vendorRows] = await Promise.all([
     runCypher(ACCOUNTS_CYPHER),
@@ -139,11 +147,10 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
     accounts: accountRows.map((r) => ({
       id: str(r.id, "id"),
       name: typeof r.name === "string" && r.name.length > 0 ? r.name : str(r.id, "id"),
-      // graph-accounts.ts stores aliases comma-joined (Neo4j properties are scalars or lists of scalars).
-      aliases: (typeof r.aliases === "string" ? r.aliases : "")
-        .split(",")
-        .map((a) => a.trim())
-        .filter((a) => a.length > 0),
+      aliases: commaList(r.aliases),
+      // Missing on a graph built before declaredSegments existed: every
+      // incumbent-less segment then reads unknown until the next rebuild.
+      declared: commaList(r.declaredSegments),
       needs: strList(r.needs, "needs"),
       uses: uses(r.uses),
     })),
