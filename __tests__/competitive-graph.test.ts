@@ -6,7 +6,9 @@ import {
   POSITIONS_CYPHER,
   VENDORS_CYPHER,
   competitivePosition,
+  fitBudget,
   readGraphSnapshot,
+  type CompetitiveAnswer,
   type CompetitiveDeps,
   type EvidenceItem,
   type RunCypher,
@@ -175,57 +177,192 @@ describe("competitivePosition", () => {
 });
 
 describe("competitivePosition — size budget", () => {
-  // Eight vendors briefed in every segment, three accounts with every need: far
+  // Eight vendors briefed in every segment, three accounts with every need and
+  // two brief-less incumbents in every segment, real-length source URLs: far
   // bigger than today's graph, the shape it grows into.
   const vendors = ["dell", "hpe", "everpure", "netapp", "ibm", "huawei", "vast-data", "nutanix"];
-  const bigRows: Rows = {
-    accounts: ["roche", "novartis", "sandoz"].map((id) => ({
-      id,
-      name: id,
-      aliases: "",
-      needs: ["n"],
-      uses: [{ segment: "storage-block", vendor: "hpe" }],
-    })),
-    needs: [{ need: "n", segments: [...SEGMENTS] }],
-    positions: vendors.flatMap((vendor) =>
-      SEGMENTS.map((segment) => ({
-        vendor,
-        segment,
-        position: "strong",
-        confidence: "medium",
-        rationale: "r".repeat(545),
-        asOf: "2026-09-21",
+  const unbriefed = ["cisco", "lenovo"];
+  const sources = Array.from({ length: 4 }, (_, i) => `https://www.example-analyst.test/research/2026/09/storage-market-report-${i}.html`);
+  function bigRows(accountCount: number): Rows {
+    return {
+      accounts: Array.from({ length: accountCount }, (_, i) => ["roche", "novartis", "sandoz"][i] ?? `account-${i}`).map((id) => ({
+        id,
+        name: id,
+        aliases: "",
+        declaredSegments: SEGMENTS.join(","),
+        needs: ["n"],
+        uses: SEGMENTS.flatMap((segment) => unbriefed.map((vendor) => ({ segment, vendor }))),
       })),
-    ),
-    vendors: vendors.map((id) => ({ id })),
-  };
+      needs: [{ need: "n", segments: [...SEGMENTS] }],
+      positions: vendors.flatMap((vendor) =>
+        SEGMENTS.map((segment) => ({
+          vendor,
+          segment,
+          position: "strong",
+          confidence: "medium",
+          rationale: "r".repeat(545),
+          asOf: "2026-09-21",
+        })),
+      ),
+      vendors: [...vendors, ...unbriefed].map((id) => ({ id })),
+    };
+  }
   const bigBriefs = new Map(
-    vendors.flatMap((v) => SEGMENTS.map((s) => [`${v}/${s}`, excerpt(v, s, 4, "d".repeat(240))] as const)),
+    vendors.flatMap((v) =>
+      SEGMENTS.map((s) => [`${v}/${s}`, { ...excerpt(v, s, 4, "d".repeat(240)), sources }] as const),
+    ),
   );
-  const bigDeps = deps({
-    runCypher: fakeCypher(bigRows),
-    briefs: () => ({ excerpts: bigBriefs, errors: [] }),
-  });
+  const bigDeps = (accountCount = 3): CompetitiveDeps =>
+    deps({
+      runCypher: fakeCypher(bigRows(accountCount)),
+      briefs: () => ({ excerpts: bigBriefs, errors: [] }),
+    });
 
-  it("keeps a full-graph vendor answer under the budget, and says it trimmed", async () => {
-    const result = await competitivePosition(bigDeps, { vendor: "dell" });
+  it.each([
+    ["vendor", { vendor: "dell" }],
+    ["account", { account: "roche" }],
+    ["segment", { segment: "storage-block" }],
+  ])("keeps a full-graph %s-only answer under the budget, and says it trimmed", async (_label, query) => {
+    const result = await competitivePosition(bigDeps(), query);
     if (!result.ok) throw new Error(result.error);
     expect(JSON.stringify(result.answer).length).toBeLessThanOrEqual(MAX_ANSWER_CHARS);
-    expect(result.answer.notes.some((n) => n.startsWith("excerpts trimmed to fit"))).toBe(true);
+    expect(result.answer.notes.some((n) => n.startsWith("trimmed to fit the answer budget"))).toBe(true);
+    expect(result.answer.notes.some((n) => n.startsWith("the answer is still over budget"))).toBe(false);
   });
 
   it("drops claim details before it drops claims", async () => {
-    const result = await competitivePosition(bigDeps, { vendor: "dell" });
+    const result = await competitivePosition(bigDeps(), { vendor: "dell" });
     if (!result.ok) throw new Error(result.error);
     const standing = result.answer.standings["dell/storage-block"];
     expect(standing.strong.length).toBeGreaterThan(0);
     expect(standing.strong.every((c) => c.detail === "")).toBe(true);
   });
 
+  it("keeps positions, confidence and dates even at the last step", async () => {
+    const result = await competitivePosition(bigDeps(), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.answer.standings["dell/storage-block"]).toEqual({
+      position: "strong",
+      confidence: "medium",
+      asOf: "2026-09-21",
+      curated: true,
+      strong: [],
+      weak: [],
+      sources: [],
+    });
+    expect(result.answer.accounts[0].segments).toHaveLength(SEGMENTS.length);
+  });
+
+  it("says the answer is still over budget when even the last step cannot fit it", async () => {
+    // Forty accounts on one segment: the per-account structure alone is over budget.
+    const result = await competitivePosition(bigDeps(40), { segment: "storage-block" });
+    if (!result.ok) throw new Error(result.error);
+    expect(JSON.stringify(result.answer).length).toBeGreaterThan(MAX_ANSWER_CHARS);
+    expect(result.answer.notes).toContain("the answer is still over budget: narrow the question by vendor or account");
+  });
+
   it("leaves a small answer untouched", async () => {
     const result = await competitivePosition(deps(), { vendor: "dell" });
     if (!result.ok) throw new Error(result.error);
     expect(result.answer.standings["dell/storage-block"].strong[0].detail).toBe("detail");
-    expect(result.answer.notes.some((n) => n.startsWith("excerpts trimmed"))).toBe(false);
+    expect(result.answer.notes.some((n) => n.startsWith("trimmed"))).toBe(false);
+  });
+});
+
+describe("fitBudget", () => {
+  const STEPS = [
+    "claim details",
+    "claims",
+    "rationale beyond 200 characters",
+    "rationale, and sources beyond 2 per standing",
+    "sources",
+  ];
+  const RATIONALE = "r".repeat(545);
+
+  function answer(query: Partial<CompetitiveAnswer["query"]> = { vendor: "dell" }): CompetitiveAnswer {
+    const claims = () => Array.from({ length: 4 }, (_, i) => ({ claim: `Claim ${i}.`, detail: "d".repeat(240) }));
+    const standing = () => ({
+      position: "strong",
+      confidence: "medium",
+      rationale: RATIONALE,
+      asOf: "2026-09-21",
+      curated: true,
+      strong: claims(),
+      weak: claims(),
+      sources: ["https://example.test/a", "https://example.test/b", "https://example.test/c", "https://example.test/d"],
+    });
+    return {
+      query: { vendor: null, account: null, segment: null, ...query },
+      modes: {},
+      market: [],
+      accounts: [],
+      standings: { "dell/storage-block": standing(), "dell/storage-file": standing() },
+      evidence: {},
+      notes: [],
+    };
+  }
+
+  /** How many steps the standing's state shows were applied. */
+  function stepsApplied(a: CompetitiveAnswer): number {
+    const s = a.standings["dell/storage-block"];
+    if (s.sources.length === 0) return 5;
+    if (s.rationale === undefined) return 4;
+    if (s.rationale.length < RATIONALE.length) return 3;
+    if (s.strong.length === 0) return 2;
+    if (s.strong.every((c) => c.detail === "")) return 1;
+    return 0;
+  }
+
+  it("drops claim details, then claims, then rationale length, then rationale and extra sources, then sources", () => {
+    const seen = new Set<number>();
+    const full = JSON.stringify(answer()).length;
+    for (let budget = full + 50; budget >= 0; budget -= 20) {
+      const a = answer();
+      fitBudget(a, budget);
+      const n = stepsApplied(a);
+      seen.add(n);
+      const s = a.standings["dell/storage-block"];
+
+      // Each step implies all the earlier ones, and the note names exactly those.
+      if (n >= 1) expect([...s.strong, ...s.weak].every((c) => c.detail === "")).toBe(true);
+      if (n === 3) expect(s.rationale?.length).toBeLessThanOrEqual(201);
+      if (n === 4) expect(s.sources).toHaveLength(2);
+      expect(a.notes.filter((note) => note.startsWith("trimmed"))).toEqual(
+        n === 0 ? [] : [`trimmed to fit the answer budget, left out: ${STEPS.slice(0, n).join("; ")}. Narrow by account or segment for the full detail`],
+      );
+      const over = JSON.stringify(a).length > budget;
+      expect(a.notes.includes("the answer is still over budget: narrow the question by account or segment")).toBe(over);
+      if (over) expect(n).toBe(5);
+    }
+    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it.each([
+    [{ vendor: "dell" }, "account or segment"],
+    [{ account: "roche" }, "vendor or segment"],
+    [{ segment: "storage-block" }, "vendor or account"],
+    [{ vendor: "dell", account: "roche" }, "segment"],
+  ])("words its advice from what the query leaves open: %j -> %s", (query, advice) => {
+    const trimmed = answer(query);
+    fitBudget(trimmed, JSON.stringify(trimmed).length - 1);
+    expect(trimmed.notes).toEqual([`trimmed to fit the answer budget, left out: claim details. Narrow by ${advice} for the full detail`]);
+
+    const over = answer(query);
+    fitBudget(over, 0);
+    expect(over.notes).toContain(`the answer is still over budget: narrow the question by ${advice}`);
+  });
+
+  it("gives no narrowing advice when vendor, account and segment are all set", () => {
+    const query = { vendor: "dell", account: "roche", segment: "storage-block" };
+    const trimmed = answer(query);
+    fitBudget(trimmed, JSON.stringify(trimmed).length - 1);
+    expect(trimmed.notes).toEqual(["trimmed to fit the answer budget, left out: claim details"]);
+
+    const over = answer(query);
+    fitBudget(over, 0);
+    expect(over.notes).toEqual([
+      `trimmed to fit the answer budget, left out: ${STEPS.join("; ")}`,
+      "the answer is still over budget even for one vendor, account and segment",
+    ]);
   });
 });

@@ -82,8 +82,11 @@ export const EVIDENCE_PER_VENDOR = 3;
 /** ~6k tokens: room in a 64K context for the question, the answer and the model's own reasoning. */
 export const MAX_ANSWER_CHARS = 24_000;
 export const TRIMMED_RATIONALE_CHARS = 200;
+export const TRIMMED_SOURCES = 2;
 
-export interface AnswerStanding extends Standing {
+export interface AnswerStanding extends Omit<Standing, "rationale"> {
+  /** Absent only when the answer budget forced it out (a note says so). */
+  rationale?: string;
   /** false when no brief file backs the graph's position. */
   curated: boolean;
   strong: Claim[];
@@ -172,36 +175,94 @@ function size(answer: CompetitiveAnswer): number {
   return JSON.stringify(answer).length;
 }
 
+/** What the asker can still add to narrow the question: every dimension not already set. */
+function narrowingAdvice(query: CompetitiveAnswer["query"]): string | null {
+  const missing = (["vendor", "account", "segment"] as const).filter((k) => query[k] === null);
+  return missing.length > 0 ? missing.join(" or ") : null;
+}
+
+interface TrimStep {
+  /** What the step leaves out, for the note. */
+  drops: string;
+  apply(standings: AnswerStanding[]): void;
+}
+
 /**
- * Shrink an over-budget answer in a fixed order, cheapest information first:
- * claim details, then claims, then rationale length. Structure (accounts,
- * modes, positions, sources) is never dropped -- it is what the question is about.
+ * In the order applied: cheapest information first. Structure (accounts,
+ * modes, positions, confidence, dates) is never dropped -- it is what the
+ * question is about.
  */
-function fitBudget(answer: CompetitiveAnswer): void {
-  if (size(answer) <= MAX_ANSWER_CHARS) return;
-  const standings = Object.values(answer.standings);
-  const steps: Array<() => void> = [
-    () => {
+const TRIM_STEPS: TrimStep[] = [
+  {
+    drops: "claim details",
+    apply: (standings) => {
       for (const s of standings) for (const c of [...s.strong, ...s.weak]) c.detail = "";
     },
-    () => {
+  },
+  {
+    drops: "claims",
+    apply: (standings) => {
       for (const s of standings) {
         s.strong = [];
         s.weak = [];
       }
     },
-    () => {
+  },
+  {
+    drops: `rationale beyond ${TRIMMED_RATIONALE_CHARS} characters`,
+    apply: (standings) => {
       for (const s of standings) {
-        if (s.rationale.length > TRIMMED_RATIONALE_CHARS) s.rationale = `${s.rationale.slice(0, TRIMMED_RATIONALE_CHARS).trimEnd()}…`;
+        if (s.rationale !== undefined && s.rationale.length > TRIMMED_RATIONALE_CHARS) {
+          s.rationale = `${s.rationale.slice(0, TRIMMED_RATIONALE_CHARS).trimEnd()}…`;
+        }
       }
     },
-  ];
-  answer.notes.push("excerpts trimmed to fit the answer budget; ask about one account or segment for the full claims");
-  for (const step of steps) {
-    step();
-    if (size(answer) <= MAX_ANSWER_CHARS) return;
+  },
+  {
+    drops: `rationale, and sources beyond ${TRIMMED_SOURCES} per standing`,
+    apply: (standings) => {
+      for (const s of standings) {
+        delete s.rationale;
+        s.sources = s.sources.slice(0, TRIMMED_SOURCES);
+      }
+    },
+  },
+  {
+    drops: "sources",
+    apply: (standings) => {
+      for (const s of standings) s.sources = [];
+    },
+  },
+];
+
+/**
+ * Shrink an over-budget answer step by step until it fits, then say what was
+ * left out and how to ask for it. Exported with a budget parameter so the trim
+ * order can be tested without building answers of exactly the right size.
+ */
+export function fitBudget(answer: CompetitiveAnswer, budget = MAX_ANSWER_CHARS): void {
+  if (size(answer) <= budget) return;
+  const standings = Object.values(answer.standings);
+  const advice = narrowingAdvice(answer.query);
+  const dropped: string[] = [];
+  // Measured with the note in place, so adding it cannot push the answer back over.
+  const note = (): string =>
+    `trimmed to fit the answer budget, left out: ${dropped.join("; ")}` +
+    (advice !== null ? `. Narrow by ${advice} for the full detail` : "");
+  answer.notes.push("");
+  const noteAt = answer.notes.length - 1;
+
+  for (const step of TRIM_STEPS) {
+    step.apply(standings);
+    dropped.push(step.drops);
+    answer.notes[noteAt] = note();
+    if (size(answer) <= budget) return;
   }
-  answer.notes.push("the answer is still over budget: narrow the question by account or segment");
+  answer.notes.push(
+    advice !== null
+      ? `the answer is still over budget: narrow the question by ${advice}`
+      : "the answer is still over budget even for one vendor, account and segment",
+  );
 }
 
 export async function competitivePosition(deps: CompetitiveDeps, query: CompetitiveQuery): Promise<CompetitiveResult> {
