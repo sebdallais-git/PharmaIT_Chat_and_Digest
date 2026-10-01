@@ -1193,8 +1193,7 @@ PharmaITChat/
 │   └── lib/                      # Shared shell and TypeScript helpers
 ├── python/
 │   ├── mlx-embed-server.py       # OpenAI-compatible embedding server for MLX
-│   ├── graph_builder.py          # Bulk entity extraction into Neo4j (calls Ollama)
-│   └── utils/, tests/            # Standalone Python RAG utilities (chunking, LLM re-ranking)
+│   └── graph_builder.py          # Bulk entity extraction into Neo4j (calls Ollama)
 ├── ollama/qwen3.8-pharma.Modelfile   # Qwen3.8 27B Q4_K_M with a 64K context
 ├── bench/questions.json          # 23 benchmark questions
 ├── knowledge/                    # 40 curated documents + per-stack index files

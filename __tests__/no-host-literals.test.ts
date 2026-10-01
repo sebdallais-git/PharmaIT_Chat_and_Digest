@@ -10,9 +10,6 @@ const SKIP_DIRS = new Set(["node_modules", "omlx-src", "omlx-venv", "mlx-venv", 
 const EXTENSIONS = [".ts", ".sh", ".py", ".mjs", ".js"];
 // Known remaining literals (spec: "Out"). Each entry is a repo-relative path.
 const ALLOWED_FILES = new Set([
-  "python/utils/search.py", // deleted by chore/retire-legacy-rag
-  "python/utils/vectordb.py", // deleted by chore/retire-legacy-rag
-  "scripts/migrate-news-to-raw-documents.ts", // deleted by chore/retire-legacy-rag
   "python/smoke_embeddings.py", // hits are usage examples inside the module docstring; the URL is a CLI argument
 ]);
 const LITERAL = /(?:localhost|127\.0\.0\.1):\d{2,5}/;
