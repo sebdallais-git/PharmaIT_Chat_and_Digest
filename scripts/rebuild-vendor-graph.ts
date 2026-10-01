@@ -7,6 +7,7 @@
 //                                                    WIPE the graph, then write
 //
 // --rebuild is destructive. Export first: scripts/export-graph.ts
+import { serviceUrl } from "../src/platform/host-config.js";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import neo4j from "neo4j-driver";
@@ -19,7 +20,7 @@ import {
 } from "../src/services/graph-accounts.js";
 import { writeGraphFacts, type GraphWriter } from "../src/services/graph-writer.js";
 
-const URI = process.env.NEO4J_URI ?? "bolt://localhost:7687";
+const URI = serviceUrl("neo4j");
 const USER = process.env.NEO4J_USER ?? "neo4j";
 const PASSWORD = process.env.NEO4J_PASSWORD ?? "pharma2024";
 const BRIEFS = join(process.cwd(), "knowledge", "vendors");

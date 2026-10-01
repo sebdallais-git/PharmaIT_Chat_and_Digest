@@ -4,9 +4,10 @@
  *          Vendor → OFFERS → Product → PROTECTS_AGAINST → AttackVector
  */
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import neo4j from "neo4j-driver";
 
-const NEO4J_URI = process.env.NEO4J_URI ?? "bolt://localhost:7687";
+const NEO4J_URI = serviceUrl("neo4j");
 const NEO4J_USER = process.env.NEO4J_USER ?? "neo4j";
 const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD ?? "pharma2024";
 

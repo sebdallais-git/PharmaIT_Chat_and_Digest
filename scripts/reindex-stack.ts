@@ -4,11 +4,12 @@
 //   LLM_PROVIDER=mlx npx tsx scripts/reindex-stack.ts --check    exit 0 if ready, 2 if a rebuild is needed
 //   LLM_PROVIDER=mlx npx tsx scripts/reindex-stack.ts --status   print index metadata and counts
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import { getActiveStack } from "../src/config/llm-stacks.js";
 import { isChromaDBAvailable } from "../src/services/chromadb-store.js";
 import { indexesReady, inspectIndexes, reindexActiveStack } from "../src/services/reindex.js";
 
-const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
+const APP_URL = process.env.APP_URL ?? serviceUrl("app");
 
 // A running app keeps its own copy of the in-memory index and would overwrite the rebuilt file
 async function appIsRunning(): Promise<boolean> {

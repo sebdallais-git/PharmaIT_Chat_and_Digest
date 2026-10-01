@@ -24,6 +24,7 @@
 //   npx tsx scripts/replay-detection.ts --backfill [--limit 30] [--all]
 //   npx tsx scripts/replay-detection.ts [--question candidate.json] [--details]
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import Database from "better-sqlite3";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -43,7 +44,7 @@ import {
 } from "./lib/detection-baseline.js";
 import type { DetectionBaseline, QueryCandidate } from "./lib/detection-baseline.js";
 
-const APP_URL = "http://127.0.0.1:3000";
+const APP_URL = serviceUrl("app");
 const BASELINE_PATH = join(process.cwd(), "data", "run", "detection-baseline.json");
 const DB_PATH = join(process.cwd(), "data", "gap_log.db");
 // Same ceiling as benchmark-stack.ts: a long answer on a busy 27B

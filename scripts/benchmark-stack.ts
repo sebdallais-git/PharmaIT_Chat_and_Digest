@@ -1,6 +1,7 @@
 // Benchmark the active stack end to end through the running PharmaITChat app
 // Usage: npx tsx scripts/benchmark-stack.ts [--runs 1] [--app http://localhost:3000] [--questions bench/questions.json]
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -51,7 +52,7 @@ function parseOptions(argv: string[]): Options {
   };
   return {
     runs: Number(value("--runs") ?? 1),
-    appUrl: value("--app") ?? "http://localhost:3000",
+    appUrl: value("--app") ?? serviceUrl("app"),
     questionsPath: value("--questions") ?? join(process.cwd(), "bench", "questions.json"),
   };
 }
