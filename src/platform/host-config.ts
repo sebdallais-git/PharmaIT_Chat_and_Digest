@@ -235,3 +235,26 @@ export function serviceUrl(name: EndpointName, env: NodeJS.ProcessEnv = process.
 export function hostSummary(host: HostConfig): { name: string; config: string; resources: HostResources } {
   return { name: host.name, config: host.path, resources: host.resources };
 }
+
+// PORT / HTTPS_PORT as given: a non-blank value must be an integer 1-65535; blank counts as unset.
+function envPort(env: NodeJS.ProcessEnv, name: "PORT" | "HTTPS_PORT"): number | undefined {
+  const value = env[name]?.trim();
+  if (!value) return undefined;
+  const port = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer between 1 and 65535, got ${JSON.stringify(env[name])}`);
+  }
+  return port;
+}
+
+// The ports the app listens on: PORT / HTTPS_PORT when set, else endpoints.app in the host
+// profile, which every other consumer (scripts, MCP, Hermes) also calls. httpsPort is null when
+// neither names one. The profile is read only when an env port is missing; its location comes
+// from process.env, as in serviceUrl.
+export function appListenPorts(env: NodeJS.ProcessEnv = process.env, host?: HostConfig): { port: number; httpsPort: number | null } {
+  const port = envPort(env, "PORT");
+  const httpsPort = envPort(env, "HTTPS_PORT");
+  if (port !== undefined && httpsPort !== undefined) return { port, httpsPort };
+  const app = (host ?? loadHostConfig()).endpoints.app;
+  return { port: port ?? app.port, httpsPort: httpsPort ?? app.httpsPort };
+}

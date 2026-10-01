@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   ENDPOINT_NAMES,
   HostConfigError,
+  appListenPorts,
   endpointUrl,
   hostConfigPath,
   hostSummary,
@@ -150,5 +151,45 @@ describe("hostSummary", () => {
   it("names the profile, its file and the applied resources", () => {
     const host = parseHostConfig(fixture, "fixture.yaml");
     expect(hostSummary(host)).toEqual({ name: "test-host", config: "fixture.yaml", resources: host.resources });
+  });
+});
+
+describe("appListenPorts", () => {
+  const host = parseHostConfig(fixture, "fixture.yaml");
+  const withPorts = (port: number, httpsPort: string) =>
+    parseHostConfig(fixture.replace(/app:\s*\{[^}]*\}/, `app: { port: ${port}${httpsPort} }`), "edited.yaml");
+
+  it("uses the profile's app ports when PORT and HTTPS_PORT are unset", () => {
+    expect(appListenPorts({}, host)).toEqual({ port: 3000, httpsPort: 3443 });
+    expect(appListenPorts({}, withPorts(4100, ", https_port: 4443"))).toEqual({ port: 4100, httpsPort: 4443 });
+  });
+
+  it("has no HTTPS port when the profile names none", () => {
+    expect(appListenPorts({}, withPorts(4100, ""))).toEqual({ port: 4100, httpsPort: null });
+  });
+
+  it("lets PORT and HTTPS_PORT win over the profile", () => {
+    expect(appListenPorts({ PORT: "3999", HTTPS_PORT: "4999" }, host)).toEqual({ port: 3999, httpsPort: 4999 });
+    expect(appListenPorts({ PORT: " 3999 " }, host)).toEqual({ port: 3999, httpsPort: 3443 });
+  });
+
+  it("treats a blank PORT or HTTPS_PORT as unset", () => {
+    expect(appListenPorts({ PORT: "", HTTPS_PORT: "  " }, host)).toEqual({ port: 3000, httpsPort: 3443 });
+  });
+
+  it.each(["abc", "0", "65536", "3000.5", "-1", "30x"])("throws on an invalid PORT %j", (value) => {
+    expect(() => appListenPorts({ PORT: value }, host)).toThrow(/PORT/);
+    expect(() => appListenPorts({ HTTPS_PORT: value }, host)).toThrow(/HTTPS_PORT/);
+  });
+
+  it("reads the profile only when an env port is missing", () => {
+    const saved = process.env.PHARMAITCHAT_HOST_CONFIG;
+    process.env.PHARMAITCHAT_HOST_CONFIG = "/nonexistent/host.yaml";
+    try {
+      expect(appListenPorts({ PORT: "3001", HTTPS_PORT: "3444" })).toEqual({ port: 3001, httpsPort: 3444 });
+      expect(() => appListenPorts({ PORT: "3001" })).toThrow(HostConfigError);
+    } finally {
+      process.env.PHARMAITCHAT_HOST_CONFIG = saved;
+    }
   });
 });
