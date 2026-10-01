@@ -1,7 +1,9 @@
 # Vendor-intelligence knowledge layer and graph schema
 
 **Date:** 2026-09-21
-**Status:** approved design, not yet implemented
+**Status:** implemented except the watchlist→`Evidence` live hook and legacy-document re-extraction
+(plan: `docs/superpowers/plans/2026-10-01-competitive-position.md`; curated excerpts come from the brief
+files and recent evidence from `watchlist.db` — see the plan's "Deliberate deviations")
 **Target query:** *"What is Dell doing best for my accounts?"* — Dell's competitive
 advantages per segment, mapped to what named big-pharma accounts need.
 
