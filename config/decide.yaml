@@ -5,11 +5,7 @@
 # thresholds.unresolved : noul below this reopens it and spends a retry
 # Between the two the gap is parked for review and spends no retry, because
 # the middle of a 4B's distribution is the part least worth acting on.
-# 8010, not 8000: Splash — the fourth LLM stack — binds 127.0.0.1:8000 by
-# default, and running the scorer alongside a stack is the normal case. Splash
-# keeps its default so no --port flag has to be remembered anywhere; the scorer
-# had no default worth preserving, and nothing was bound here yet.
-base_url: http://127.0.0.1:8010
+# The scorer's address is endpoints.scorer in config/host.yaml (8010: Splash owns 8000).
 model: jev-latest
 timeout_ms: 15000
 thresholds:

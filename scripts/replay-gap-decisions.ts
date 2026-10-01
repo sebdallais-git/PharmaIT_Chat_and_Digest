@@ -29,6 +29,7 @@
 // --question measures a candidate wording ({instructions, whenTrue, whenFalse})
 // instead of production's; --details prints each disagreement.
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import Database from "better-sqlite3";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -139,7 +140,7 @@ async function replay(limit: number, question: DecisionQuestion, details: boolea
       continue;
     }
 
-    const resp = await fetch("http://127.0.0.1:3000/api/decide", {
+    const resp = await fetch(`${serviceUrl("app")}/api/decide`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({

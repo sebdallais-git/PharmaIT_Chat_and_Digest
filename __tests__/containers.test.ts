@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hostTestEnv } from "./helpers/host-env.js";
 
 // Neo4j and SearXNG run in colima, and were down from 2026-09-23 until they
 // were started by hand on 2026-09-26. Two reasons: nothing ever started
@@ -43,7 +44,7 @@ esac`,
   const result = spawnSync(
     "bash",
     ["-c", 'set -u; source "$1/scripts/lib/services.sh"; ensure_containers', "bash", process.cwd()],
-    { encoding: "utf-8", env: { PATH: "/usr/bin:/bin", HOME: root, SERVICES_EXTRA_PATH: brew } },
+    { encoding: "utf-8", env: { ...hostTestEnv(), PATH: "/usr/bin:/bin", HOME: root, SERVICES_EXTRA_PATH: brew } },
   );
   const log = existsSync(calls) ? readFileSync(calls, "utf-8").split("\n").filter(Boolean) : [];
   return { result, log };

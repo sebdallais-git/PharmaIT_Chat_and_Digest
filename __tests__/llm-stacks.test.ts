@@ -1,4 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseHostConfig } from "../src/platform/host-config.js";
 import { thinkingBody } from "../src/services/thinking.js";
 import { buildStacks, getActiveStack, isStackName, STACK_NAMES } from "../src/config/llm-stacks.js";
 
@@ -201,5 +204,21 @@ describe("the splash stack", () => {
     const { getActiveStack } = await import("../src/config/llm-stacks.js");
 
     expect(getActiveStack({ LLM_PROVIDER: "splash" }).name).toBe("splash");
+  });
+});
+
+describe("buildStacks reads endpoints from the host profile", () => {
+  const fixture = readFileSync(join(process.cwd(), "__tests__", "fixtures", "host.yaml"), "utf-8");
+
+  it("uses the profile's ports when no env override is set", () => {
+    const host = parseHostConfig(fixture.replace("mlx_chat:  { port: 8080 }", "mlx_chat:  { port: 9080 }"), "t.yaml");
+    const stacks = buildStacks({}, host);
+    expect(stacks.mlx.chatBaseUrl).toBe("http://localhost:9080");
+    expect(stacks.splash.embedBaseUrl).toBe("http://localhost:8081");
+  });
+
+  it("still lets MLX_CHAT_URL win", () => {
+    const host = parseHostConfig(fixture, "t.yaml");
+    expect(buildStacks({ MLX_CHAT_URL: "http://elsewhere:1" }, host).mlx.chatBaseUrl).toBe("http://elsewhere:1");
   });
 });

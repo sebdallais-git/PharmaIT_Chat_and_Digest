@@ -14,13 +14,15 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TEMPLATE_DIR="$PROJECT_DIR/hermes"
 # shellcheck source=lib/launchd.sh
 source "$SCRIPT_DIR/lib/launchd.sh"
+# shellcheck source=lib/host.sh
+source "$SCRIPT_DIR/lib/host.sh"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 ENV_FILE="$HERMES_HOME/.env"
 RUN_DIR="${PHARMAITCHAT_RUN_DIR:-${PHARMALLM_RUN_DIR:-$PROJECT_DIR/data/run}}"
 LAUNCH_AGENTS_DIR="${LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 HERMES_BIN="${HERMES_BIN:-hermes}"
 LAUNCHCTL_BIN="${LAUNCHCTL_BIN:-launchctl}"
-MCP_HEALTH_URL="${MCP_HEALTH_URL:-http://127.0.0.1:3200/healthz}"
+MCP_HEALTH_URL="${MCP_HEALTH_URL:-http://${MCP_HOST}:${MCP_PORT}/healthz}"
 MCP_LABEL="com.pharmaitchat.mcp"
 N8N_LABEL="com.pharmaitchat.n8n"
 JEV_LABEL="com.pharmaitchat.jev"
@@ -145,9 +147,9 @@ install_config() {
   chmod 600 "$ENV_FILE"
   install_file "$TEMPLATE_DIR/config.template.yaml" "$HERMES_HOME/config.yaml"
   install_file "$TEMPLATE_DIR/SOUL.md" "$HERMES_HOME/SOUL.md"
-  fill_env PHARMALLM_URL "http://localhost:3000"
-  fill_env PHARMALLM_MCP_URL "http://127.0.0.1:3200/mcp"
-  fill_env SEARXNG_URL "http://localhost:8888"
+  fill_env PHARMALLM_URL "http://${PHARMAITCHAT_HOST_ADDRESS}:${APP_PORT}"
+  fill_env PHARMALLM_MCP_URL "http://${MCP_HOST}:${MCP_PORT}/mcp"
+  fill_env SEARXNG_URL "http://${PHARMAITCHAT_HOST_ADDRESS}:${SEARXNG_PORT}"
   fill_env PHARMAITCHAT_API_TOKEN "" "$RUN_DIR/api-token" PHARMALLM_API_TOKEN
   fill_env PHARMALLM_MCP_TOKEN "" "$RUN_DIR/mcp-token"
   fill_env TELEGRAM_BOT_TOKEN ""
@@ -190,7 +192,7 @@ install_services() {
   # so KeepAlive is the point of installing it.
   plist="$LAUNCH_AGENTS_DIR/$N8N_LABEL.plist"
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
-      -e "s|__N8N_PORT__|${N8N_PORT:-5678}|g" \
+      -e "s|__N8N_PORT__|${N8N_PORT}|g" \
       -e "s|__PATH__|$(launchd_path "$node_bin")|g" \
       "$TEMPLATE_DIR/com.pharmaitchat.n8n.plist.template" >"$plist"
   "$LAUNCHCTL_BIN" bootout "$domain/$N8N_LABEL" >/dev/null 2>&1 || true
@@ -201,7 +203,7 @@ install_services() {
   done
   log "Installed and started $N8N_LABEL"
 
-  install_jev_service
+  install_jev_service "$node_bin"
 
   "$HERMES_BIN" gateway install --force --start-now --start-on-login
   log "Installed the Hermes gateway service"
@@ -235,8 +237,10 @@ install_services() {
 # the Hermes gateway especially, still installs. This is an INSTALL-time distinction only:
 # scripts/run-jev.sh keeps its own hard guards at RUN time, since a scorer that cannot load a
 # gated model must fail loudly rather than start and hang. Do not soften that script.
+# $1: the node binary. run-jev.sh sources scripts/lib/host.sh, which runs node, so the plist PATH
+# needs node's dir first like the mcp/n8n plists; without it the job dies at start and KeepAlive loops.
 install_jev_service() {
-  local plist domain jev_dir
+  local node_bin="$1" plist domain jev_dir
   jev_dir="${JEV_DIR:-$PROJECT_DIR/../open-jev}"
   if [ ! -x "$jev_dir/.venv/bin/openjev" ]; then
     log "Skipping the jev scorer: no open-jev venv at $jev_dir (run: cd $jev_dir && make setup). The scorer is optional — chat is unaffected."
@@ -251,7 +255,7 @@ install_jev_service() {
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
       -e "s|__JEV_DIR__|$jev_dir|g" \
       -e "s|__JEV_HOST__|${JEV_HOST:-127.0.0.1}|g" \
-      -e "s|__PATH__|$(launchd_path)|g" \
+      -e "s|__PATH__|$(launchd_path "$node_bin")|g" \
       "$TEMPLATE_DIR/$JEV_LABEL.plist.template" >"$plist"
   domain="gui/$(id -u)"
   "$LAUNCHCTL_BIN" bootout "$domain/$JEV_LABEL" >/dev/null 2>&1 || true

@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_INGEST_BUDGET_MS } from "../src/services/watchlist-ingest.js";
+import { hostTestEnv, hostVar } from "./helpers/host-env.js";
 
 const projectDir = process.cwd();
 // The timeout hermes/cron/jobs.json asks Hermes for, read from the file
@@ -89,6 +90,7 @@ function setup(box: Sandbox, args: string[], extraEnv: Record<string, string> = 
     encoding: "utf-8",
     input: "",
     env: {
+      ...hostTestEnv(),
       PATH: "/usr/bin:/bin",
       HOME: box.root,
       HERMES_HOME: box.home,
@@ -358,7 +360,7 @@ describe("hermes/scripts/pharmaitchat-watchlist-ingest.sh", () => {
   function runWrapper(box: WrapperBox) {
     return spawnSync("bash", [box.script], {
       encoding: "utf-8",
-      env: { PATH: `${box.binDir}:/usr/bin:/bin`, HOME: box.tempProject },
+      env: { ...hostTestEnv(), PATH: `${box.binDir}:/usr/bin:/bin`, HOME: box.tempProject },
     });
   }
 
@@ -430,7 +432,7 @@ describe("hermes/scripts/pharmaitchat-kb-canary.sh", () => {
     const stdoutLines = stdout ? ["cat <<'CANARYOUT'", stdout, "CANARYOUT"] : [];
     writeFileSync(npx, ["#!/bin/bash", ...stdoutLines, "cat >&2 <<'CANARYERR'", stderr, "CANARYERR", `exit ${exitCode}`].join("\n"));
     chmodSync(npx, 0o755);
-    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { ...hostTestEnv(), PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
     const logDir = join(tempProject, "data", "logs");
     const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
     return { result, log };
@@ -474,7 +476,7 @@ describe("hermes/scripts/pharmaitchat-daily-briefing.sh", () => {
     const stdoutLines = stdout ? ["cat <<'BRIEFOUT'", stdout, "BRIEFOUT"] : [];
     writeFileSync(npx, ["#!/bin/bash", 'echo "stack=$LLM_PROVIDER args=$*" >&2', ...stdoutLines, `exit ${exitCode}`].join("\n"));
     chmodSync(npx, 0o755);
-    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { ...hostTestEnv(), PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
     const logDir = join(tempProject, "data", "logs");
     const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
     return { result, log };
@@ -517,7 +519,7 @@ describe("hermes/scripts/pharmaitchat-weekly-digest.sh", () => {
     const stdoutLines = stdout ? ["cat <<'DIGESTOUT'", stdout, "DIGESTOUT"] : [];
     writeFileSync(npx, ["#!/bin/bash", 'echo "stack=$LLM_PROVIDER args=$*" >&2', ...stdoutLines, `exit ${exitCode}`].join("\n"));
     chmodSync(npx, 0o755);
-    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { ...hostTestEnv(), PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
     const logDir = join(tempProject, "data", "logs");
     const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
     return { result, log };
@@ -564,6 +566,7 @@ describe("launchd PATH is the same whichever script renders a plist", () => {
     const fromAutostart = spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: "/usr/bin:/bin",
         HOME: box.root,
         LAUNCH_AGENTS_DIR: autostartAgents,
@@ -586,7 +589,67 @@ describe("launchd PATH is the same whichever script renders a plist", () => {
     const box = sandbox();
     installJevFixture(box);
     expect(setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" }).status).toBe(0);
-    expect(plistPath(join(box.agentsDir, "com.pharmaitchat.jev.plist"))).toContain("/opt/homebrew/bin");
+    const jevPath = plistPath(join(box.agentsDir, "com.pharmaitchat.jev.plist"));
+    expect(jevPath).toContain("/opt/homebrew/bin");
+    // run-jev.sh sources scripts/lib/host.sh, which needs node: node's dir must come first
+    expect(jevPath?.split(":")[0]).toBe("/opt/fake/bin");
+  });
+
+  // Every job script sources scripts/lib/host.sh (or runs node itself): a plist whose PATH lacks
+  // node's dir starts a job that dies with "node not found" and loops under KeepAlive.
+  it("puts node's dir first in every plist hermes-setup.sh renders", () => {
+    const box = sandbox();
+    installJevFixture(box);
+    expect(setup(box, ["install-services"], { NODE_BIN: "/opt/fake/bin/node" }).status).toBe(0);
+    const rendered = readdirSync(box.agentsDir).filter((f) => f.startsWith("com.pharmaitchat.") && f.endsWith(".plist"));
+    expect(rendered.sort()).toEqual(["com.pharmaitchat.jev.plist", "com.pharmaitchat.mcp.plist", "com.pharmaitchat.n8n.plist"]);
+    for (const file of rendered) {
+      expect([file, plistPath(join(box.agentsDir, file))?.split(":")[0]]).toEqual([file, "/opt/fake/bin"]);
+    }
+  });
+
+  it("puts node's dir first in every plist autostart.sh renders", () => {
+    const box = sandbox();
+    const agents = join(box.root, "autostart-agents");
+    mkdirSync(agents);
+    spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
+      encoding: "utf-8",
+      env: {
+        ...hostTestEnv(),
+        PATH: "/usr/bin:/bin",
+        HOME: box.root,
+        LAUNCH_AGENTS_DIR: agents,
+        LAUNCHCTL_BIN: "/usr/bin/true",
+        NODE_BIN: "/opt/fake/bin/node",
+      },
+    });
+    const rendered = readdirSync(agents).filter((f) => f.startsWith("com.pharmaitchat.") && f.endsWith(".plist"));
+    expect(rendered.sort()).toEqual([
+      "com.pharmaitchat.mcp.plist",
+      "com.pharmaitchat.mlx-watchdog.plist",
+      "com.pharmaitchat.n8n.plist",
+      "com.pharmaitchat.stack.plist",
+    ]);
+    for (const file of rendered) {
+      expect([file, plistPath(join(agents, file))?.split(":")[0]]).toEqual([file, "/opt/fake/bin"]);
+      expect(readFileSync(join(agents, file), "utf-8")).not.toContain("__");
+    }
+    // Baked-in values come from the host profile (autostart.sh sources scripts/lib/host.sh)
+    expect(readFileSync(join(agents, "com.pharmaitchat.n8n.plist"), "utf-8")).toContain(`<key>N8N_PORT</key><string>${hostVar("N8N_PORT")}</string>`);
+    expect(readFileSync(join(agents, "com.pharmaitchat.mcp.plist"), "utf-8")).toContain(`<key>MCP_HOST</key><string>${hostVar("MCP_HOST")}</string>`);
+  });
+
+  it("autostart.sh fails loudly rather than rendering plists when node is missing", () => {
+    const box = sandbox();
+    const agents = join(box.root, "autostart-agents");
+    mkdirSync(agents);
+    const result = spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
+      encoding: "utf-8",
+      env: { PATH: "/usr/bin:/bin", HOME: box.root, LAUNCH_AGENTS_DIR: agents, LAUNCHCTL_BIN: "/usr/bin/true", HOST_NODE_BIN: join(box.root, "no-node") },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("host.sh");
+    expect(readdirSync(agents)).toEqual([]);
   });
 
   it("leaves no script spelling out a launchd PATH of its own", () => {

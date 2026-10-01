@@ -4,7 +4,7 @@ Usage:
     python python/graph_builder.py                  # Process all .md files
     python python/graph_builder.py knowledge/pharma-business.md  # Single file
 
-Requires: Neo4j running on bolt://localhost:7687, Ollama running on localhost:11434
+Requires: NEO4J_URI and OLLAMA_URL in the environment (POST /api/graph/rebuild passes them from config/host.yaml)
 """
 
 import json
@@ -18,10 +18,10 @@ import requests
 from neo4j import GraphDatabase
 
 # Configuration
-NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_URI = os.environ.get("NEO4J_URI") or sys.exit("graph_builder: NEO4J_URI is not set (run it through POST /api/graph/rebuild)")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "pharma2024")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL = os.environ.get("OLLAMA_URL") or sys.exit("graph_builder: OLLAMA_URL is not set (run it through POST /api/graph/rebuild)")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral-small:24b")
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 

@@ -2,8 +2,9 @@
 
 import neo4j from "neo4j-driver";
 import type { Driver } from "neo4j-driver";
+import { serviceUrl } from "../platform/host-config.js";
 
-const NEO4J_URI = process.env.NEO4J_URI ?? "bolt://localhost:7687";
+const NEO4J_URI = serviceUrl("neo4j");
 const NEO4J_USER = process.env.NEO4J_USER ?? "neo4j";
 const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD ?? "pharma2024";
 

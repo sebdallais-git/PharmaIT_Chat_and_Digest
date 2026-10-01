@@ -14,6 +14,7 @@
 //
 // Usage: npx tsx scripts/replay-page-relevance.ts [--db ~/.n8n/database.sqlite]
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -57,7 +58,7 @@ async function main(): Promise<void> {
   let dropped = 0;
 
   for (const page of pages) {
-    const resp = await fetch("http://127.0.0.1:3000/api/decide", {
+    const resp = await fetch(`${serviceUrl("app")}/api/decide`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ state: pageRelevanceState(page.topic, page.page), question: PAGE_RELEVANT_QUESTION }),

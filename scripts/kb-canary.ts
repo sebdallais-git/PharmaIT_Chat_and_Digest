@@ -8,6 +8,7 @@
 // summary and exits 1. The Hermes job (hermes/scripts/pharmaitchat-kb-canary.sh)
 // relies on exactly that: its stdout goes to Telegram only on failure.
 
+import { serviceUrl } from "../src/platform/host-config.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,7 +36,7 @@ function option(args: string[], name: string, fallback: string): string {
 }
 
 async function main(args: string[]): Promise<number> {
-  const appUrl = option(args, "--app-url", "http://localhost:3000");
+  const appUrl = option(args, "--app-url", serviceUrl("app"));
   const canaries = loadCanaries(option(args, "--config", DEFAULT_CANARY_CONFIG));
   const run = await runCanaries(canaries, createChatAsker(appUrl, apiToken()));
 

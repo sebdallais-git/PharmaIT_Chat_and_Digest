@@ -176,7 +176,7 @@ describe("parseGpuUtilization", () => {
 describe("check-services.sh", () => {
   it("waits longer for /api/health than the generation probe inside it can take", () => {
     const script = readFileSync(join(process.cwd(), "scripts", "check-services.sh"), "utf-8");
-    const match = script.match(/curl -sf -m (\d+) http:\/\/localhost:3000\/api\/health/);
+    const match = script.match(/curl -sf -m (\d+) "\$APP_URL\/api\/health"/);
     expect(match).not.toBeNull();
     expect(Number(match![1]) * 1000).toBeGreaterThan(GENERATION_PROBE_TIMEOUT_MS);
   });

@@ -24,7 +24,7 @@ npm --prefix mcp test        # MCP server has its own package + Jest config
 npm --prefix mcp run typecheck
 npm run test:hermes-plugin   # python unittest, hermes/tests
 npm run watchlist -- verify-feeds | ingest [--limit N] [--only id,id] | status
-bash scripts/check-services.sh                 # health of every service, incl. the scorer port from config/decide.yaml
+bash scripts/check-services.sh                 # health of every service; ports from config/host.yaml (needs node)
 npx tsx scripts/replay-gap-decisions.ts [--backfill | --question "…" | --details]
                                                # replay scorer verdicts against data/run/gap-baseline.json (27B baseline)
 npx tsx scripts/shadow-report.ts               # detection shadow: scorer vs 27B agreement on chat turns
@@ -48,7 +48,7 @@ containers). `switch-stack.sh <stack>` itself starts the app in the background (
 `data/logs/app.log`), so `npm run dev` right after it fails on port 3000.
 
 App: http://localhost:3000 (chat), `/dashboard`, `/api/health`. HTTPS on 3443 when `certs/` has
-`key.pem`/`cert.pem`.
+`key.pem`/`cert.pem`. Both ports come from `config/host.yaml` `endpoints.app` (`PORT`/`HTTPS_PORT` win).
 
 ## Architecture
 
@@ -79,7 +79,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)
   → extract/check → store (`ingest-text.ts`) or `POST /api/knowledge/gaps/:id/unresolved`.
   The 27B decides resolution (`gap-resolution-verdict.ts`); the System One scorer
-  (open-jev in `~/claude/open-jev`, Gemma 3 4B 4-bit on :8010, `config/decide.yaml`) is only
+  (open-jev in `~/claude/open-jev`, Gemma 3 4B 4-bit, address from `config/host.yaml`
+  `endpoints.scorer` (:8010), thresholds in `config/decide.yaml`) is only
   logged/shadowed (`[Gap Resolution] 27B X, scorer Y`, `[Decide]` for slow/failed calls).
   It does decide one thing: `/api/llm/complete` with a `relevance` page skips the 27B extraction
   when the page scores below `page_relevance_skip_below` (`page-relevance.ts`, fail-open).
@@ -104,6 +105,11 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   27B calls whose bullets must cite item numbers, rendered to a budget (Telegram 3,900 chars;
   action items never cut). Framed by the active role.
 - Storage: ChromaDB (:8100), Neo4j (`neo4j-driver`), `better-sqlite3`. No Prisma/PostgreSQL.
+- **Host profile**: `config/host.yaml` holds every endpoint (address/port) and machine-sized limit
+  (`resources`). TS reads it via `src/platform/host-config.ts` (`serviceUrl`, `loadHostConfig`,
+  `appListenPorts`), bash via `scripts/lib/host.sh`; existing env vars still win. `src/platform/` is
+  the first piece of the future Sils_Healthcare platform layer: its imports are limited to `node:*`,
+  `yaml` and `env-names` (enforced by `__tests__/platform-boundary.test.ts`).
 
 ## Conventions
 
@@ -142,12 +148,23 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - Keep `OLLAMA_NUM_PARALLEL=1` — each slot allocates its own 64K context.
 - Same for MLX: `switch-stack.sh` starts `mlx_lm.server` with 1 prefill / 2 decodes at a time, a
   4 GiB prompt cache and a 2 GiB MLX buffer-cache cap (`run-jev.sh` caps the scorer at 1 GiB,
-  `mlx-embed-server.py` the embedder at 512 MiB; uncapped, each grew to 36 GB under varied inputs). The
+  `mlx-embed-server.py` the embedder at 512 MiB; uncapped, each grew to 36 GB under varied inputs).
+  These limits live in `config/host.yaml` `resources`; the three scripts read them from there. The
   defaults (8/32, uncapped) ran the GPU out of memory under a burst: the generation thread dies,
   the server keeps listening, and every request hangs until the watchdog restarts it.
   With one prefill at a time, a probe queues behind long requests: `/api/health` and the watchdog
   treat a timeout with the GPU ≥ 30% (`ioreg` "Device Utilization %") as busy, not wedged.
 - Node's `fetch` caps at 300 s, which matters for long local-inference calls.
+- Every bash service script sources `scripts/lib/host.sh`, which runs node (`HOST_NODE_BIN`, else
+  `NODE_BIN`, else PATH) with the project's `node_modules/tsx`. A launchd job whose PATH lacks node's
+  dir dies at start; re-render the plists (`hermes-setup.sh install-services` / `autostart.sh on`)
+  after changing PATH logic.
+- A `config/host.yaml` edit is not applied everywhere by a restart: values baked into plists
+  (`MCP_HOST`, `JEV_HOST`, `N8N_PORT`) and env inherited from the app override the file until the
+  plists are re-rendered and the jobs kickstarted.
+- `resources.ollama.num_parallel` is informational: Ollama reads `OLLAMA_NUM_PARALLEL` from launchctl.
+- Tests get the fixture profile (`__tests__/fixtures/host.yaml`) via the Jest setup file; a test that
+  spawns a script with its own env adds `...hostTestEnv()` (`__tests__/helpers/host-env.ts`).
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
   `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`, `kb-canary-<date>.log`,
   `weekly-digest-<date>.log`, `daily-briefing-<date>.log`).

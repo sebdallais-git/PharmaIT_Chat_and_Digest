@@ -11,23 +11,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUN_DIR="${PHARMALLM_RUN_DIR:-$PROJECT_DIR/data/run}"
 JEV_DIR="${JEV_DIR:-$PROJECT_DIR/../open-jev}"
+# JEV_HOST, JEV_PORT and JEV_MLX_CACHE_LIMIT come from config/host.yaml (exits on an invalid profile)
+# shellcheck source=lib/host.sh
+source "$SCRIPT_DIR/lib/host.sh"
 
 read_token() {
   if [ -s "$1" ]; then tr -d '[:space:]' <"$1"; fi
 }
 
-export JEV_HOST="${JEV_HOST:-127.0.0.1}"
-export JEV_PORT="${JEV_PORT:-8010}"   # 8000 belongs to the Splash stack
 # The spec's 4-bit scorer (~3 GB), relative to $JEV_DIR. Without --model the
 # server loaded open-jev's 16-bit default (8 GB), which starved memory beside
 # the 27B and scored the baseline gaps worse (71.9% vs 91.2% agreement).
 export JEV_MODEL="${JEV_MODEL:-models/gemma-3-4b-it-4bit}"
-# MLX keeps every freed GPU buffer for reuse, and a scorer call on a long page
-# allocates gigabytes (Gemma 3's vocabulary is 262k words). Uncapped, the
-# process grew from 3 GB to 36 GB within 30 calls on 2026-09-28 and pushed the
-# 27B into swap until the watchdog restarted it. A 1 GiB cap held it at 4.2 GB
-# on the same 72 pages with no change in latency. Bytes.
-export JEV_MLX_CACHE_LIMIT="${JEV_MLX_CACHE_LIMIT:-1073741824}"
 case "$JEV_MLX_CACHE_LIMIT" in
   ''|*[!0-9]*)
     echo "run-jev: JEV_MLX_CACHE_LIMIT must be a byte count, got '$JEV_MLX_CACHE_LIMIT'" >&2

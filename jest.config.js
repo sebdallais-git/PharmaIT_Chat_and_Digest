@@ -4,6 +4,8 @@ export default {
   testEnvironment: "node",
   extensionsToTreatAsEsm: [".ts"],
   testMatch: ["**/__tests__/**/*.test.ts"],
+  // Points PHARMAITCHAT_HOST_CONFIG at __tests__/fixtures/host.yaml before any test module loads
+  setupFiles: ["<rootDir>/__tests__/setup/host-config-env.ts"],
   // The MCP service is a separate package with its own Jest setup; data/ holds scratch installs.
   // .worktrees/ holds sibling checkouts of other branches; their own tests read the script at
   // process.cwd(), which is always THIS tree, so without this they silently assert against our

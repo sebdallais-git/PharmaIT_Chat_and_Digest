@@ -9,6 +9,7 @@ import {
   clearGraph,
 } from "../services/graph-store.js";
 import { getActiveStack } from "../config/llm-stacks.js";
+import { serviceUrl } from "../platform/host-config.js";
 
 const router = Router();
 
@@ -83,7 +84,12 @@ router.post("/rebuild", async (_req: Request, res: Response): Promise<void> => {
     execFile(
       "python3",
       ["python/graph_builder.py"],
-      { cwd: process.cwd(), timeout: 600000 },
+      {
+        cwd: process.cwd(),
+        timeout: 600000,
+        // The builder has no defaults of its own: endpoints come from config/host.yaml
+        env: { ...process.env, NEO4J_URI: serviceUrl("neo4j"), OLLAMA_URL: serviceUrl("ollama") },
+      },
       (err, stdout, stderr) => {
         if (err) {
           console.error("[Graph Rebuild] Error:", stderr);

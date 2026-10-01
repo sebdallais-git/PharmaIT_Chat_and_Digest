@@ -4,14 +4,15 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildStacks } from "../src/config/llm-stacks.js";
+import { hostTestEnv, hostVar } from "./helpers/host-env.js";
 
 const scriptsDir = join(process.cwd(), "scripts");
 const switchStack = readFileSync(join(scriptsDir, "switch-stack.sh"), "utf-8");
 
 function shellVar(name: string): string {
   const match = switchStack.match(new RegExp(`^${name}="([^"]+)"$`, "m"));
-  if (!match) throw new Error(`${name} not found in switch-stack.sh`);
-  return match[1];
+  // Ports moved to config/host.yaml; the script only references them
+  return match ? match[1] : hostVar(name);
 }
 
 const tempDirs: string[] = [];
@@ -102,7 +103,7 @@ esac`,
 
     const result = spawnSync("bash", [join(scripts, "mlx-watchdog.sh")], {
       encoding: "utf-8",
-      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: root, PHARMALLM_RUN_DIR: run, BASH_ENV: bashEnv },
+      env: { ...hostTestEnv(), PATH: `${bin}:/usr/bin:/bin`, HOME: root, PHARMALLM_RUN_DIR: run, BASH_ENV: bashEnv },
     });
     const log = existsSync(calls) ? readFileSync(calls, "utf-8") : "";
     const strikesFile = join(run, "mlx-watchdog.strikes");
@@ -178,9 +179,11 @@ esac`;
   });
 
   it("does nothing when switch-stack cannot say where the stack serves chat", () => {
-    const { result, calls } = runWatchdog({ stack: "unknown", httpCode: "500", priorStrikes: 1 });
+    const { result, calls, root } = runWatchdog({ stack: "unknown", httpCode: "500", priorStrikes: 1 });
     expect(result.status).toBe(0);
     expect(calls.some((c) => c.startsWith("curl ") || c.startsWith("lsof ") || c.includes("ensure-stack"))).toBe(false);
+    // Not silent: an invalid config/host.yaml would otherwise switch the watchdog off unnoticed
+    expect(readFileSync(join(root, "data", "logs", "mlx-watchdog.log"), "utf-8")).toMatch(/chat-endpoint failed.*not probing/);
   });
 });
 

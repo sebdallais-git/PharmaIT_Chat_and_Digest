@@ -1,6 +1,8 @@
 // Stack definitions for the Ollama / MLX switch. Exactly one stack is active per process.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { serviceUrl } from "../platform/host-config.js";
+import type { HostConfig } from "../platform/host-config.js";
 
 export type StackName = "ollama" | "mlx" | "omlx" | "splash";
 
@@ -31,8 +33,13 @@ export interface StackConfig {
 
 const EMBEDDING_DIM = 1024;
 
-export function buildStacks(env: NodeJS.ProcessEnv = process.env): Record<StackName, StackConfig> {
-  const ollamaUrl = env.OLLAMA_URL ?? "http://localhost:11434";
+export function buildStacks(env: NodeJS.ProcessEnv = process.env, host?: HostConfig): Record<StackName, StackConfig> {
+  // Endpoints from config/host.yaml; OLLAMA_URL, MLX_CHAT_URL, MLX_EMBED_URL, OMLX_URL and SPLASH_URL still win
+  const ollamaUrl = serviceUrl("ollama", env, host);
+  const mlxChatUrl = serviceUrl("mlx_chat", env, host);
+  const mlxEmbedUrl = serviceUrl("mlx_embed", env, host);
+  const omlxUrl = serviceUrl("omlx", env, host);
+  const splashUrl = serviceUrl("splash", env, host);
 
   return {
     ollama: {
@@ -49,8 +56,8 @@ export function buildStacks(env: NodeJS.ProcessEnv = process.env): Record<StackN
     },
     mlx: {
       name: "mlx",
-      chatBaseUrl: env.MLX_CHAT_URL ?? "http://localhost:8080",
-      embedBaseUrl: env.MLX_EMBED_URL ?? "http://localhost:8081",
+      chatBaseUrl: mlxChatUrl,
+      embedBaseUrl: mlxEmbedUrl,
       chatModel: "mlx-community/Qwen3.8-27B-4bit",
       embeddingModel: "mlx-community/Qwen3-Embedding-0.6B-8bit",
       embeddingDim: EMBEDDING_DIM,
@@ -63,8 +70,8 @@ export function buildStacks(env: NodeJS.ProcessEnv = process.env): Record<StackN
     // server's (cosine 1.000000, see the verification doc), so it shares the MLX index
     omlx: {
       name: "omlx",
-      chatBaseUrl: env.OMLX_URL ?? "http://localhost:8090",
-      embedBaseUrl: env.OMLX_URL ?? "http://localhost:8090",
+      chatBaseUrl: omlxUrl,
+      embedBaseUrl: omlxUrl,
       chatModel: "mlx-community--Qwen3.8-27B-4bit",
       embeddingModel: "mlx-community--Qwen3-Embedding-0.6B-8bit",
       embeddingDim: EMBEDDING_DIM,
@@ -85,8 +92,8 @@ export function buildStacks(env: NodeJS.ProcessEnv = process.env): Record<StackN
     // the next switch down the rebuild branch, which DELETES the collection.
     splash: {
       name: "splash",
-      chatBaseUrl: env.SPLASH_URL ?? "http://localhost:8000",
-      embedBaseUrl: env.MLX_EMBED_URL ?? "http://localhost:8081",
+      chatBaseUrl: splashUrl,
+      embedBaseUrl: mlxEmbedUrl,
       chatModel: "incoai/Qwen3.8-27B-Splash",
       embeddingModel: "mlx-community/Qwen3-Embedding-0.6B-8bit",
       embeddingDim: EMBEDDING_DIM,

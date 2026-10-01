@@ -146,6 +146,8 @@ describe("scripts/setup-searxng.sh", () => {
     for (const dir of [join(scripts, "lib"), run, bin, join(root, "config", "searxng")]) mkdirSync(dir, { recursive: true });
     copyFileSync(join(process.cwd(), "scripts", "setup-searxng.sh"), join(scripts, "setup-searxng.sh"));
     copyFileSync(renderPath, join(scripts, "lib", "render-searxng-settings.py"));
+    // The real host.sh reads the repo's profile through node; the sandbox only needs the port it exports
+    writeFileSync(join(scripts, "lib", "host.sh"), "SEARXNG_PORT=8888\n");
     copyFileSync(configPath, join(root, "config", "searxng", "settings.yml"));
     if (opts.secret !== undefined) writeFileSync(join(run, "searxng-secret"), `${opts.secret}\n`);
     if (opts.braveKey !== undefined) writeFileSync(join(run, "brave-api-key"), `${opts.braveKey}\n`);

@@ -1,0 +1,22 @@
+host:
+  name: test-host
+  address: localhost
+endpoints:
+  app:       { port: 3000, https_port: 3443 }
+  mcp:       { port: 3200, address: 127.0.0.1 }
+  n8n:       { port: 5678 }
+  chromadb:  { port: 8100 }
+  neo4j:     { port: 7687, scheme: bolt }
+  searxng:   { port: 8888 }
+  scorer:    { port: 8010, address: 127.0.0.1 }
+  ollama:    { port: 11434 }
+  mlx_chat:  { port: 8080 }
+  mlx_embed: { port: 8081 }
+  omlx:      { port: 8090 }
+  splash:    { port: 8000 }
+resources:
+  mlx_chat: { cache_limit_bytes: 2147483648, prompt_cache_bytes: 4294967296, prompt_concurrency: 1, decode_concurrency: 2 }
+  mlx_embed: { cache_limit_bytes: 536870912 }
+  scorer: { cache_limit_bytes: 1073741824 }
+  omlx: { ssd_cache_max_gb: 20 }
+  ollama: { num_parallel: 1 }

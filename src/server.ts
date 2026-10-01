@@ -30,6 +30,7 @@ import exportRouter from "./api/export.js";
 import { createAuthMiddleware } from "./api/auth.js";
 import v1Router from "./api/v1.js";
 import { isNeo4jAvailable, getNeo4jStats } from "./services/graph-store.js";
+import { appListenPorts } from "./platform/host-config.js";
 
 // Prevent the process from crashing on unhandled errors
 process.on("uncaughtException", (err) => {
@@ -40,7 +41,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const app = express();
-const PORT = parseInt(process.env.PORT ?? "3000", 10);
+// PORT / HTTPS_PORT env win; otherwise endpoints.app in config/host.yaml, like every other consumer
+const { port: PORT, httpsPort: HTTPS_PORT } = appListenPorts();
 const AGENT_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Middleware
@@ -164,7 +166,6 @@ async function start(): Promise<void> {
   }
 
   const HOST = process.env.HOST ?? "0.0.0.0";
-  const HTTPS_PORT = parseInt(process.env.HTTPS_PORT ?? "3443", 10);
   const CERT_DIR = join(process.cwd(), "certs");
 
   // Start HTTP server
@@ -175,7 +176,7 @@ async function start(): Promise<void> {
   // Start HTTPS server if certs exist (required for iPad mic access)
   const keyPath = join(CERT_DIR, "key.pem");
   const certPath = join(CERT_DIR, "cert.pem");
-  if (existsSync(keyPath) && existsSync(certPath)) {
+  if (HTTPS_PORT !== null && existsSync(keyPath) && existsSync(certPath)) {
     const httpsOptions = {
       key: readFileSync(keyPath),
       cert: readFileSync(certPath),

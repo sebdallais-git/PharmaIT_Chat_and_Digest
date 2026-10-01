@@ -2,8 +2,11 @@
 # Shared helpers for start-services.sh and switch-stack.sh. Source this file; don't execute it.
 
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-CHROMA_PORT="${CHROMADB_PORT:-8100}"
-CHROMA_URL="http://localhost:${CHROMA_PORT}"
+# Ports and machine-sized limits from config/host.yaml (exits on an invalid profile)
+# shellcheck source=host.sh
+source "$(dirname "${BASH_SOURCE[0]}")/host.sh"
+CHROMA_PORT="$CHROMADB_PORT"
+CHROMA_URL="http://${PHARMAITCHAT_HOST_ADDRESS}:${CHROMA_PORT}"
 CHROMA_BIN="$PROJECT_DIR/python/venv/bin/chroma"
 CHROMA_DATA="$PROJECT_DIR/.chromadb-data"
 

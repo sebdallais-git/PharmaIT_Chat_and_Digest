@@ -52,7 +52,7 @@ describe("check-services.sh model servers follow the active stack", () => {
 case "$2" in mlx) echo "http://localhost:8080 m" ;; splash) echo "http://localhost:8000 s" ;; ollama) echo "http://localhost:11434 o" ;; omlx) echo "http://localhost:8090 x" ;; esac
 `);
       const fn = script.slice(script.indexOf("model_server_checks() {"), script.indexOf("\n}\n", script.indexOf("model_server_checks() {")) + 3);
-      const result = spawnSync("bash", ["-c", `PROJECT_DIR="$1"\n${fn}\nmodel_server_checks`, "bash", dir], { encoding: "utf-8" });
+      const result = spawnSync("bash", ["-c", `PROJECT_DIR="$1"\n${fn}\nmodel_server_checks`, "bash", dir], { encoding: "utf-8", env: { ...process.env, MLX_EMBED_PORT: "8081" } });
       return result.stdout.trim().split("\n");
     } finally {
       rmSync(dir, { recursive: true, force: true });

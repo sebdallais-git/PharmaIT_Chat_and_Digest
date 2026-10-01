@@ -1,0 +1,62 @@
+# Host profile: everything tied to the machine PharmaITChat runs on.
+# Moving to another machine means editing this file and nothing else
+# (Sils_Healthcare rule: no hostname, home path or machine port in code).
+# docs/superpowers/specs/2026-09-30-host-config-seam-design.md
+#
+# Every value can still be overridden by the env var that overrode it before
+# (OLLAMA_URL, CHROMADB_URL, MLX_CACHE_LIMIT, ...). Read by
+# src/platform/host-config.ts; bash scripts get it through scripts/lib/host.sh.
+
+host:
+  name: mac-mini          # label only (/api/health); nothing branches on it
+  address: localhost      # every endpoint's address unless it sets its own
+
+endpoints:
+  app:       { port: 3000, https_port: 3443 }
+  mcp:       { port: 3200, address: 127.0.0.1 }   # run-mcp.sh binds loopback only
+  n8n:       { port: 5678 }
+  chromadb:  { port: 8100 }
+  neo4j:     { port: 7687, scheme: bolt }
+  searxng:   { port: 8888 }
+  # 8010, not 8000: Splash binds 127.0.0.1:8000 by default, and running the
+  # scorer alongside a stack is the normal case.
+  scorer:    { port: 8010, address: 127.0.0.1 }
+  ollama:    { port: 11434 }
+  mlx_chat:  { port: 8080 }
+  mlx_embed: { port: 8081 }
+  omlx:      { port: 8090 }
+  splash:    { port: 8000 }
+
+# Sized for a 48 GB mac-mini. Retune on a bigger machine.
+resources:
+  mlx_chat:
+    # On 2026-09-29 six concurrent ~7.5k-token requests took mlx_lm.server from
+    # 23 GB to 36 GB and all six failed with a Metal "Insufficient Memory" error;
+    # the generation thread died while the server kept accepting requests, so
+    # Hermes and chat hung until the watchdog restarted it. With these limits the
+    # same load passed 6/6 at a 27 GB peak in the same wall time.
+    # Freed GPU buffers MLX keeps for reuse (uncapped by default). Bytes.
+    cache_limit_bytes: 2147483648
+    # Cached prompts (several 64k agent prompts would otherwise pile up). Bytes.
+    prompt_cache_bytes: 4294967296
+    # Requests worked on at once; the defaults (8 prefills, 32 decodes) each hold
+    # a 27B KV cache. A burst queues instead of exhausting Metal memory.
+    prompt_concurrency: 1
+    decode_concurrency: 2
+  mlx_embed:
+    # Every embedding is a forward pass over a different number of tokens:
+    # uncapped, a test instance grew from 0.9 GB to 36 GB within 90 varied
+    # requests (2026-09-29). 512 MiB held it at 1.5 GB with no loss of speed.
+    cache_limit_bytes: 536870912
+  scorer:
+    # A scorer call on a long page allocates gigabytes (Gemma 3's vocabulary is
+    # 262k words). Uncapped, open-jev grew from 3 GB to 36 GB within 30 calls on
+    # 2026-09-28; a 1 GiB cap held it at 4.2 GB with no change in latency.
+    cache_limit_bytes: 1073741824
+  omlx:
+    # The paged SSD prefix cache is unbounded; it reached 4.3 GB in two short sessions.
+    ssd_cache_max_gb: 20
+  ollama:
+    # Each parallel slot allocates its own 64k context. Informational: Ollama is
+    # a Homebrew service and reads OLLAMA_NUM_PARALLEL from launchctl.
+    num_parallel: 1

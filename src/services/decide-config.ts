@@ -9,6 +9,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse as parseYamlDocument } from "yaml";
+import { serviceUrl } from "../platform/host-config.js";
+import type { HostConfig } from "../platform/host-config.js";
 
 export const VERDICTS = ["resolved", "review", "unresolved"] as const;
 export type Verdict = (typeof VERDICTS)[number];
@@ -54,9 +56,13 @@ function requireProbability(raw: Record<string, unknown>, key: string): number {
   return value;
 }
 
-export function parseDecideConfig(raw: unknown): DecideConfig {
+// baseUrl comes from config/host.yaml (endpoints.scorer), not from this file
+export function parseDecideConfig(raw: unknown, baseUrl: string): DecideConfig {
   if (!isRecord(raw)) {
     throw new Error("decide config: expected a YAML mapping");
+  }
+  if (raw.base_url !== undefined) {
+    throw new Error('decide config: "base_url" moved to config/host.yaml (endpoints.scorer); remove it here');
   }
   const thresholdsRaw = raw.thresholds;
   if (!isRecord(thresholdsRaw)) {
@@ -78,7 +84,7 @@ export function parseDecideConfig(raw: unknown): DecideConfig {
   }
 
   return {
-    baseUrl: requireString(raw, "base_url"),
+    baseUrl,
     model: requireString(raw, "model"),
     timeoutMs: timeout,
     // Absent means off. A boolean that must be spelled out to take effect is
@@ -91,6 +97,9 @@ export function parseDecideConfig(raw: unknown): DecideConfig {
   };
 }
 
-export function loadDecideConfig(path: string = resolve(process.cwd(), "config", "decide.yaml")): DecideConfig {
-  return parseDecideConfig(parseYamlDocument(readFileSync(path, "utf8")));
+export function loadDecideConfig(
+  path: string = resolve(process.cwd(), "config", "decide.yaml"),
+  host?: HostConfig,
+): DecideConfig {
+  return parseDecideConfig(parseYamlDocument(readFileSync(path, "utf8")), serviceUrl("scorer", process.env, host));
 }
