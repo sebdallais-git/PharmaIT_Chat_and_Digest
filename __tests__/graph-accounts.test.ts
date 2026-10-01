@@ -68,6 +68,31 @@ describe("parseAccounts", () => {
 `);
     expect(parseAccounts(empty)[0].incumbents).toEqual({ "compute-ai": [] });
   });
+
+  // A bare key could mean "nobody installed" or "not known yet". Reading it as
+  // [] would answer greenfield for a segment the user may not know at all, so
+  // it is refused, naming both honest spellings.
+  it("refuses a segment key with no list rather than guessing what it means", () => {
+    const bare = yaml(`  roche:
+    name: Roche
+    needs: []
+    incumbents:
+      compute-ai:
+`);
+    expect(() => parseAccounts(bare)).toThrow(
+      "roche: incumbents.compute-ai must be a list of vendors — [] if nobody is installed, or omit the segment if unknown",
+    );
+  });
+
+  it("refuses a scalar where a list of vendors belongs", () => {
+    const scalar = yaml(`  roche:
+    name: Roche
+    needs: []
+    incumbents:
+      compute-ai: unknown
+`);
+    expect(() => parseAccounts(scalar)).toThrow("roche: incumbents.compute-ai must be a list of vendors");
+  });
 });
 
 describe("config/accounts.example.yaml", () => {
