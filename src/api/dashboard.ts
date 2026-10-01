@@ -13,7 +13,7 @@ import { getIndexStatus } from "../services/index-guard.js";
 import { isBenchmarkActive } from "../services/bench-mode.js";
 import { aggregateHealth, isScorerConfigured, probeGeneration, probeUrl, stackProbeUrls } from "../services/health.js";
 import type { HealthCheck } from "../services/health.js";
-import { serviceUrl } from "../platform/host-config.js";
+import { hostSummary, loadHostConfig, serviceUrl } from "../platform/host-config.js";
 import { loadDecideConfig } from "../services/decide-config.js";
 import { openCanaryStore, summarizeCanaryRuns } from "../services/kb-canary.js";
 import type { CanaryStore } from "../services/kb-canary.js";
@@ -138,8 +138,15 @@ router.get("/health", async (_req: Request, res: Response): Promise<void> => {
   // SQLite
   checks.sqlite = { status: "ok" };
 
-  // Informational, not a check: a benchmark doesn't make the app unhealthy
-  res.json({ status: aggregateHealth(checks), stack: stack.name, benchmark_active: isBenchmarkActive(), checks });
+  // Informational, not checks: a benchmark doesn't make the app unhealthy, and `host` says which
+  // machine profile (config/host.yaml) this process started with -- the check after a move
+  res.json({
+    status: aggregateHealth(checks),
+    stack: stack.name,
+    benchmark_active: isBenchmarkActive(),
+    host: hostSummary(loadHostConfig()),
+    checks,
+  });
 });
 
 // GET /api/dashboard/chromadb-misses — queries that ChromaDB couldn't answer
