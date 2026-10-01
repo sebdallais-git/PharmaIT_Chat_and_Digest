@@ -40,7 +40,7 @@ function fakeDeps(overrides: Partial<GraphRouterDeps> = {}): GraphRouterDeps {
     competitive: () => competitive,
     rebuild: async () => ({ nodes: 0, relationships: 0, lines: [] }),
     ...overrides,
-  } as GraphRouterDeps;
+  };
 }
 
 async function start(deps: GraphRouterDeps): Promise<string> {
@@ -89,5 +89,63 @@ describe("POST /api/graph/competitive-position", () => {
     const base = await start(fakeDeps());
     const resp = await fetch(`${base}/search`, { method: "POST" });
     expect(resp.status).toBe(404);
+  });
+});
+
+describe("POST /api/graph/rebuild", () => {
+  it("rebuilds whatever stack is active, and reports the counts", async () => {
+    const base = await start(fakeDeps({ rebuild: async () => ({ nodes: 60, relationships: 127, lines: ["x"] }) }));
+    const { status, body } = await post(`${base}/rebuild`, {});
+    expect(status).toBe(200);
+    expect(body).toEqual({ message: "Graph rebuild complete", nodes: 60, relationships: 127, output: ["x"] });
+  });
+
+  it("refuses a second rebuild while one is running", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const base = await start(
+      fakeDeps({
+        rebuild: async () => {
+          await gate;
+          return { nodes: 0, relationships: 0, lines: [] };
+        },
+      }),
+    );
+    const first = post(`${base}/rebuild`, {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = await post(`${base}/rebuild`, {});
+    expect(second.status).toBe(409);
+    release();
+    expect((await first).status).toBe(200);
+  });
+
+  it("returns 503 when Neo4j is down, without rebuilding", async () => {
+    let called = false;
+    const base = await start(
+      fakeDeps({
+        isAvailable: async () => false,
+        rebuild: async () => {
+          called = true;
+          return { nodes: 0, relationships: 0, lines: [] };
+        },
+      }),
+    );
+    expect((await post(`${base}/rebuild`, {})).status).toBe(503);
+    expect(called).toBe(false);
+  });
+
+  it("returns 500 with the validation message from a bad source", async () => {
+    const base = await start(
+      fakeDeps({
+        rebuild: async () => {
+          throw new Error("dell-storage-block.md: invalid position");
+        },
+      }),
+    );
+    const { status, body } = await post(`${base}/rebuild`, {});
+    expect(status).toBe(500);
+    expect(body.error).toBe("dell-storage-block.md: invalid position");
   });
 });

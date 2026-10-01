@@ -6,19 +6,20 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { join } from "node:path";
-import { getActiveStack } from "../config/llm-stacks.js";
-import { serviceUrl } from "../platform/host-config.js";
 import { competitivePosition, type CompetitiveDeps } from "../services/competitive-graph.js";
 import { normaliseName } from "../services/competitive-position.js";
 import { liveReader } from "../services/export-wiring.js";
-import { clearGraph, getNeo4jStats, isNeo4jAvailable } from "../services/graph-store.js";
+import { getDriver, getNeo4jStats, isNeo4jAvailable } from "../services/graph-store.js";
 import { loadBriefExcerpts } from "../services/vendor-brief-excerpts.js";
+import { neo4jWriteTransaction, rebuildVendorGraph, type RebuildResult } from "../services/vendor-graph-rebuild.js";
 import { loadWatchlist } from "../services/watchlist-config.js";
 
 export interface GraphRouterDeps {
   isAvailable(): Promise<boolean>;
   stats(): Promise<Awaited<ReturnType<typeof getNeo4jStats>>>;
   competitive(): CompetitiveDeps;
+  /** Wipe and rewrite the graph from briefs, needs and accounts, in one transaction. */
+  rebuild(): Promise<RebuildResult>;
 }
 
 function errorMessage(err: unknown): string {
@@ -79,52 +80,28 @@ export function createGraphRouter(deps: GraphRouterDeps): Router {
     }
   });
 
-  // POST /api/graph/rebuild - Trigger full graph rebuild (calls Python script)
+  // POST /api/graph/rebuild - rebuild the graph from knowledge/vendors, config/needs.yaml and
+  // config/accounts.local.yaml. Deterministic, no model call, so it works on every stack.
+  let rebuilding = false;
   router.post("/rebuild", async (_req: Request, res: Response): Promise<void> => {
-    // Checked before clearing anything: the builder would otherwise wipe the graph and then fail
-    if (getActiveStack().name !== "ollama") {
-      res.status(409).json({
-        error: "Graph rebuild uses python/graph_builder.py, which calls Ollama directly; switch to the Ollama stack first",
-      });
+    if (rebuilding) {
+      res.status(409).json({ error: "A graph rebuild is already running" });
       return;
     }
-
-    const { execFile } = await import("node:child_process");
-
+    rebuilding = true;
     try {
-      const available = await isNeo4jAvailable();
-      if (!available) {
+      if (!(await deps.isAvailable())) {
         res.status(503).json({ error: "Neo4j is not reachable" });
         return;
       }
-
-      await clearGraph();
-
-      execFile(
-        "python3",
-        ["python/graph_builder.py"],
-        {
-          cwd: process.cwd(),
-          timeout: 600000,
-          // The builder has no defaults of its own: endpoints come from config/host.yaml
-          env: { ...process.env, NEO4J_URI: serviceUrl("neo4j"), OLLAMA_URL: serviceUrl("ollama") },
-        },
-        (err, stdout, stderr) => {
-          if (err) {
-            console.error("[Graph Rebuild] Error:", stderr);
-            if (!res.writableEnded) {
-              res.status(500).json({ error: stderr || err.message });
-            }
-            return;
-          }
-          console.log("[Graph Rebuild]", stdout);
-          if (!res.writableEnded) {
-            res.json({ message: "Graph rebuild complete", output: stdout });
-          }
-        }
-      );
+      const result = await deps.rebuild();
+      console.log(`[Graph Rebuild] ${result.nodes} nodes, ${result.relationships} relationships`);
+      res.json({ message: "Graph rebuild complete", nodes: result.nodes, relationships: result.relationships, output: result.lines });
     } catch (err) {
+      console.error("[Graph Rebuild] Error:", errorMessage(err));
       res.status(500).json({ error: errorMessage(err) });
+    } finally {
+      rebuilding = false;
     }
   });
 
@@ -150,6 +127,7 @@ export function liveGraphRouterDeps(): GraphRouterDeps {
   return {
     isAvailable: isNeo4jAvailable,
     stats: getNeo4jStats,
+    rebuild: () => rebuildVendorGraph({ root: process.cwd() }, neo4jWriteTransaction(getDriver())),
     competitive: () => {
       const reader = liveReader();
       return {
