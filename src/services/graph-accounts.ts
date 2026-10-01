@@ -75,7 +75,16 @@ export function accountToGraphFacts(account: Account): GraphFacts {
     {
       label: "Account",
       id: account.id,
-      properties: { name: account.name, aliases: account.aliases.join(","), notes: account.notes },
+      properties: {
+        name: account.name,
+        aliases: account.aliases.join(","),
+        // Every segment the account declares, including those declared empty.
+        // An omitted segment means "incumbent unknown", a declared empty list
+        // "nobody installed"; neither leaves a USES edge, so without this both
+        // would read as greenfield. Comma-joined: Neo4j properties are scalars.
+        declaredSegments: SEGMENTS.filter((s) => s in account.incumbents).join(","),
+        notes: account.notes,
+      },
     },
     ...account.needs.map((need): GraphNode => ({ label: "Need", id: need, properties: { name: need } })),
     ...[...vendors].map((vendor): GraphNode => ({ label: "Vendor", id: vendor, properties: { name: vendor } })),

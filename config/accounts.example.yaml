@@ -10,16 +10,19 @@
 # forecast. That line is in the design spec and is not to be crossed by drift.
 #
 # Incumbency is the primary axis of every answer. "What is Dell doing best for
-# my accounts" resolves per segment into one of three modes:
+# my accounts" resolves per segment into one of four modes:
 #
 #   the vendor is incumbent  -> defend / expand   (roadmap, lifecycle, attach;
 #                                                  function gaps are tolerable)
 #   a rival is incumbent     -> displace          (needs a disqualifying
 #                                                  weakness or a trigger event)
-#   nobody is incumbent      -> greenfield        (function and price decide)
+#   declared empty: []       -> greenfield        (function and price decide)
+#   segment omitted          -> unknown           (find out who is installed
+#                                                  before choosing a mode)
 #
 # A blank incumbent is better than a guessed one: guessing wrong flips the
-# answer from defend to displace while sounding equally confident.
+# answer from defend to displace while sounding equally confident. Omitting a
+# segment says "not known"; only an explicit [] says "nobody is installed".
 
 accounts:
   roche:
@@ -32,15 +35,16 @@ accounts:
     #   data-sovereignty manufacturing-ot   cost-optimisation  sustainability
     needs: [rnd-compute, gxp-compliance, cyber-resilience, data-sovereignty]
 
-    # Who is installed, per segment. Segments are the closed set of ten:
+    # Who is installed, per segment. Segments are the closed set of eleven:
     #   compute-ai       compute-standard
     #   storage-block    storage-file      storage-object
-    #   data-protection  hci               networking
+    #   data-platform    data-protection   hci               networking
     #   client           services
     #
     # Values are LISTS: a mixed estate is normal, and several vendors can hold
     # the same segment at different sites or business units. Omit a segment you
-    # do not know rather than guessing.
+    # do not know rather than guessing (it reads as unknown); write [] only when
+    # you know nobody is installed (it reads as greenfield).
     incumbents:
       storage-file: [netapp]
       storage-block: [dell, hpe]
@@ -60,6 +64,6 @@ accounts:
     needs: [manufacturing-ot, gxp-compliance, cost-optimisation]
     incumbents:
       storage-block: [dell]
-      manufacturing-ot: []
+      compute-ai: []   # known: no AI compute installed yet
     notes: >
       Stein and Basel. Heavier OT/MES footprint than Roche.

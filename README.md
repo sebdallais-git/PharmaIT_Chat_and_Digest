@@ -270,7 +270,7 @@ Every local model call — chat and embeddings alike — runs on **exactly one**
 | **In-memory index** | `knowledge/.index.ollama.json` | `knowledge/.index.mlx.json` | `knowledge/.index.mlx.json` (shared with the MLX stack) | `knowledge/.index.mlx.json` (shared with the MLX stack) |
 | **Prompt cache** | one shared cache, evicted by the next caller | several caches, capped by `--prompt-cache-bytes` (8 GB) | one paged SSD cache, capped by `--paged-ssd-cache-max-size` (20 GB default); survives an app restart | managed by the Splash server itself |
 | **Thinking** | off by default; off/low/medium/high per chat, via `reasoning_effort` | off by default; on/off per chat, via `chat_template_kwargs.enable_thinking` | off by default; on/off per chat, via `chat_template_kwargs.enable_thinking` | off by default (also server-side with `--default-reasoning-effort none`); off/low/medium/high per chat, via `reasoning_effort` |
-| **Graph rebuild** | ✅ supported | ❌ switch to Ollama first (`409`) | ❌ switch to Ollama first (`409`) — `python/graph_builder.py` calls Ollama directly | ❌ switch to Ollama first (`409`) — same reason |
+| **Graph rebuild** | ✅ supported | ✅ supported | ✅ supported | ✅ supported |
 
 Splash has the steepest hardware bar of the four: **Apple M3 or newer, macOS 26.4 or later, 36 GB unified memory minimum (48 GB recommended)**. Its model, `incoai/Qwen3.8-27B-Splash`, is a 17.4 GB download under Apache-2.0 and **not gated** — unlike some Hugging Face models, no access token is needed to pull it. The engine itself comes from Homebrew (`brew install incoai/tap/splash`), whose Metal kernels are **precompiled**; a source checkout would compile them on first start and need full Xcode. `switch-stack.sh` prefers the Homebrew binary.
 
@@ -884,13 +884,16 @@ docker run -d --name neo4j-pharma \
   -p 7474:7474 -p 7687:7687 \
   -e NEO4J_AUTH=neo4j/pharma2024 \
   neo4j:community
-
-# Bulk-extract entities from knowledge/*.md (requires the Ollama stack to be running)
-pip install -r python/requirements.txt
-python python/graph_builder.py
 ```
 
-`graph_builder.py` calls Ollama's `/api/generate` directly with `OLLAMA_MODEL` (default `mistral-small:24b`), so pull that model or set `OLLAMA_MODEL` to one you have. Browse the graph at http://localhost:7474. New uploads are added to the graph automatically.
+```bash
+npx tsx scripts/rebuild-vendor-graph.ts                    # dry run
+npx tsx scripts/rebuild-vendor-graph.ts --apply --rebuild  # wipe and rewrite, one transaction
+```
+
+The graph is built from `knowledge/vendors/*.md` (vendor briefs), `config/needs.yaml` and
+`config/accounts.local.yaml`, with no model call, so it rebuilds on any stack.
+`POST /api/graph/rebuild` does the same as `--apply --rebuild`. Browse it at http://localhost:7474.
 
 </details>
 
@@ -1054,8 +1057,8 @@ Job state lives in memory, so a server restart forgets it. The index completenes
 | `/api/digest` | POST | token | Build a digest: `{request?, budget?}` → `{markdown, period, items}` (default: the last 7 days, 3,900 characters) |
 | `/api/graph/health` | GET | token | Neo4j connection check with latency |
 | `/api/graph/stats` | GET | open | Node and relationship counts by type |
-| `/api/graph/search` | POST | token | Search by entity name, returns neighbors |
-| `/api/graph/rebuild` | POST | token | Clear and rebuild the graph (Ollama stack only, `409` on MLX and oMLX) |
+| `/api/graph/competitive-position` | POST | token | A vendor's standing per account segment: incumbency mode (defend / displace / greenfield / unknown — a segment the account does not declare is unknown, not greenfield), position, rationale, brief claims, recent news. Body: vendor?, account?, segment? |
+| `/api/graph/rebuild` | POST | token | Rebuild the graph from vendor briefs, needs and accounts (any stack; 409 while one is running) |
 | `/api/agent/status` | GET | open | News agent last run and the watchlist's topic list |
 | `/api/agent/run` | POST | open | Trigger the news agent now (reports zero — see the note above) |
 
@@ -1192,8 +1195,7 @@ PharmaITChat/
 │   ├── embedding-parity.ts       # Cross-stack embedding parity
 │   └── lib/                      # Shared shell and TypeScript helpers
 ├── python/
-│   ├── mlx-embed-server.py       # OpenAI-compatible embedding server for MLX
-│   └── graph_builder.py          # Bulk entity extraction into Neo4j (calls Ollama)
+│   └── mlx-embed-server.py       # OpenAI-compatible embedding server for MLX
 ├── ollama/qwen3.8-pharma.Modelfile   # Qwen3.8 27B Q4_K_M with a 64K context
 ├── bench/questions.json          # 23 benchmark questions
 ├── knowledge/                    # 40 curated documents + per-stack index files
@@ -1240,7 +1242,6 @@ npm --prefix mcp run typecheck
 | Search refused / `search_index` error in `/api/health` | The index belongs to another stack, is incomplete or is rebuilding. Wait for the rebuild, or `POST /api/knowledge/reindex` and poll `/api/knowledge/reindex/status` |
 | `Port 8080 is used by another program` | Free the MLX ports (`:8080`, `:8081`); the switch leaves foreign processes alone and rolls back |
 | `Port 8000 is used by another program` | Free the Splash port before switching; look for a stray `splash-server` (or `splash serve`) process holding it and stop it, since the switch leaves foreign processes alone and rolls back |
-| `/api/graph/rebuild` returns `409` | Graph rebuild only works on the Ollama stack: `scripts/switch-stack.sh ollama` |
 | Reindex, `/v1` or `/api/llm/complete` rejected during a benchmark | Wait for it to finish, or `POST /api/bench/stop` |
 | Health is `degraded` | A supporting service (ChromaDB, SearXNG or Neo4j) is down; chat still works |
 | Hermes does not answer on Telegram | First check you are writing to the right bot (`@…Hermes_bot`, the chat that receives its startup notice and daily reports): Hermes only sees messages sent to its own bot. Then check `check-services.sh` and `~/.hermes/logs/agent.log` for `inbound message` |

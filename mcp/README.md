@@ -27,7 +27,7 @@ Without `MCP_TOKEN` the service only accepts requests from the same machine with
 | `ask_pharmallm` | Full RAG answer with sources (~1-2 min) |
 | `add_knowledge` | Add text (with source) or a URL |
 | `knowledge_status` | Knowledge base and ChromaDB status |
-| `graph_search`, `graph_stats` | Knowledge graph lookup and size |
+| `competitive_position`, `graph_stats` | A vendor's standing per account segment (incumbency first: defend / displace / greenfield), and graph size |
 | `list_knowledge_gaps`, `resolve_knowledge_gap` | Low-confidence questions and re-checks |
 | `system_health`, `dashboard_metrics` | Stack, services, usage metrics |
 | `run_news_agent`, `news_agent_status` | Trigger or inspect the news scrub |
