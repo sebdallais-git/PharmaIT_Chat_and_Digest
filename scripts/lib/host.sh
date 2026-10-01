@@ -6,7 +6,10 @@
 # node comes from NODE_BIN (tests, run-mcp.sh) or PATH (launchd puts node's dir first).
 
 _host_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-_host_node="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"
+# NODE_BIN also names the node a launchd plist runs, so a value that is not an executable here
+# (a test's placeholder) must not hide the node on PATH.
+_host_node=""
+if [ -n "${NODE_BIN:-}" ] && [ -x "$NODE_BIN" ]; then _host_node="$NODE_BIN"; else _host_node="$(command -v node 2>/dev/null || true)"; fi
 if [ -z "$_host_node" ]; then
   echo "host.sh: node not found; set NODE_BIN or put node on PATH" >&2
   exit 1

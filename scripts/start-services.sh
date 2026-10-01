@@ -43,7 +43,7 @@ if [ -s "$PROJECT_DIR/data/run/telegram-bot-token" ] && [ -s "$PROJECT_DIR/data/
 fi
 # Where the Gap Detector sends each gap it finds. Without it the app logs
 # "N8N_WEBHOOK_URL not set" and the auto-fill workflow never runs.
-export N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-5678}/webhook/knowledge-gap}"
+export N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://${PHARMAITCHAT_HOST_ADDRESS}:${N8N_PORT}/webhook/knowledge-gap}"
 npx tsx watch src/server.ts &
 
 # Wait for all background processes

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hostTestEnv } from "./helpers/host-env.js";
 
 const projectDir = process.cwd();
 const dirs: string[] = [];
@@ -33,6 +34,7 @@ function runMcp(dir: string, extraEnv: Record<string, string> = {}) {
   const result = spawnSync("bash", [join(projectDir, "scripts", "run-mcp.sh")], {
     encoding: "utf-8",
     env: {
+      ...hostTestEnv(),
       PATH: "/usr/bin:/bin",
       HOME: dir,
       PHARMALLM_RUN_DIR: join(dir, "run"),
@@ -92,7 +94,7 @@ describe("switch-stack.sh mcp commands", () => {
     const run = () =>
       spawnSync("bash", [join(projectDir, "scripts", "switch-stack.sh"), "mcp-token"], {
         encoding: "utf-8",
-        env: { PATH: "/usr/bin:/bin", HOME: dir, PHARMALLM_RUN_DIR: join(dir, "run") },
+        env: { ...hostTestEnv(), PATH: "/usr/bin:/bin", HOME: dir, PHARMALLM_RUN_DIR: join(dir, "run") },
       });
 
     const first = run();

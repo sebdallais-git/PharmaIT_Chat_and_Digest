@@ -11,8 +11,8 @@ describe("mlx-embed-server.py memory", () => {
   const source = readFileSync(join(process.cwd(), "python", "mlx-embed-server.py"), "utf8");
   const main = source.slice(source.indexOf("def main()"));
 
-  it("caps MLX's buffer cache from MLX_EMBED_CACHE_LIMIT, 512 MiB by default", () => {
-    expect(source).toMatch(/os\.environ\.get\("MLX_EMBED_CACHE_LIMIT", "536870912"\)/);
+  it("caps MLX's buffer cache from MLX_EMBED_CACHE_LIMIT, which has no default here", () => {
+    expect(source).toMatch(/os\.environ\.get\("MLX_EMBED_CACHE_LIMIT", ""\)/);
     expect(main).toMatch(/mx\.set_cache_limit\(/);
   });
 

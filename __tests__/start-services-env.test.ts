@@ -32,7 +32,7 @@ function startServices(files: Record<string, string>): Record<string, string> {
   const run = join(root, "data", "run");
   for (const dir of [join(scripts, "lib"), bin, run]) mkdirSync(dir, { recursive: true });
   copyFileSync(join(scriptsDir, "start-services.sh"), join(scripts, "start-services.sh"));
-  writeFileSync(join(scripts, "lib", "services.sh"), 'CHROMA_URL="http://localhost:8100"\nlog() { :; }\nensure_chromadb() { :; }\nensure_containers() { :; }\n');
+  writeFileSync(join(scripts, "lib", "services.sh"), 'CHROMA_URL="http://localhost:8100"\nN8N_PORT=5678\nPHARMAITCHAT_HOST_ADDRESS=localhost\nlog() { :; }\nensure_chromadb() { :; }\nensure_containers() { :; }\n');
   stub(join(scripts, "switch-stack.sh"), "exit 0");
   stub(join(bin, "npx"), 'echo "BOT=${TELEGRAM_BOT_TOKEN-<unset>}"\necho "CHAT=${TELEGRAM_CHAT_ID-<unset>}"');
   writeFileSync(join(run, "active-stack"), "mlx\n");

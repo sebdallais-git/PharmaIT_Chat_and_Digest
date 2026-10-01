@@ -6,14 +6,15 @@ import { join } from "node:path";
 import { thinkingBody } from "../src/services/thinking.js";
 import { buildStacks, STACK_NAMES } from "../src/config/llm-stacks.js";
 import { parseProgress } from "../src/services/stack-switch.js";
+import { hostTestEnv, hostVar } from "./helpers/host-env.js";
 
 const script = readFileSync(join(process.cwd(), "scripts", "switch-stack.sh"), "utf-8");
 const modelfile = readFileSync(join(process.cwd(), "ollama", "qwen3.8-pharma.Modelfile"), "utf-8");
 
 function shellVar(name: string): string {
   const match = script.match(new RegExp(`^${name}="([^"]+)"$`, "m"));
-  if (!match) throw new Error(`${name} not found in switch-stack.sh`);
-  return match[1];
+  // Ports and limits moved to config/host.yaml; the script only references them
+  return match ? match[1] : hostVar(name);
 }
 
 // Extracts only the function definitions (everything before the CLI dispatch at the bottom of the
@@ -103,7 +104,7 @@ describe("switch-stack.sh long-context settings", () => {
   // "Insufficient Memory" error. With the settings below the same load passed
   // 6/6 at a 27 GB peak in the same wall time (345 s).
   it("caps the MLX prompt cache with an overridable byte limit", () => {
-    expect(script).toContain('MLX_PROMPT_CACHE_BYTES="${MLX_PROMPT_CACHE_BYTES:-4294967296}"');
+    expect(hostVar("MLX_PROMPT_CACHE_BYTES")).toBe("4294967296");
     expect(script).toContain('--prompt-cache-bytes "$MLX_PROMPT_CACHE_BYTES"');
     expect(script).toContain("start_ollama && ensure_ollama_ctx");
   });
@@ -113,8 +114,8 @@ describe("switch-stack.sh long-context settings", () => {
   // Metal memory and the generation thread dies while the server keeps accepting
   // requests. The same rule as OLLAMA_NUM_PARALLEL=1: queue instead of crash.
   it("limits how many requests the MLX server works on at once", () => {
-    expect(script).toContain('MLX_PROMPT_CONCURRENCY="${MLX_PROMPT_CONCURRENCY:-1}"');
-    expect(script).toContain('MLX_DECODE_CONCURRENCY="${MLX_DECODE_CONCURRENCY:-2}"');
+    expect(hostVar("MLX_PROMPT_CONCURRENCY")).toBe("1");
+    expect(hostVar("MLX_DECODE_CONCURRENCY")).toBe("2");
     expect(script).toContain('--prompt-concurrency "$MLX_PROMPT_CONCURRENCY"');
     expect(script).toContain('--decode-concurrency "$MLX_DECODE_CONCURRENCY"');
   });
@@ -122,7 +123,7 @@ describe("switch-stack.sh long-context settings", () => {
   // MLX keeps freed GPU buffers for reuse with no cap (the same growth that took
   // the jev scorer to 36 GB, see run-jev.sh)
   it("caps MLX's buffer cache inside the server process, from the environment", () => {
-    expect(script).toContain('MLX_CACHE_LIMIT="${MLX_CACHE_LIMIT:-2147483648}"');
+    expect(hostVar("MLX_CACHE_LIMIT")).toBe("2147483648");
     const start = script.slice(script.indexOf("start_mlx() {"), script.indexOf("wait_http", script.indexOf("start_mlx() {")));
     expect(start).toMatch(/mx\.set_cache_limit\(int\(os\.environ\["MLX_CACHE_LIMIT"\]\)\)/);
     expect(start.indexOf("set_cache_limit")).toBeLessThan(start.indexOf("from mlx_lm.server import main"));
@@ -168,6 +169,7 @@ describe("switch-stack.sh ollama-ctx", () => {
     const result = spawnSync("bash", [join(process.cwd(), "scripts", "switch-stack.sh"), "ollama-ctx"], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${dir}:/usr/bin:/bin`,
         HOME: dir,
         PHARMALLM_RUN_DIR: join(dir, "run"),
@@ -195,7 +197,7 @@ describe("switch-stack.sh ollama-ctx", () => {
 describe("switch-stack.sh omlx stack", () => {
   it("defines the venv, port and pinned version", () => {
     expect(script).toContain('OMLX_VENV="$PROJECT_DIR/python/omlx-venv"');
-    expect(script).toContain('OMLX_PORT="8090"');
+    expect(hostVar("OMLX_PORT")).toBe("8090");
     expect(script).toMatch(/OMLX_VERSION="[0-9a-f]{7,40}"/);
   });
 
@@ -216,7 +218,7 @@ describe("switch-stack.sh omlx stack", () => {
   });
 
   it("bounds the oMLX SSD cache with an overridable size", () => {
-    expect(script).toContain('OMLX_CACHE_MAX_GB="${OMLX_CACHE_MAX_GB:-20}"');
+    expect(hostVar("OMLX_CACHE_MAX_GB")).toBe("20");
     expect(script).toContain('--paged-ssd-cache-max-size "${OMLX_CACHE_MAX_GB}GB"');
   });
 
@@ -295,6 +297,7 @@ describe("switch-stack.sh stop_other_stacks", () => {
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${dir}:/usr/bin:/bin`,
         HOME: dir,
         PHARMALLM_RUN_DIR: join(dir, "run"),
@@ -329,7 +332,7 @@ describe("switch-stack.sh omlx processes", () => {
     dirs.push(dir);
     const result = spawnSync("bash", ["-c", `grep -c 'omlx:\\$OMLX_PORT' ${JSON.stringify(join(process.cwd(), "scripts", "switch-stack.sh"))}`], {
       encoding: "utf-8",
-      env: { PATH: "/usr/bin:/bin", HOME: dir },
+      env: { ...hostTestEnv(), PATH: "/usr/bin:/bin", HOME: dir },
     });
     expect(Number(result.stdout.trim())).toBeGreaterThan(0);
   });
@@ -372,6 +375,7 @@ describe("switch-stack.sh telegram command", () => {
     const result = spawnSync("bash", [join(process.cwd(), "scripts", "switch-stack.sh"), "telegram"], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: "/usr/bin:/bin",
         HOME: dir,
         PHARMALLM_RUN_DIR: join(dir, "run"),
@@ -394,6 +398,7 @@ describe("switch-stack.sh telegram command", () => {
     const result = spawnSync("bash", [join(process.cwd(), "scripts", "switch-stack.sh"), "telegram"], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: "/usr/bin:/bin",
         HOME: dir,
         PHARMALLM_RUN_DIR: join(dir, "run"),
@@ -453,6 +458,7 @@ describe("switch-stack.sh switch_to: a failed stop must not strand the UI", () =
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${binDir}:/usr/bin:/bin`,
         HOME: dir,
         PHARMALLM_RUN_DIR: runDir,
@@ -542,6 +548,7 @@ describe("switch-stack.sh notify_switch_result keeps the bot token out of argv",
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${binDir}:/usr/bin:/bin`,
         HOME: dir,
         PHARMALLM_RUN_DIR: runDir,
@@ -598,6 +605,7 @@ describe("switch-stack.sh write_switch_phase", () => {
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: "/usr/bin:/bin",
         HOME: dir,
         PHARMALLM_RUN_DIR: runDir,
@@ -657,6 +665,7 @@ describe("switch-stack.sh write_switch_phase", () => {
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: "/usr/bin:/bin",
         HOME: dir,
         PHARMALLM_RUN_DIR: runDir,
@@ -738,6 +747,7 @@ describe("switch-stack.sh switch_to: pre-flight checks are guarded and recorded"
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${binDir}:/usr/bin:/bin`,
         HOME: dir,
         PHARMALLM_RUN_DIR: runDir,
@@ -839,7 +849,7 @@ describe("switch-stack.sh splash_runnable", () => {
     const result = spawnSync("bash", ["-c", 'source "$FUNCS"; splash_runnable'], {
       encoding: "utf-8",
       // Never the real Homebrew Splash, which this machine may have: this is the source-checkout path
-      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
+      env: { ...hostTestEnv(), PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
              SPLASH_HOMEBREW_BIN: join(dir, "no-homebrew-splash"),
              PROJECT_DIR: process.cwd(), SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
     });
@@ -937,6 +947,7 @@ describe("switch-stack.sh switch_to: a failed index step says so", () => {
     const result = spawnSync("bash", [harnessFile], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${binDir}:/usr/bin:/bin`,
         HOME: dir,
         PHARMALLM_RUN_DIR: runDir,
@@ -998,6 +1009,7 @@ describe("switch-stack.sh start_app", () => {
       const result = spawnSync("bash", [harness], {
         encoding: "utf-8",
         env: {
+          ...hostTestEnv(),
           PATH: `${binDir}:/usr/bin:/bin`,
           HOME: dir,
           PHARMALLM_RUN_DIR: runDir,
@@ -1128,7 +1140,7 @@ describe("switch-stack.sh knows every stack", () => {
     const { splash } = buildStacks({});
     const port = new URL(splash.chatBaseUrl).port;
 
-    expect(script).toMatch(new RegExp(`SPLASH_PORT="?\\$\\{SPLASH_PORT:-${port}\\}"?`));
+    expect(hostVar("SPLASH_PORT")).toBe(port);
   });
 
   it("fixes the context window at 65536 by default, overridably", () => {
@@ -1188,6 +1200,7 @@ esac`);
     const result = spawnSync("bash", ["-c", 'source "$FUNCS"; start_app mlx'], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: `${bin}:/usr/bin:/bin`,
         HOME: dir,
         FUNCS: funcs,
@@ -1296,7 +1309,7 @@ describe("switch-stack.sh availability", () => {
     writeFileSync(funcs, extractFuncs());
     const result = spawnSync("bash", ["-c", 'source "$FUNCS"; stack_availability'], {
       encoding: "utf-8",
-      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, FUNCS: funcs, PROJECT_DIR: project,
+      env: { ...hostTestEnv(), PATH: `${bin}:/usr/bin:/bin`, HOME: home, FUNCS: funcs, PROJECT_DIR: project,
              SPLASH_HOMEBREW_BIN: join(dir, "no-homebrew-splash"), // the source checkout above, not a real install
              PHARMALLM_RUN_DIR: join(dir, "run"), SCRIPT_DIR: join(process.cwd(), "scripts") },
     });
@@ -1357,7 +1370,7 @@ describe("switch-stack.sh Splash from Homebrew", () => {
     writeFileSync(funcs, extractFuncs());
     const result = spawnSync("bash", ["-c", `source "$FUNCS"; ${command}`], {
       encoding: "utf-8",
-      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
+      env: { ...hostTestEnv(), PATH: `${bin}:/usr/bin:/bin`, HOME: dir, FUNCS: funcs, SPLASH_DIR: splashDir,
              SPLASH_HOMEBREW_BIN: brewBin, PROJECT_DIR: process.cwd(),
              SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
     });
@@ -1410,7 +1423,7 @@ describe("switch-stack.sh marks a Homebrew Splash as the project's", () => {
       writeFileSync(funcs, extractFuncs());
       const result = spawnSync("bash", ["-c", 'source "$FUNCS"; echo "$PROJECT_PROCESS_MARKERS"'], {
         encoding: "utf-8",
-        env: { PATH: "/usr/bin:/bin", HOME: dir, FUNCS: funcs, SPLASH_HOMEBREW_BIN: join(dir, "bin", "splash"),
+        env: { ...hostTestEnv(), PATH: "/usr/bin:/bin", HOME: dir, FUNCS: funcs, SPLASH_HOMEBREW_BIN: join(dir, "bin", "splash"),
                PROJECT_DIR: process.cwd(), SCRIPT_DIR: join(process.cwd(), "scripts"), PHARMALLM_RUN_DIR: join(dir, "run") },
       });
       expect(result.stdout.trim()).toContain(realpathSync(join(cellar, "libexec")) + "/");

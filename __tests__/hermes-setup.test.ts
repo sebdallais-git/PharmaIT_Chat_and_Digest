@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DEFAULT_INGEST_BUDGET_MS } from "../src/services/watchlist-ingest.js";
+import { hostTestEnv } from "./helpers/host-env.js";
 
 const projectDir = process.cwd();
 // The timeout hermes/cron/jobs.json asks Hermes for, read from the file
@@ -89,7 +90,10 @@ function setup(box: Sandbox, args: string[], extraEnv: Record<string, string> = 
     encoding: "utf-8",
     input: "",
     env: {
-      PATH: "/usr/bin:/bin",
+      ...hostTestEnv(),
+      // Node's directory last-resort: some tests pass a placeholder NODE_BIN for the plist, and host.sh
+      // then finds the real node here
+      PATH: `/usr/bin:/bin:${dirname(process.execPath)}`,
       HOME: box.root,
       HERMES_HOME: box.home,
       PHARMALLM_RUN_DIR: box.runDir,
@@ -358,7 +362,7 @@ describe("hermes/scripts/pharmaitchat-watchlist-ingest.sh", () => {
   function runWrapper(box: WrapperBox) {
     return spawnSync("bash", [box.script], {
       encoding: "utf-8",
-      env: { PATH: `${box.binDir}:/usr/bin:/bin`, HOME: box.tempProject },
+      env: { ...hostTestEnv(), PATH: `${box.binDir}:/usr/bin:/bin`, HOME: box.tempProject },
     });
   }
 
@@ -430,7 +434,7 @@ describe("hermes/scripts/pharmaitchat-kb-canary.sh", () => {
     const stdoutLines = stdout ? ["cat <<'CANARYOUT'", stdout, "CANARYOUT"] : [];
     writeFileSync(npx, ["#!/bin/bash", ...stdoutLines, "cat >&2 <<'CANARYERR'", stderr, "CANARYERR", `exit ${exitCode}`].join("\n"));
     chmodSync(npx, 0o755);
-    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { ...hostTestEnv(), PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
     const logDir = join(tempProject, "data", "logs");
     const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
     return { result, log };
@@ -474,7 +478,7 @@ describe("hermes/scripts/pharmaitchat-daily-briefing.sh", () => {
     const stdoutLines = stdout ? ["cat <<'BRIEFOUT'", stdout, "BRIEFOUT"] : [];
     writeFileSync(npx, ["#!/bin/bash", 'echo "stack=$LLM_PROVIDER args=$*" >&2', ...stdoutLines, `exit ${exitCode}`].join("\n"));
     chmodSync(npx, 0o755);
-    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { ...hostTestEnv(), PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
     const logDir = join(tempProject, "data", "logs");
     const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
     return { result, log };
@@ -517,7 +521,7 @@ describe("hermes/scripts/pharmaitchat-weekly-digest.sh", () => {
     const stdoutLines = stdout ? ["cat <<'DIGESTOUT'", stdout, "DIGESTOUT"] : [];
     writeFileSync(npx, ["#!/bin/bash", 'echo "stack=$LLM_PROVIDER args=$*" >&2', ...stdoutLines, `exit ${exitCode}`].join("\n"));
     chmodSync(npx, 0o755);
-    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
+    const result = spawnSync("bash", [script], { encoding: "utf-8", env: { ...hostTestEnv(), PATH: `${binDir}:/usr/bin:/bin`, HOME: tempProject } });
     const logDir = join(tempProject, "data", "logs");
     const log = readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf-8")).join("");
     return { result, log };
@@ -564,6 +568,7 @@ describe("launchd PATH is the same whichever script renders a plist", () => {
     const fromAutostart = spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
       encoding: "utf-8",
       env: {
+        ...hostTestEnv(),
         PATH: "/usr/bin:/bin",
         HOME: box.root,
         LAUNCH_AGENTS_DIR: autostartAgents,

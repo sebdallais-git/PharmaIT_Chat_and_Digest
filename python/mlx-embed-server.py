@@ -25,11 +25,13 @@ EOS_TOKEN = "<|endoftext|>"
 def cache_limit_bytes() -> int:
     """MLX keeps freed GPU buffers for reuse with no cap, and every embedding is a forward pass over a
     different number of tokens: uncapped, a test instance grew from 0.9 GB to 36 GB within 90 varied
-    requests (2026-09-29), enough to push the 27B beside it into swap. 512 MiB held it at 1.5 GB with
-    no loss of speed. Overridable with MLX_EMBED_CACHE_LIMIT (bytes)."""
-    raw = os.environ.get("MLX_EMBED_CACHE_LIMIT", "536870912").strip()
+    requests (2026-09-29). The cap comes from MLX_EMBED_CACHE_LIMIT (bytes), which switch-stack.sh
+    exports from config/host.yaml (resources.mlx_embed)."""
+    raw = os.environ.get("MLX_EMBED_CACHE_LIMIT", "").strip()
     if not raw.isdigit():
-        raise SystemExit(f"MLX_EMBED_CACHE_LIMIT must be a byte count, got {raw!r}")
+        raise SystemExit(
+            f"MLX_EMBED_CACHE_LIMIT must be a byte count, got {raw!r}; start the server through scripts/switch-stack.sh"
+        )
     return int(raw)
 
 

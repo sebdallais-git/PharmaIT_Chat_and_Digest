@@ -26,7 +26,9 @@ SETTINGS="$PROJECT_DIR/config/searxng/settings.yml"
 RENDER="$SCRIPT_DIR/lib/render-searxng-settings.py"
 SECRET_FILE="$RUN_DIR/searxng-secret"
 BRAVE_KEY_FILE="$RUN_DIR/brave-api-key"
-SEARXNG_PORT="${SEARXNG_PORT:-8888}"
+# SEARXNG_PORT comes from config/host.yaml
+# shellcheck source=lib/host.sh
+source "$SCRIPT_DIR/lib/host.sh"
 CONTAINER_PYTHON="/usr/local/searxng/.venv/bin/python"
 
 [ -f "$SETTINGS" ] || { echo "setup-searxng: no settings at $SETTINGS" >&2; exit 1; }

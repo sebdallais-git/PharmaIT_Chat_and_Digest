@@ -11,9 +11,10 @@ read_token() {
   if [ -s "$1" ]; then tr -d '[:space:]' <"$1"; fi
 }
 
-export MCP_HOST="${MCP_HOST:-127.0.0.1}"
-export MCP_PORT="${MCP_PORT:-3200}"
-export PHARMALLM_URL="${PHARMALLM_URL:-http://localhost:3000}"
+# MCP_HOST, MCP_PORT and APP_PORT come from config/host.yaml (exits on an invalid profile)
+# shellcheck source=lib/host.sh
+source "$SCRIPT_DIR/lib/host.sh"
+export PHARMALLM_URL="${PHARMALLM_URL:-http://${PHARMAITCHAT_HOST_ADDRESS}:${APP_PORT}}"
 PHARMALLM_API_TOKEN="$(read_token "$RUN_DIR/api-token")"
 MCP_TOKEN="$(read_token "$RUN_DIR/mcp-token")"
 export PHARMALLM_API_TOKEN MCP_TOKEN

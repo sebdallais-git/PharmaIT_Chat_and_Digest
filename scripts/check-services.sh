@@ -14,6 +14,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DOMAIN="gui/$(id -u)"
 rc=0
+# Ports from config/host.yaml, the same file every service reads (exits on an invalid profile)
+# shellcheck source=lib/host.sh
+source "$SCRIPT_DIR/lib/host.sh"
+APP_URL="http://${PHARMAITCHAT_HOST_ADDRESS}:${APP_PORT}"
 
 green() { printf "  \033[32m%-12s\033[0m %s\n" "$1" "$2"; }
 red()   { printf "  \033[31m%-12s\033[0m %s\n" "$1" "$2"; rc=1; }
@@ -27,16 +31,8 @@ model_server_checks() {
   endpoint="$(bash "$PROJECT_DIR/scripts/switch-stack.sh" chat-endpoint "$stack" 2>/dev/null | cut -d' ' -f1)"
   [ -n "$endpoint" ] && echo "${endpoint##*:} $stack chat"
   case "$stack" in
-    mlx|splash) echo "8081 MLX embed" ;;
+    mlx|splash) echo "$MLX_EMBED_PORT MLX embed" ;;
   esac
-}
-
-# The scorer's port, from the base_url in config/decide.yaml so this cannot
-# drift from what the app calls (it moved from 8000, which is Splash's, to 8010)
-jev_port() {
-  local port
-  port="$(sed -n 's|^base_url:[[:space:]]*https\{0,1\}://[^:/]*:\([0-9][0-9]*\).*|\1|p' "$PROJECT_DIR/config/decide.yaml" 2>/dev/null | head -1)"
-  echo "${port:-8010}"
 }
 
 check_port() {
@@ -57,22 +53,22 @@ check_job ai.hermes.gateway
 
 echo
 echo "started by scripts/start-services.sh (the com.pharmaitchat.stack launchd job, at login)"
-check_port 3000 "app"        "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+check_port "$APP_PORT" "app"        "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
 while read -r port label; do
   [ -n "$port" ] && check_port "$port" "$label" "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
 done < <(model_server_checks)
-check_port 8100 "ChromaDB"   "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
-check_port "$(jev_port)" "jev scorer" "  -> gap decisions degrade; chat is unaffected"
+check_port "$CHROMADB_PORT" "ChromaDB"   "  -> launchctl kickstart -k gui/$(id -u)/com.pharmaitchat.stack"
+check_port "$JEV_PORT" "jev scorer" "  -> gap decisions degrade; chat is unaffected"
 
 echo
 echo "docker containers (in colima; the stack job starts it at login)"
-check_port 7687 "Neo4j"   "  -> colima start && docker start neo4j"
-check_port 8888 "SearXNG" "  -> colima start && docker start searxng"
+check_port "$NEO4J_PORT" "Neo4j"   "  -> colima start && docker start neo4j"
+check_port "$SEARXNG_PORT" "SearXNG" "  -> colima start && docker start searxng"
 
 echo
 echo "end to end"
 # Longer than the generation probe inside /api/health (GENERATION_PROBE_TIMEOUT_MS)
-health="$(curl -sf -m 25 http://localhost:3000/api/health 2>/dev/null)"
+health="$(curl -sf -m 25 $APP_URL/api/health 2>/dev/null)"
 if [ -n "$health" ]; then
   status="$(printf '%s' "$health" | python3 -c 'import sys,json; print(json.load(sys.stdin)["status"])' 2>/dev/null)"
   [ "$status" = "healthy" ] && green "$status" "app health" || red "$status" "app health"
@@ -99,7 +95,7 @@ except Exception:
 # "undefined" and stored junk). n8n answers a GET on a POST-only webhook "not registered for GET
 # requests. Did you mean to make a POST request?" when the workflow is active, and "not registered"
 # when it is not -- telling the two apart without running anything.
-hook="$(curl -s -m 10 http://localhost:5678/webhook/knowledge-gap 2>/dev/null)"
+hook="$(curl -s -m 10 http://${PHARMAITCHAT_HOST_ADDRESS}:${N8N_PORT}/webhook/knowledge-gap 2>/dev/null)"
 case "$hook" in
   *"Did you mean to make a POST request"*) green "active" "gap-fill webhook" ;;
   *"not registered"*) red "inactive" "gap-fill webhook  -> activate the gap workflow in n8n" ;;
@@ -110,7 +106,7 @@ esac
 # it proves the app can reach Neo4j, which is what actually matters.
 # The token goes on stdin (-H @-): on a command line every process could read it
 auth_header() { printf 'Authorization: Bearer %s\n' "$(cat "$PROJECT_DIR/data/run/api-token" 2>/dev/null)"; }
-graph="$(auth_header | curl -sf -m 8 -H @- http://localhost:3000/api/graph/stats 2>/dev/null)"
+graph="$(auth_header | curl -sf -m 8 -H @- $APP_URL/api/graph/stats 2>/dev/null)"
 if [ -n "$graph" ]; then
   green "ok" "vendor graph: $(printf '%s' "$graph" | tr -d '\n' | cut -c1-90)"
 else
@@ -120,7 +116,7 @@ fi
 # A UI stack switch needs the app's Telegram credentials (to send the confirm
 # buttons) and Hermes' pharmaitchat-switch plugin (to receive the tap); either
 # missing disables the selector in the web UI, with nothing else looking wrong
-switch="$(auth_header | curl -sf -m 10 -H @- http://localhost:3000/api/stack/status 2>/dev/null | python3 -c '
+switch="$(auth_header | curl -sf -m 10 -H @- $APP_URL/api/stack/status 2>/dev/null | python3 -c '
 import sys, json
 d = json.load(sys.stdin)
 if not d.get("telegram_configured"):

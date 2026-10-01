@@ -29,7 +29,6 @@ TELEGRAM_BOT_TOKEN_FILE="$RUN_DIR/telegram-bot-token"
 TELEGRAM_CHAT_ID_FILE="$RUN_DIR/telegram-chat-id"
 MCP_LABEL="com.pharmaitchat.mcp"
 MCP_PLIST="${LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}/$MCP_LABEL.plist"
-MCP_PORT="3200"
 LOG_DIR="$PROJECT_DIR/data/logs"
 MLX_VENV="$PROJECT_DIR/python/mlx-venv"
 MLX_PYTHON="${MLX_PYTHON:-python3}"
@@ -39,11 +38,8 @@ OMLX_PYTHON="${OMLX_PYTHON:-python3.11}"
 HF_CACHE="${HF_HOME:-$HOME/.cache/huggingface}/hub"
 OLLAMA_MANIFESTS="${OLLAMA_MODELS:-$HOME/.ollama/models}/manifests/registry.ollama.ai/library"
 
-APP_PORT="3000"
-APP_HTTPS_PORT="3443"
-OLLAMA_PORT="11434"
-MLX_CHAT_PORT="8080"
-MLX_EMBED_PORT="8081"
+# APP_PORT, APP_HTTPS_PORT, MCP_PORT, OLLAMA_PORT, MLX_CHAT_PORT, MLX_EMBED_PORT, OMLX_PORT and
+# SPLASH_PORT come from config/host.yaml through lib/services.sh -> lib/host.sh.
 
 OLLAMA_BASE_MODEL="qwen3.8:27b-q4_K_M"
 OLLAMA_CHAT_MODEL="qwen3.8-pharma"
@@ -53,32 +49,18 @@ MLX_EMBED_MODEL="mlx-community/Qwen3-Embedding-0.6B-8bit"
 OMLX_CHAT_MODEL="mlx-community--Qwen3.8-27B-4bit"
 OMLX_EMBED_MODEL="mlx-community--Qwen3-Embedding-0.6B-8bit"
 OLLAMA_MODELFILE="$PROJECT_DIR/ollama/qwen3.8-pharma.Modelfile"
-# Memory limits for mlx_lm.server. On 2026-09-29 six concurrent ~7.5k-token requests took it
-# from 23 GB to 36 GB and all six failed with a Metal "Insufficient Memory" error; the
-# generation thread died while the server kept accepting requests, so Hermes and chat hung
-# until the watchdog restarted it. With these limits the same load passed 6/6 at a 27 GB peak
-# in the same wall time, and a single 9k-token prompt took 74 s from a cold cache.
-# Cached prompts (several 64k agent prompts would otherwise pile up):
-MLX_PROMPT_CACHE_BYTES="${MLX_PROMPT_CACHE_BYTES:-4294967296}"
-# Freed GPU buffers MLX keeps for reuse, uncapped by default (see run-jev.sh):
-MLX_CACHE_LIMIT="${MLX_CACHE_LIMIT:-2147483648}"
-# Requests worked on at once; the defaults (8 prefills, 32 decodes) each hold a 27B KV cache.
-# Same rule as OLLAMA_NUM_PARALLEL=1: a burst queues instead of exhausting Metal memory.
-MLX_PROMPT_CONCURRENCY="${MLX_PROMPT_CONCURRENCY:-1}"
-MLX_DECODE_CONCURRENCY="${MLX_DECODE_CONCURRENCY:-2}"
+# mlx_lm.server limits (MLX_CACHE_LIMIT, MLX_PROMPT_CACHE_BYTES, MLX_PROMPT_CONCURRENCY,
+# MLX_DECODE_CONCURRENCY), the embedder's MLX_EMBED_CACHE_LIMIT and OMLX_CACHE_MAX_GB come from
+# config/host.yaml, which records why each has its value (the 2026-09-29 Metal OOM).
 
 OMLX_VENV="$PROJECT_DIR/python/omlx-venv"
-OMLX_PORT="8090"
 # Pinned to the commit verified in docs/superpowers/plans/2026-09-18-omlx-stack-verification.md
 OMLX_VERSION="cbc1a80"
 OMLX_REPO="https://github.com/jundot/omlx"
-# Caps the oMLX paged SSD prefix cache (unbounded, it reached 4.3 GB in two short sessions)
-OMLX_CACHE_MAX_GB="${OMLX_CACHE_MAX_GB:-20}"
 
 # --- Splash ---------------------------------------------------------------
 # Chat only: Splash serves no /v1/embeddings, so this stack borrows the MLX
 # embedding server on $MLX_EMBED_PORT and shares the MLX index.
-SPLASH_PORT="${SPLASH_PORT:-8000}"
 SPLASH_CHAT_MODEL="${SPLASH_CHAT_MODEL:-incoai/Qwen3.8-27B-Splash}"
 SPLASH_DIR="${SPLASH_DIR:-$PROJECT_DIR/python/splash-src}"
 # Splash's Homebrew package (brew install incoai/tap/splash) ships its Metal kernels
@@ -247,7 +229,7 @@ start_mlx_embed() {
     project_listener_open "$MLX_EMBED_PORT" \
       || { log "Port $MLX_EMBED_PORT is used by another program — cannot start the embedding server"; return 1; }
   else
-    nohup "$MLX_VENV/bin/python" "$PROJECT_DIR/python/mlx-embed-server.py" \
+    MLX_EMBED_CACHE_LIMIT="$MLX_EMBED_CACHE_LIMIT" nohup "$MLX_VENV/bin/python" "$PROJECT_DIR/python/mlx-embed-server.py" \
       --model "$MLX_EMBED_MODEL" --host 127.0.0.1 --port "$MLX_EMBED_PORT" \
       >"$LOG_DIR/mlx-embed.log" 2>&1 &
     echo $! >"$RUN_DIR/mlx-embed.pid"
@@ -593,7 +575,7 @@ start_app() {
     # working after the first stack switch
     LLM_PROVIDER="$1" CHROMADB_URL="$CHROMA_URL" PHARMAITCHAT_API_TOKEN="$(api_token)" \
       TELEGRAM_BOT_TOKEN="$(telegram_value bot-token)" TELEGRAM_CHAT_ID="$(telegram_value chat-id)" \
-      N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-5678}/webhook/knowledge-gap}" \
+      N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://${PHARMAITCHAT_HOST_ADDRESS}:${N8N_PORT}/webhook/knowledge-gap}" \
       nohup npx tsx src/server.ts >"$LOG_DIR/app.log" 2>&1 &
     echo $! >"$RUN_DIR/app.pid"
   fi

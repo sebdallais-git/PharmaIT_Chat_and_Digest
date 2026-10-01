@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hostTestEnv } from "./helpers/host-env.js";
 
 const SCRIPT = join(process.cwd(), "scripts", "run-jev.sh");
 
@@ -20,7 +21,7 @@ function run(env: Record<string, string>): { stdout: string; status: number } {
   }
   try {
     const stdout = execFileSync("bash", [SCRIPT], {
-      env: { ...process.env, PHARMALLM_RUN_DIR: runDir, RUN_JEV_EXEC: stub, ...env },
+      env: { ...process.env, ...hostTestEnv(), PHARMALLM_RUN_DIR: runDir, RUN_JEV_EXEC: stub, ...env },
       encoding: "utf8",
     });
     return { stdout, status: 0 };

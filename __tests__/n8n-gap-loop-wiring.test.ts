@@ -83,7 +83,7 @@ describe("start-services.sh", () => {
     const box = sandbox();
     copyFileSync(join(scriptsDir, "start-services.sh"), join(box.scripts, "start-services.sh"));
     // Stand-ins for everything it starts: no ChromaDB, no stack, no app
-    writeFileSync(join(box.scripts, "lib", "services.sh"), 'CHROMA_URL="http://localhost:8100"\nlog() { :; }\nensure_chromadb() { :; }\nensure_containers() { :; }\n');
+    writeFileSync(join(box.scripts, "lib", "services.sh"), 'CHROMA_URL="http://localhost:8100"\nN8N_PORT=5678\nPHARMAITCHAT_HOST_ADDRESS=localhost\nlog() { :; }\nensure_chromadb() { :; }\nensure_containers() { :; }\n');
     stub(join(box.scripts, "switch-stack.sh"), "exit 0");
     stub(join(box.bin, "npx"), PRINT_ENV);
     writeFileSync(join(box.run, "active-stack"), "mlx\n");
