@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HOST_FIXTURE, hostTestEnv } from "./helpers/host-env.js";
@@ -63,5 +63,36 @@ describe("scripts/lib/host.sh", () => {
       env: { PATH: "/usr/bin:/bin", HOME: tmpdir(), ...hostTestEnv() },
     });
     expect(result.stdout.trim()).toBe("8100");
+  });
+
+  it("treats the host name as data, never as shell code", () => {
+    const dir = mkdtempSync(join(tmpdir(), "host-sh-"));
+    dirs.push(dir);
+    const hostile = "x'; touch $HOME/pwned; echo \"$(touch $HOME/pwned2)`touch $HOME/pwned3` \\ end";
+    const bad = join(dir, "host.yaml");
+    writeFileSync(bad, readFileSync(HOST_FIXTURE, "utf-8").replace(/^ {2}name:.*$/m, `  name: ${JSON.stringify(hostile)}`));
+    const result = spawnSync("bash", ["-c", 'source "$1"\nprintf %s "$PHARMAITCHAT_HOST_NAME"', "bash", hostSh], {
+      encoding: "utf-8",
+      env: { PATH: "/usr/bin:/bin", HOME: dir, ...hostTestEnv(), PHARMAITCHAT_HOST_CONFIG: bad },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(hostile);
+    for (const f of ["pwned", "pwned2", "pwned3"]) expect(existsSync(join(dir, f))).toBe(false);
+  });
+
+  it("works without errexit and still fails on an invalid profile", () => {
+    const run = (config: string) =>
+      spawnSync("bash", ["-c", 'set -uo pipefail\nsource "$1"\necho "APP_PORT=$APP_PORT"', "bash", hostSh], {
+        encoding: "utf-8",
+        env: { PATH: "/usr/bin:/bin", HOME: tmpdir(), ...hostTestEnv(), PHARMAITCHAT_HOST_CONFIG: config },
+      });
+    expect(run(HOST_FIXTURE).stdout.trim()).toBe("APP_PORT=3000");
+    const dir = mkdtempSync(join(tmpdir(), "host-sh-"));
+    dirs.push(dir);
+    const bad = join(dir, "host.yaml");
+    writeFileSync(bad, readFileSync(HOST_FIXTURE, "utf-8").replace("{ port: 8100 }", "{ port: 0 }"));
+    const result = run(bad);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).not.toContain("APP_PORT=");
   });
 });

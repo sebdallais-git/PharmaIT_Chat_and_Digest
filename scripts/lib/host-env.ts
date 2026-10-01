@@ -1,6 +1,8 @@
 // Prints the host profile (config/host.yaml) as shell exports for scripts/lib/host.sh to eval.
-// Each line keeps a value already in the environment: export NAME="${NAME:-value}".
-// Values are validated integers or addresses matching [A-Za-z0-9.:-], so the output is safe to eval.
+// Each line keeps a non-empty value already in the environment (set-but-empty counts as unset):
+//   [ -n "${NAME:-}" ] || NAME='value'; export NAME
+// Every value is single-quoted with embedded ' escaped as '\'' , so no value (even a free-text
+// host name) can break out of the quotes: the output is safe to eval.
 import { HostConfigError, loadHostConfig } from "../../src/platform/host-config.js";
 import type { HostConfig } from "../../src/platform/host-config.js";
 
@@ -37,7 +39,10 @@ function exportsFor(host: HostConfig): Array<[string, string | number]> {
 }
 
 try {
-  const lines = exportsFor(loadHostConfig()).map(([name, value]) => `export ${name}="\${${name}:-${value}}"`);
+  const lines = exportsFor(loadHostConfig()).map(([name, value]) => {
+    const quoted = String(value).replace(/'/g, "'\\''");
+    return `[ -n "\${${name}:-}" ] || ${name}='${quoted}'; export ${name}`;
+  });
   process.stdout.write(`${lines.join("\n")}\n`);
 } catch (err) {
   process.stderr.write(`${err instanceof HostConfigError ? err.message : String(err)}\n`);
