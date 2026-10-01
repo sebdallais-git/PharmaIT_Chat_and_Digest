@@ -22,6 +22,7 @@ import { renderPptx } from "./render-pptx.js";
 import { renderXlsx } from "./render-xlsx.js";
 import { openWatchlistStore } from "./watchlist-store.js";
 import type { WatchlistStore } from "./watchlist-store.js";
+import type { Domain } from "./watchlist-config.js";
 
 // The minimal shape buildGatherDeps needs: a way to run a read-only Cypher
 // query and a way to fetch an entity's recent watchlist items. Kept
@@ -29,7 +30,7 @@ import type { WatchlistStore } from "./watchlist-store.js";
 // pass plain fakes without touching Neo4j or sqlite.
 export interface GraphReader {
   runCypher(query: string, params?: Record<string, unknown>): Promise<Array<Record<string, unknown>>>;
-  itemsFor(entity: string, limit: number): Array<{ title: string; url: string; publishedAt: string }>;
+  itemsFor(entity: string, limit: number, domains?: Domain[]): Array<{ title: string; url: string; publishedAt: string }>;
 }
 
 const INCUMBENCY_CYPHER = `
@@ -187,9 +188,9 @@ function buildLiveReader(getDriverFn: () => Driver, openStore: () => WatchlistSt
         await session.close();
       }
     },
-    itemsFor(entity, limit) {
+    itemsFor(entity, limit, domains) {
       return store
-        .itemsInPeriod("0000-01-01T00:00:00.000Z", "9999-12-31T23:59:59.999Z", { entities: [entity] })
+        .itemsInPeriod("0000-01-01T00:00:00.000Z", "9999-12-31T23:59:59.999Z", { entities: [entity], domains })
         .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
         .slice(0, limit)
         .map((item) => ({ title: item.title, url: item.urlCanonical, publishedAt: item.publishedAt.slice(0, 10) }));
