@@ -5,7 +5,7 @@
 // docs/superpowers/specs/2026-09-30-host-config-seam-design.md
 
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { readEnvWithFallback } from "../config/env-names.js";
@@ -65,7 +65,8 @@ const URL_OVERRIDES: Partial<Record<EndpointName, string>> = {
   searxng: "SEARXNG_URL",
 };
 
-const DEFAULT_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "config", "host.yaml");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const DEFAULT_PATH = resolve(REPO_ROOT, "config", "host.yaml");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -232,8 +233,17 @@ export function serviceUrl(name: EndpointName, env: NodeJS.ProcessEnv = process.
   return endpointUrl(host ?? loadHostConfig(), name);
 }
 
-export function hostSummary(host: HostConfig): { name: string; config: string; resources: HostResources } {
-  return { name: host.name, config: host.path, resources: host.resources };
+// The profile's file as shown on /api/health, an unauthenticated route: relative to the repo root
+// when it lives in the repo (e.g. "config/host.yaml"), else only its basename -- never an absolute
+// path that names the user's home directory.
+export function displayConfigPath(path: string, repoRoot: string = REPO_ROOT): string {
+  const rel = relative(repoRoot, resolve(repoRoot, path));
+  if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) return rel;
+  return basename(path);
+}
+
+export function hostSummary(host: HostConfig, repoRoot: string = REPO_ROOT): { name: string; config: string; resources: HostResources } {
+  return { name: host.name, config: displayConfigPath(host.path, repoRoot), resources: host.resources };
 }
 
 // PORT / HTTPS_PORT as given: a non-blank value must be an integer 1-65535; blank counts as unset.

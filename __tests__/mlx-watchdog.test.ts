@@ -179,9 +179,11 @@ esac`;
   });
 
   it("does nothing when switch-stack cannot say where the stack serves chat", () => {
-    const { result, calls } = runWatchdog({ stack: "unknown", httpCode: "500", priorStrikes: 1 });
+    const { result, calls, root } = runWatchdog({ stack: "unknown", httpCode: "500", priorStrikes: 1 });
     expect(result.status).toBe(0);
     expect(calls.some((c) => c.startsWith("curl ") || c.startsWith("lsof ") || c.includes("ensure-stack"))).toBe(false);
+    // Not silent: an invalid config/host.yaml would otherwise switch the watchdog off unnoticed
+    expect(readFileSync(join(root, "data", "logs", "mlx-watchdog.log"), "utf-8")).toMatch(/chat-endpoint failed.*not probing/);
   });
 });
 

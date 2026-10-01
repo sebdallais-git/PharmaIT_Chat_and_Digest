@@ -46,7 +46,10 @@ stack="$(cat "$STATE_DIR/active-stack" 2>/dev/null || echo ollama)"
 # Ask switch-stack.sh where this stack serves chat rather than assuming 8080:
 # omlx listens on 8090, and probing or killing the wrong port reports health for
 # a server never contacted, or restarts one that is not wedged.
-endpoint="$("$SCRIPT_DIR/switch-stack.sh" chat-endpoint "$stack" 2>/dev/null)" || exit 0
+if ! endpoint="$("$SCRIPT_DIR/switch-stack.sh" chat-endpoint "$stack" 2>/dev/null)"; then
+  log "chat-endpoint failed for stack '$stack' (invalid config/host.yaml or unknown stack); not probing"
+  exit 0
+fi
 read -r chat_url chat_model <<<"$endpoint"
 [ -n "$chat_url" ] && [ -n "$chat_model" ] || exit 0
 chat_port="${chat_url##*:}"

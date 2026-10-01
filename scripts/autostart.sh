@@ -24,6 +24,9 @@ TEMPLATE_DIR="$PROJECT_DIR/hermes"
 LAUNCH_AGENTS_DIR="${LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 # shellcheck source=lib/launchd.sh
 source "$SCRIPT_DIR/lib/launchd.sh"
+# MCP_HOST and N8N_PORT (baked into the plists) come from config/host.yaml (exits on an invalid profile)
+# shellcheck source=lib/host.sh
+source "$SCRIPT_DIR/lib/host.sh"
 LAUNCHCTL_BIN="${LAUNCHCTL_BIN:-launchctl}"
 DOMAIN="gui/$(id -u)"
 
@@ -40,8 +43,8 @@ render() {
   [ -f "$template" ] || { log "no template for $label — skipping"; return 1; }
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
       -e "s|__NODE_BIN__|$(node_bin)|g" \
-      -e "s|__MCP_HOST__|${MCP_HOST:-127.0.0.1}|g" \
-      -e "s|__N8N_PORT__|${N8N_PORT:-5678}|g" \
+      -e "s|__MCP_HOST__|${MCP_HOST}|g" \
+      -e "s|__N8N_PORT__|${N8N_PORT}|g" \
       -e "s|__PATH__|$(launchd_path "$(node_bin)")|g" \
       "$template" >"$out"
 }

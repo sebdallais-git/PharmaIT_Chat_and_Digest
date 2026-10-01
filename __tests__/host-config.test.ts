@@ -152,6 +152,18 @@ describe("hostSummary", () => {
     const host = parseHostConfig(fixture, "fixture.yaml");
     expect(hostSummary(host)).toEqual({ name: "test-host", config: "fixture.yaml", resources: host.resources });
   });
+
+  // /api/health is unauthenticated: it must not reveal the absolute path (and so the home dir)
+  it("shows a file inside the repo relative to the repo root", () => {
+    const host = parseHostConfig(fixture, join("/srv/repo", "config", "host.yaml"));
+    expect(hostSummary(host, "/srv/repo").config).toBe("config/host.yaml");
+    expect(hostSummary(parseHostConfig(fixture, fixturePath)).config).toBe("__tests__/fixtures/host.yaml");
+  });
+
+  it("shows only the basename of a file outside the repo", () => {
+    expect(hostSummary(parseHostConfig(fixture, "/Users/someone/elsewhere/studio.yaml"), "/srv/repo").config).toBe("studio.yaml");
+    expect(hostSummary(parseHostConfig(fixture, "/srv/repo-other/host.yaml"), "/srv/repo").config).toBe("host.yaml");
+  });
 });
 
 describe("appListenPorts", () => {

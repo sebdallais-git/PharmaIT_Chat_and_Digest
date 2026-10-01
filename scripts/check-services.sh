@@ -68,7 +68,7 @@ check_port "$SEARXNG_PORT" "SearXNG" "  -> colima start && docker start searxng"
 echo
 echo "end to end"
 # Longer than the generation probe inside /api/health (GENERATION_PROBE_TIMEOUT_MS)
-health="$(curl -sf -m 25 $APP_URL/api/health 2>/dev/null)"
+health="$(curl -sf -m 25 "$APP_URL/api/health" 2>/dev/null)"
 if [ -n "$health" ]; then
   status="$(printf '%s' "$health" | python3 -c 'import sys,json; print(json.load(sys.stdin)["status"])' 2>/dev/null)"
   [ "$status" = "healthy" ] && green "$status" "app health" || red "$status" "app health"
@@ -106,7 +106,7 @@ esac
 # it proves the app can reach Neo4j, which is what actually matters.
 # The token goes on stdin (-H @-): on a command line every process could read it
 auth_header() { printf 'Authorization: Bearer %s\n' "$(cat "$PROJECT_DIR/data/run/api-token" 2>/dev/null)"; }
-graph="$(auth_header | curl -sf -m 8 -H @- $APP_URL/api/graph/stats 2>/dev/null)"
+graph="$(auth_header | curl -sf -m 8 -H @- "$APP_URL/api/graph/stats" 2>/dev/null)"
 if [ -n "$graph" ]; then
   green "ok" "vendor graph: $(printf '%s' "$graph" | tr -d '\n' | cut -c1-90)"
 else
@@ -116,7 +116,7 @@ fi
 # A UI stack switch needs the app's Telegram credentials (to send the confirm
 # buttons) and Hermes' pharmaitchat-switch plugin (to receive the tap); either
 # missing disables the selector in the web UI, with nothing else looking wrong
-switch="$(auth_header | curl -sf -m 10 -H @- $APP_URL/api/stack/status 2>/dev/null | python3 -c '
+switch="$(auth_header | curl -sf -m 10 -H @- "$APP_URL/api/stack/status" 2>/dev/null | python3 -c '
 import sys, json
 d = json.load(sys.stdin)
 if not d.get("telegram_configured"):

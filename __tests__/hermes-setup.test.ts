@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_INGEST_BUDGET_MS } from "../src/services/watchlist-ingest.js";
-import { hostTestEnv } from "./helpers/host-env.js";
+import { hostTestEnv, hostVar } from "./helpers/host-env.js";
 
 const projectDir = process.cwd();
 // The timeout hermes/cron/jobs.json asks Hermes for, read from the file
@@ -632,7 +632,24 @@ describe("launchd PATH is the same whichever script renders a plist", () => {
     ]);
     for (const file of rendered) {
       expect([file, plistPath(join(agents, file))?.split(":")[0]]).toEqual([file, "/opt/fake/bin"]);
+      expect(readFileSync(join(agents, file), "utf-8")).not.toContain("__");
     }
+    // Baked-in values come from the host profile (autostart.sh sources scripts/lib/host.sh)
+    expect(readFileSync(join(agents, "com.pharmaitchat.n8n.plist"), "utf-8")).toContain(`<key>N8N_PORT</key><string>${hostVar("N8N_PORT")}</string>`);
+    expect(readFileSync(join(agents, "com.pharmaitchat.mcp.plist"), "utf-8")).toContain(`<key>MCP_HOST</key><string>${hostVar("MCP_HOST")}</string>`);
+  });
+
+  it("autostart.sh fails loudly rather than rendering plists when node is missing", () => {
+    const box = sandbox();
+    const agents = join(box.root, "autostart-agents");
+    mkdirSync(agents);
+    const result = spawnSync("bash", [join(projectDir, "scripts", "autostart.sh"), "on"], {
+      encoding: "utf-8",
+      env: { PATH: "/usr/bin:/bin", HOME: box.root, LAUNCH_AGENTS_DIR: agents, LAUNCHCTL_BIN: "/usr/bin/true", HOST_NODE_BIN: join(box.root, "no-node") },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("host.sh");
+    expect(readdirSync(agents)).toEqual([]);
   });
 
   it("leaves no script spelling out a launchd PATH of its own", () => {
