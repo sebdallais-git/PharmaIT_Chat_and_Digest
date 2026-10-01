@@ -187,15 +187,6 @@ export async function queryGraphForChat(keywords: string[]): Promise<string> {
   }
 }
 
-export async function clearGraph(): Promise<void> {
-  const session = getDriver().session();
-  try {
-    await session.run("MATCH (n) DETACH DELETE n");
-  } finally {
-    await session.close();
-  }
-}
-
 export async function closeNeo4j(): Promise<void> {
   if (driver) {
     await driver.close();
