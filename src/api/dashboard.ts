@@ -13,13 +13,14 @@ import { getIndexStatus } from "../services/index-guard.js";
 import { isBenchmarkActive } from "../services/bench-mode.js";
 import { aggregateHealth, isScorerConfigured, probeGeneration, probeUrl, stackProbeUrls } from "../services/health.js";
 import type { HealthCheck } from "../services/health.js";
+import { serviceUrl } from "../platform/host-config.js";
 import { loadDecideConfig } from "../services/decide-config.js";
 import { openCanaryStore, summarizeCanaryRuns } from "../services/kb-canary.js";
 import type { CanaryStore } from "../services/kb-canary.js";
 
 const router = Router();
 
-const SEARXNG_URL = "http://localhost:8888";
+const SEARXNG_URL = serviceUrl("searxng");
 
 // GET /api/dashboard/metrics
 router.get("/metrics", async (_req: Request, res: Response): Promise<void> => {

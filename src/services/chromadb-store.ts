@@ -5,9 +5,10 @@ import { getActiveStack } from "../config/llm-stacks.js";
 import { getLlmClient } from "./llm-client.js";
 import { assertIndexUsable, expectedIndexMeta, indexMetaFromChroma, indexMetaToChroma } from "./index-guard.js";
 import type { IndexMeta } from "./index-guard.js";
+import { serviceUrl } from "../platform/host-config.js";
 import { toBatches } from "../utils/batches.js";
 
-const CHROMADB_URL = process.env.CHROMADB_URL ?? "http://localhost:8100";
+const CHROMADB_URL = serviceUrl("chromadb");
 const TENANT = "default_tenant";
 const DATABASE = "default_database";
 const EMBED_BATCH_SIZE = 32;
