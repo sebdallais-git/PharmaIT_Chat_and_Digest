@@ -1,12 +1,12 @@
 // For tests that spawn bash scripts with an env of their own (PATH=/usr/bin:/bin has no node):
-// scripts/lib/host.sh needs a node binary and a host profile to read.
+// scripts/lib/host.sh needs a node binary (HOST_NODE_BIN, which wins over NODE_BIN so a test's placeholder NODE_BIN for a plist is untouched) and a host profile to read.
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 export const HOST_FIXTURE = join(process.cwd(), "__tests__", "fixtures", "host.yaml");
 
-export function hostTestEnv(): { NODE_BIN: string; PHARMAITCHAT_HOST_CONFIG: string } {
-  return { NODE_BIN: process.execPath, PHARMAITCHAT_HOST_CONFIG: HOST_FIXTURE };
+export function hostTestEnv(): { HOST_NODE_BIN: string; PHARMAITCHAT_HOST_CONFIG: string } {
+  return { HOST_NODE_BIN: process.execPath, PHARMAITCHAT_HOST_CONFIG: HOST_FIXTURE };
 }
 
 // One exported host-profile value as the scripts see it (sources scripts/lib/host.sh against the

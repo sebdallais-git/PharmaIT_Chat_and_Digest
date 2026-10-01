@@ -192,7 +192,7 @@ install_services() {
   # so KeepAlive is the point of installing it.
   plist="$LAUNCH_AGENTS_DIR/$N8N_LABEL.plist"
   sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
-      -e "s|__N8N_PORT__|${N8N_PORT:-5678}|g" \
+      -e "s|__N8N_PORT__|${N8N_PORT}|g" \
       -e "s|__PATH__|$(launchd_path "$node_bin")|g" \
       "$TEMPLATE_DIR/com.pharmaitchat.n8n.plist.template" >"$plist"
   "$LAUNCHCTL_BIN" bootout "$domain/$N8N_LABEL" >/dev/null 2>&1 || true

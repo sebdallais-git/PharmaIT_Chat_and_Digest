@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { HOST_FIXTURE, hostTestEnv } from "./helpers/host-env.js";
 
 const hostSh = join(process.cwd(), "scripts", "lib", "host.sh");
@@ -49,6 +49,27 @@ describe("scripts/lib/host.sh", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("endpoints.chromadb.port");
     expect(result.stdout).not.toContain("APP_PORT=");
+  });
+
+  it("lets HOST_NODE_BIN win over a bogus NODE_BIN", () => {
+    const result = sourceHost({ ...hostTestEnv(), NODE_BIN: "/nonexistent/node" }, ["APP_PORT"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("APP_PORT=3000");
+  });
+
+  it("fails loudly on a HOST_NODE_BIN that is not executable", () => {
+    const result = sourceHost({ ...hostTestEnv(), HOST_NODE_BIN: "/nonexistent/node" }, ["APP_PORT"]);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("HOST_NODE_BIN=/nonexistent/node is not an executable node");
+  });
+
+  it("fails loudly on a bogus NODE_BIN even when node is on PATH", () => {
+    const result = sourceHost(
+      { PHARMAITCHAT_HOST_CONFIG: HOST_FIXTURE, NODE_BIN: "/nonexistent/node", PATH: `/usr/bin:/bin:${dirname(process.execPath)}` },
+      ["APP_PORT"],
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("NODE_BIN=/nonexistent/node is not an executable node");
   });
 
   it("fails loudly without node", () => {

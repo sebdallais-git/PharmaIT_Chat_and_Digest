@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { DEFAULT_INGEST_BUDGET_MS } from "../src/services/watchlist-ingest.js";
 import { hostTestEnv } from "./helpers/host-env.js";
 
@@ -91,9 +91,7 @@ function setup(box: Sandbox, args: string[], extraEnv: Record<string, string> = 
     input: "",
     env: {
       ...hostTestEnv(),
-      // Node's directory last-resort: some tests pass a placeholder NODE_BIN for the plist, and host.sh
-      // then finds the real node here
-      PATH: `/usr/bin:/bin:${dirname(process.execPath)}`,
+      PATH: "/usr/bin:/bin",
       HOME: box.root,
       HERMES_HOME: box.home,
       PHARMALLM_RUN_DIR: box.runDir,
