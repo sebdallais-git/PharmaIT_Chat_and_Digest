@@ -228,6 +228,18 @@ describe("renderCompetitiveContext", () => {
     expect(renderCompetitiveContext(base)).toContain("  storage-object, installed: nobody\n    ranking (greenfield): nobody ranked");
   });
 
+  it("gives each justified need a why line under the account, without the quote", () => {
+    const base = answer();
+    base.accounts[0].needEvidence = {
+      "cyber-resilience": [{ claim: "Ransomware halted a peer for weeks", quote: "Long quote.", source: "knowledge/cyber-pharma-major-attacks.md" }],
+    };
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain(
+      "Roche (roche), needs: cyber-resilience\n  why cyber-resilience: Ransomware halted a peer for weeks (cyber-pharma-major-attacks.md)",
+    );
+    expect(text).not.toContain("Long quote.");
+  });
+
   it("stays within the chat budget, saying it was cut", () => {
     const many = Object.fromEntries(
       Array.from({ length: 80 }, (_, i) => [

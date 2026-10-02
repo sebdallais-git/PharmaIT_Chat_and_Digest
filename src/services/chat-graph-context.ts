@@ -4,6 +4,7 @@
 // The competitive path can only add to what the chat gets: any failure, a slow
 // graph included, falls back to the keyword lookup. Everything live is
 // injected, so no test reaches Neo4j; src/api/chat.ts binds the real services.
+import { basename } from "node:path";
 import {
   competitivePositionFrom,
   TEXT_TRIM_STEPS,
@@ -136,6 +137,9 @@ function renderLines(a: CompetitiveAnswer): string {
   }
   for (const account of a.accounts) {
     lines.push(`${account.name} (${account.account}), needs: ${account.needs.join(", ") || "none recorded"}`);
+    for (const [need, reasons] of Object.entries(account.needEvidence)) {
+      for (const e of reasons) lines.push(`  why ${need}: ${e.claim} (${basename(e.source)})`);
+    }
     if (account.general.length > 0) lines.push("  general:", ...account.general.map(eventLine));
     for (const s of account.segments) {
       const via = s.via.length > 0 ? ` (via ${s.via.join(", ")})` : "";
