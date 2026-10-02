@@ -32,7 +32,7 @@ export interface RankingInput {
 
 export interface SegmentRanking {
   regime: Regime;
-  /** Top RANKING_TOP (ties included) plus `keep`; null exactly when the regime is unknown. */
+  /** Whole rank groups up to RANKING_TOP entries, plus `keep`; null exactly when the regime is unknown. */
   ranking: RankedVendor[] | null;
   /** How many candidates were ranked, shown or not. */
   ranked: number;
@@ -73,9 +73,16 @@ export function rankSegment(input: RankingInput): SegmentRanking {
     // Tied entries are listed by id only so the output is stable; the shared rank carries the meaning.
     .sort((a, b) => a.rank - b.rank || a.vendor.localeCompare(b.vendor));
 
-  return {
-    regime,
-    ranking: ranked.filter((r) => r.rank <= RANKING_TOP || r.vendor === input.keep),
-    ranked: ranked.length,
-  };
+  // Whole rank groups, while they fit in RANKING_TOP entries: a tied group that
+  // would pass it is left out entirely rather than broken alphabetically. The
+  // asked vendor is always shown; "ranked" says how many there were.
+  const shown = new Set<string>();
+  for (const rank of [...new Set(ranked.map((r) => r.rank))]) {
+    const group = ranked.filter((r) => r.rank === rank);
+    if (shown.size + group.length > RANKING_TOP) break;
+    for (const r of group) shown.add(r.vendor);
+  }
+  if (input.keep !== null) shown.add(input.keep);
+
+  return { regime, ranking: ranked.filter((r) => shown.has(r.vendor)), ranked: ranked.length };
 }

@@ -83,6 +83,7 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
   return {
     query: { vendor: "dell", account: "roche", segment: null },
     modes: { defend: "the vendor is installed: defend and expand", greenfield: "declared: nobody is installed" },
+    regimes: {},
     market: [],
     accounts: [
       {
@@ -97,8 +98,12 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
             incumbents: ["dell"],
             vendors: [{ vendor: "dell", mode: "defend", position: "leader" }],
             events: [],
+            regime: "defend",
+            trigger: null,
+            ranking: [{ vendor: "dell", rank: 1, reasons: ["incumbent", "leader/high"] }],
+            ranked: 1,
           },
-          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }], events: [] },
+          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }], events: [], regime: "greenfield", trigger: null, ranking: [], ranked: 0 },
         ],
       },
     ],

@@ -61,15 +61,23 @@ describe("rankSegment", () => {
     expect(result.ranked).toBe(2);
   });
 
-  it(`shows the top ${RANKING_TOP} with ties at ${RANKING_TOP}, plus the asked vendor, and counts them all`, () => {
+  it(`shows whole rank groups up to ${RANKING_TOP} entries, plus the asked vendor, and counts them all`, () => {
     const result = rankSegment(
-      input({
-        incumbents: ["x"],
-        positions: positions({ a: "leader", b: "strong", c: "strong", d: "present", e: "present" }),
-        keep: "e",
-      }),
+      input({ incumbents: ["x"], positions: positions({ a: "leader", b: "strong", d: "present", e: "present" }), keep: "e" }),
     );
-    expect(brief(result.ranking)).toEqual(["1 x", "2 a", "3 b", "3 c", "5 e"]);
-    expect(result.ranked).toBe(6);
+    expect(brief(result.ranking)).toEqual(["1 x", "2 a", "3 b", "4 e"]);
+    expect(result.ranked).toBe(5);
+  });
+
+  it(`leaves out a tied group that would pass ${RANKING_TOP} entries, rather than pick some of it`, () => {
+    // Eight rivals tied at 3: showing them all is no bound, showing some would
+    // break the tie alphabetically. Neither: the group is left out, the asked
+    // vendor still shown, and "ranked" says how many there were.
+    const rivals = Object.fromEntries(["a", "b", "c", "d", "e", "f", "g", "h"].map((v) => [v, "strong"]));
+    const result = rankSegment(input({ incumbents: ["x", "y"], positions: positions(rivals), keep: "c" }));
+    expect(brief(result.ranking)).toEqual(["1 x", "1 y", "3 c"]);
+    expect(result.ranked).toBe(10);
+    const small = rankSegment(input({ positions: positions({ a: "leader", b: "strong", c: "strong", d: "strong" }) }));
+    expect(brief(small.ranking)).toEqual(["1 a"]);
   });
 });

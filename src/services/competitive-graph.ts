@@ -5,6 +5,7 @@
 // Neo4j; src/services/competitive-graph-live.ts binds the real ones.
 import {
   MODE_GUIDANCE,
+  REGIME_GUIDANCE,
   resolveCompetitivePosition,
   type AccountView,
   type CompetitiveQuery,
@@ -15,6 +16,7 @@ import {
   type SnapshotAccount,
   type Standing,
 } from "./competitive-position.js";
+import type { Regime } from "./segment-ranking.js";
 import type { BriefExcerpts, Claim } from "./vendor-brief-excerpts.js";
 
 export type RunCypher = (query: string, params?: Record<string, unknown>) => Promise<Array<Record<string, unknown>>>;
@@ -107,6 +109,8 @@ export interface CompetitiveAnswer {
   query: CompetitiveResolution["query"];
   /** What each incumbency mode in this answer means; only the modes that occur. */
   modes: Partial<Record<IncumbencyMode, string>>;
+  /** What each ranking regime in this answer means; only the regimes that occur. */
+  regimes: Partial<Record<Regime, string>>;
   market: CompetitiveResolution["market"];
   accounts: AnswerAccount[];
   standings: Record<string, AnswerStanding>;
@@ -404,6 +408,10 @@ export async function competitivePositionFrom(
   for (const account of r.accounts) {
     for (const segment of account.segments) for (const v of segment.vendors) modes[v.mode] = MODE_GUIDANCE[v.mode];
   }
+  const regimes: Partial<Record<Regime, string>> = {};
+  for (const account of r.accounts) {
+    for (const segment of account.segments) regimes[segment.regime] = REGIME_GUIDANCE[segment.regime];
+  }
 
   const events = await readAccountEvidence(
     deps.runCypher,
@@ -449,6 +457,7 @@ export async function competitivePositionFrom(
   const answer: CompetitiveAnswer = {
     query: r.query,
     modes,
+    regimes,
     market: r.market,
     accounts,
     standings,

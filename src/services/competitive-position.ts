@@ -5,10 +5,12 @@
 // Incumbency is resolved first, per segment, because the same competitive fact
 // means opposite things depending on who already holds the account
 // (docs/superpowers/specs/2026-09-21-vendor-intel-graph-design.md, "Query path").
-// Vendors are never ranked: every list is alphabetical, whatever its position
+// Lists are never ordered by position: every list is alphabetical whatever its
 // label says -- six of eight vendors are Gartner Leaders, so the label alone
-// carries little signal and ordering by it would invent one.
+// carries little signal. The one order is each segment's `ranking`
+// (segment-ranking.ts): win likelihood there, incumbency first, with reasons.
 import { SEGMENTS } from "./graph-schema.js";
+import { rankSegment, type RankedVendor, type Regime } from "./segment-ranking.js";
 
 export type IncumbencyMode = "defend" | "displace" | "greenfield" | "unknown";
 
@@ -20,6 +22,13 @@ export const MODE_GUIDANCE: Record<IncumbencyMode, string> = {
     "a rival is installed: displacing it needs a disqualifying weakness or a triggering event; look for one in the segment's events",
   greenfield: "declared: nobody is installed, so function and price actually decide",
   unknown: "who is installed here is not recorded: find out before choosing defend, displace or greenfield",
+};
+
+export const REGIME_GUIDANCE: Record<Regime, string> = {
+  open: "a declared trigger opens the segment: position decides, incumbency only breaks ties",
+  defend: "the incumbent keeps the segment unless a trigger is declared: rivals rank behind it",
+  greenfield: "nobody is installed: position decides",
+  unknown: "no ranking until you record who is installed",
 };
 
 export interface CompetitiveQuery {
@@ -83,6 +92,13 @@ export interface SegmentView {
   via: string[];
   incumbents: string[];
   vendors: VendorInSegment[];
+  regime: Regime;
+  /** The declared install-base trigger, stated once per segment. */
+  trigger: string | null;
+  /** Win likelihood here: top 3 plus the asked vendor; null when who is installed is unknown. */
+  ranking: RankedVendor[] | null;
+  /** How many vendors were ranked, shown or not. */
+  ranked: number;
 }
 
 export interface AccountView {
@@ -168,7 +184,7 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
 
   const positionOf = new Map(snap.positions.map((p) => [standingKey(p.vendor, p.segment), p]));
   const standings: Record<string, Standing> = {};
-  const notes = new Set<string>();
+  const notes = new Set<string>(snap.notes ?? []);
 
   // Records the full standing once and returns the bare label for the views.
   const cite = (v: string, seg: string): string | null => {
@@ -227,7 +243,20 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
       });
 
       const via = account.needs.filter((need) => (snap.needSegments[need] ?? []).includes(seg));
-      return { segment: seg, via, incumbents, vendors };
+      const trigger = account.triggers?.[seg] ?? null;
+      const { regime, ranking, ranked } = rankSegment({
+        // A graph built before declaredSegments existed still knows its incumbents.
+        declared: account.declared.includes(seg) || incumbents.length > 0,
+        incumbents,
+        trigger,
+        positions: new Map(
+          snap.positions
+            .filter((p) => p.segment === seg)
+            .map((p) => [p.vendor, { position: p.position, confidence: p.confidence }]),
+        ),
+        keep: vendor,
+      });
+      return { segment: seg, via, incumbents, vendors, regime, trigger, ranking, ranked };
     });
 
     return { account: account.id, name: account.name, needs: account.needs, segments };
