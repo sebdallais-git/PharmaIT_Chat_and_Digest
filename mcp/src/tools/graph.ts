@@ -22,7 +22,9 @@ export function registerGraphTools(server: McpServer, client: PharmaITChatClient
         "events, lifecycle moves) and each account `general` (account-wide news). " +
         "Each segment also carries `ranking`: win likelihood there (the top ranks in whole tie groups, up to 3 " +
         "vendors, plus the asked vendor; `ranked` = how many were ranked; null when who is installed is unknown), " +
-        "with `regime` and any declared `trigger`. Rank vendors " +
+        "with `regime` and any declared `trigger`. A repeated rank number is a tie; `hidden` counts tied vendors " +
+        "not listed at a rank, and `unranked` names the asked vendor when no brief places it there (never ranked). " +
+        "Rank vendors " +
         "only as `ranking` gives them, per account and segment, with its reasons; never rank from positions alone, and " +
         "never across accounts. " +
         "Give at least one of vendor, account or segment.",
