@@ -24,7 +24,7 @@ Decided with the user:
 | Method | Deterministic rules, no model call: same input, same order |
 | What opens a segment held by a rival | **Declared triggers only**, in `accounts.local.yaml`; watchlist events never promote on their own (tagging noise, e.g. a EURETINA item tagged `it_move`) |
 | Where it lives | A `ranking` field inside `competitive_position` (one tool: the local model fails at orchestration) |
-| Budget (decided while planning) | Each segment shows the **top 3** (ties at 3 included) **plus the queried vendor**, with `ranked: <total>`; compact reasons; never trimmed |
+| Budget (decided while planning) | Each segment shows **whole rank groups up to 3 vendors plus the queried vendor**, with `ranked: <total>` and `hidden` for tied vendors not listed; compact reasons; never trimmed |
 
 Rejected: a separate `win_likelihood` tool (a second tool to choose and call), and sorting the existing `vendors`
 arrays (ranking by ordering, without reasons).
@@ -54,7 +54,8 @@ says so.
 ### Validation (`parseAccounts`, fails the rebuild before the wipe)
 
 - The key must be in the closed segment set: `<account>: triggers.<key>` names the bad key.
-- The value must be a non-empty string: `<account>: triggers.<segment> must be a non-empty description of the
+- The value must be a non-empty string of at most 200 characters (rankings are never trimmed, so an unbounded trigger
+  would eat the answer budget): `<account>: triggers.<segment> must be a non-empty description of the
   install-base event`.
 - The segment must have declared, non-empty incumbents: `<account>: triggers.<segment> opens a segment held by a
   rival; declare its incumbents first`. A trigger on `[]` has nothing to displace; on an undeclared segment it would
@@ -88,8 +89,11 @@ The segment's incumbents plus every vendor with a `COMPETES_IN` position in that
 a Dell-only question still shows where Dell stands against its rivals there. Vendors whose position is `absent` are
 excluded (unless incumbent: an installed vendor is always a candidate).
 
-All candidates are ranked; the answer **shows** the entries with rank ≤ 3 (`RANKING_TOP`, ties at 3 included) plus the
-queried vendor wherever it lands, and `ranked` gives the total number ranked. Found while planning: a full list for an
+All candidates are ranked; the answer **shows** whole rank groups while they fit in 3 entries (`RANKING_TOP`): a tied
+group that would pass 3 is left out entirely, never split alphabetically, and counted in `hidden` (`[{rank, count}]`).
+The queried vendor is shown wherever it lands; `ranked` gives the total number ranked. The queried vendor with no
+brief and no install is not a candidate: it is shown as `unranked` (unknown, not absent; but never ranked first on
+evidence it does not have). Rulings of 2026-10-02 (execution and final review). Found while planning: a full list for an
 account question on a full graph (11 segments × up to 10 vendors) is ~7k of untrimmable JSON on answers already at the
 24k cap.
 
@@ -118,8 +122,10 @@ interface RankedVendor { vendor: string; rank: number; reasons: string[] }
 // SegmentView gains:
 regime: Regime;
 trigger: string | null;
-ranking: RankedVendor[] | null; // null exactly when regime is "unknown"; top 3 + queried vendor
+ranking: RankedVendor[] | null; // null exactly when regime is "unknown"; whole groups up to 3 + queried vendor
 ranked: number;                 // how many candidates were ranked (0 when unknown)
+hidden?: Array<{ rank: number; count: number }>; // tied vendors not listed, per rank; omitted when none
+unranked?: string;              // the queried vendor when no brief places it and it is not installed
 ```
 
 `SegmentView.vendors` keeps its current content and order.
@@ -142,10 +148,10 @@ Under a segment's `installed:` line (before its events):
 
 ```
     trigger: everpure arrays reach end of support 2027-03
-    ranking (open): 1 dell (rival, leader/high) · 2 hpe (rival, strong/high) · 3 everpure (incumbent, no brief) · +1 more
+    ranking (open): 1 dell (rival, leader/high) · 2= hpe (rival, strong/high, tied with 1) · +1 more tied at 2 · ibm (no brief, not ranked)
 ```
 
-(`+N more` when `ranked` exceeds the entries shown.)
+(`2=` marks a shared rank; `+N more tied at R` comes from `hidden`; an `unranked` vendor is named last.)
 
 `unknown` prints `    ranking: none, find out who is installed`. A `defend`/`greenfield` segment prints its ranking
 line the same way, without a trigger line. Text trim order unchanged.
