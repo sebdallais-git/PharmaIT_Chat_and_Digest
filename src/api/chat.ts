@@ -20,6 +20,8 @@ import { searchWeb } from "../services/web-search.js";
 import { handleGapDetection } from "../services/gap-detector.js";
 import { createResponseEntry } from "../services/response-cache.js";
 import { logRequest, logChromaDBMiss } from "../services/request-log.js";
+import { chatGraphContext } from "../services/chat-graph-context.js";
+import { liveCompetitiveDeps } from "../services/competitive-graph-live.js";
 import { isNeo4jAvailable, queryGraphForChat } from "../services/graph-store.js";
 import { openRoleStore } from "../services/role-store.js";
 import { activeRolePreamble, roleReplyFor } from "../services/role-dialogue.js";
@@ -283,18 +285,24 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       const neo4jAvailable = await isNeo4jAvailable();
       if (!neo4jAvailable) return;
 
+      // No early return on empty keywords: "dell at roche" yields none, yet
+      // names a vendor and an account the competitive path can match.
       const keywords = extractGraphKeywords(message);
-      if (keywords.length === 0) return;
 
       sendReasoning("Searching knowledge graph...");
 
-      const graphResult = await Promise.race([
-        queryGraphForChat(keywords),
-        new Promise<string>((resolve) => setTimeout(() => resolve(""), 3000)),
+      // The competitive path times itself out (2.5 s) and falls back to the
+      // keyword lookup; this outer bound only guards that fallback.
+      const graph = await Promise.race([
+        chatGraphContext(message, keywords, { competitive: liveCompetitiveDeps(), keywordLookup: queryGraphForChat }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
       ]);
 
-      if (graphResult) {
-        graphContext = graphResult;
+      if (graph?.source === "competitive") {
+        graphContext = graph.text;
+        sendReasoning(`Competitive position: ${graph.label}`);
+      } else if (graph?.source === "keyword") {
+        graphContext = graph.text;
         const entityNames = keywords.filter((k) => graphContext.toLowerCase().includes(k.toLowerCase()));
         sendReasoning(
           `Found ${entityNames.length} entities in knowledge graph`,
