@@ -42,7 +42,15 @@ export function parseAccounts(yaml: string): Account[] {
     const incumbents: Partial<Record<Segment, string[]>> = {};
     for (const [segment, vendors] of Object.entries((raw.incumbents ?? {}) as Record<string, unknown>)) {
       const key = assertIn(SEGMENTS, segment, "segment");
-      incumbents[key] = (Array.isArray(vendors) ? vendors : []).map(String);
+      // A declared segment is a claim about the install base, so only a list
+      // counts: a bare key or a scalar would otherwise become [] and answer
+      // greenfield for a segment the user may simply not know.
+      if (!Array.isArray(vendors)) {
+        throw new Error(
+          `${id}: incumbents.${key} must be a list of vendors — [] if nobody is installed, or omit the segment if unknown`,
+        );
+      }
+      incumbents[key] = vendors.map(String);
     }
 
     return {
