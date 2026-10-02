@@ -93,11 +93,62 @@ describe("parseAccounts", () => {
 `);
     expect(() => parseAccounts(scalar)).toThrow("roche: incumbents.compute-ai must be a list of vendors");
   });
+
+  const withTriggers = (triggers: string, incumbents = "      storage-block: [everpure]\n") =>
+    yaml(`  roche:
+    name: Roche
+    needs: []
+    incumbents:
+${incumbents}    triggers:
+${triggers}`);
+
+  it("reads a trigger on a segment held by a rival, trimmed", () => {
+    const account = parseAccounts(withTriggers('      storage-block: "  everpure arrays reach end of support 2027-03 "\n'))[0];
+    expect(account.triggers).toEqual({ "storage-block": "everpure arrays reach end of support 2027-03" });
+  });
+
+  it("reads no triggers when the key is absent", () => {
+    expect(parseAccounts(roche)[0].triggers).toEqual({});
+  });
+
+  it("refuses a trigger on a segment outside the closed set", () => {
+    expect(() => parseAccounts(withTriggers('      time-machine: "x"\n'))).toThrow(
+      "roche: triggers.time-machine is not a segment",
+    );
+  });
+
+  it("refuses an empty or non-text trigger", () => {
+    const message = "roche: triggers.storage-block must be a non-empty description of the install-base event";
+    expect(() => parseAccounts(withTriggers('      storage-block: "  "\n'))).toThrow(message);
+    expect(() => parseAccounts(withTriggers("      storage-block: [a, b]\n"))).toThrow(message);
+  });
+
+  it("refuses a trigger on a segment with no declared incumbents, empty or omitted", () => {
+    const message = "roche: triggers.storage-block opens a segment held by a rival; declare its incumbents first";
+    expect(() => parseAccounts(withTriggers('      storage-block: "x"\n', "      storage-block: []\n"))).toThrow(message);
+    expect(() => parseAccounts(withTriggers('      storage-block: "x"\n', "      storage-file: [netapp]\n"))).toThrow(message);
+  });
+
+  it("refuses triggers written as a list or a scalar", () => {
+    const message = "roche: triggers must be a map of segment to description";
+    expect(() => parseAccounts(withTriggers("      - storage-block\n"))).toThrow(message);
+    const scalar = yaml(`  roche:
+    name: Roche
+    needs: []
+    triggers: soon
+`);
+    expect(() => parseAccounts(scalar)).toThrow(message);
+  });
 });
 
 describe("config/accounts.example.yaml", () => {
   // The file users copy is the documentation of omitted vs declared-empty
   // segments; it has to parse, or the first rebuild fails on the example.
+  it("shows a trigger on a segment with declared incumbents", () => {
+    const roche = parseAccounts(readFileSync("config/accounts.example.yaml", "utf8")).find((a) => a.id === "roche");
+    expect(roche?.triggers["storage-block"]).toBe("PowerMax arrays reach end of support 2027-03");
+  });
+
   it("parses, and shows both an omitted and a declared-empty segment", () => {
     const accounts = parseAccounts(readFileSync("config/accounts.example.yaml", "utf8"));
     const roche = accounts.find((a) => a.id === "roche");
@@ -129,6 +180,26 @@ describe("accountToGraphFacts", () => {
       "hpe",
       "lenovo",
     ]);
+  });
+
+  it("stores triggers on the account as JSON, quotes and newlines intact, and nothing when there are none", () => {
+    const account = parseAccounts(
+      yaml(`  roche:
+    name: Roche
+    needs: []
+    incumbents:
+      storage-file: [netapp]
+      storage-block: [everpure]
+    triggers:
+      storage-file: "NetApp \\"ONTAP 9\\": renewal 2027-01\\nsecond line"
+      storage-block: "end of support"
+`),
+    )[0];
+    const node = accountToGraphFacts(account).nodes.find((n) => n.label === "Account");
+    expect(node?.properties.triggers).toBe(
+      JSON.stringify({ "storage-block": "end of support", "storage-file": 'NetApp "ONTAP 9": renewal 2027-01\nsecond line' }),
+    );
+    expect(accountToGraphFacts({ ...account, triggers: {} }).nodes[0].properties).not.toHaveProperty("triggers");
   });
 
   it("records every declared segment on the account, including an empty one", () => {

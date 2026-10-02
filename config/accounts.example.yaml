@@ -52,6 +52,13 @@ accounts:
       compute-standard: [hpe]
       # compute-ai: unknown -- omitted rather than guessed
 
+    # Install-base events that open a segment held by a rival: end of support,
+    # refresh due, a renewal date. Facts, not a pipeline -- no stages, amounts or
+    # close dates. Only on segments with declared incumbents. Without one, the
+    # incumbent keeps the segment in the ranking; with one, position decides.
+    triggers:
+      storage-block: "PowerMax arrays reach end of support 2027-03"
+
     # Free text. Anything a brief cannot know: site names, live programmes,
     # political constraints, who the decision makers are.
     notes: >

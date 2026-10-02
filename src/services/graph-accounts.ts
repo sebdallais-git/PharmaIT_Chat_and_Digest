@@ -21,6 +21,11 @@ export interface Account {
   needs: Need[];
   /** Vendors installed per segment. Several per segment is normal. */
   incumbents: Partial<Record<Segment, string[]>>;
+  /**
+   * Install-base events that open a segment held by a rival (end of support,
+   * refresh due, a renewal date). Facts, not a pipeline: no stages or amounts.
+   */
+  triggers: Partial<Record<Segment, string>>;
   notes: string;
 }
 
@@ -53,12 +58,35 @@ export function parseAccounts(yaml: string): Account[] {
       incumbents[key] = vendors.map(String);
     }
 
+    const triggers: Partial<Record<Segment, string>> = {};
+    if (raw.triggers !== undefined && raw.triggers !== null) {
+      if (typeof raw.triggers !== "object" || Array.isArray(raw.triggers)) {
+        throw new Error(`${id}: triggers must be a map of segment to description`);
+      }
+      for (const [segment, text] of Object.entries(raw.triggers as Record<string, unknown>)) {
+        if (!(SEGMENTS as readonly string[]).includes(segment)) {
+          throw new Error(`${id}: triggers.${segment} is not a segment (expected one of: ${SEGMENTS.join(", ")})`);
+        }
+        const key = segment as Segment;
+        if (typeof text !== "string" || text.trim().length === 0) {
+          throw new Error(`${id}: triggers.${key} must be a non-empty description of the install-base event`);
+        }
+        // A trigger opens a segment a rival holds: on [] there is nothing to
+        // displace, and on an undeclared segment it would hide "find out first".
+        if ((incumbents[key] ?? []).length === 0) {
+          throw new Error(`${id}: triggers.${key} opens a segment held by a rival; declare its incumbents first`);
+        }
+        triggers[key] = text.trim();
+      }
+    }
+
     return {
       id,
       name: typeof raw.name === "string" ? raw.name : id,
       aliases: (Array.isArray(raw.aliases) ? raw.aliases : []).map(String),
       needs,
       incumbents,
+      triggers,
       notes: typeof raw.notes === "string" ? raw.notes.trim() : "",
     };
   });
@@ -91,6 +119,14 @@ export function accountToGraphFacts(account: Account): GraphFacts {
         // "nobody installed"; neither leaves a USES edge, so without this both
         // would read as greenfield. Comma-joined: Neo4j properties are scalars.
         declaredSegments: SEGMENTS.filter((s) => s in account.incumbents).join(","),
+        // Neo4j properties cannot be maps: JSON, keys in segment order, omitted when none.
+        ...(Object.keys(account.triggers).length > 0
+          ? {
+              triggers: JSON.stringify(
+                Object.fromEntries(SEGMENTS.filter((s) => account.triggers[s] !== undefined).map((s) => [s, account.triggers[s]])),
+              ),
+            }
+          : {}),
         notes: account.notes,
       },
     },
