@@ -5,6 +5,7 @@ import {
   type CypherRunner,
   type WriteTransaction,
 } from "../src/services/vendor-graph-rebuild.js";
+import type { EvidenceSource, EvidenceSourceItem } from "../src/services/graph-evidence.js";
 
 const BRIEF = [
   "---",
@@ -129,5 +130,79 @@ describe("rebuildVendorGraph", () => {
         },
       });
     await expect(rebuildVendorGraph(files(ALL), failing)).rejects.toThrow("Neo4j write failed");
+  });
+});
+
+describe("collectVendorGraphFacts — watchlist evidence", () => {
+  const NOW = new Date("2026-10-02T03:00:00.000Z");
+
+  function evidenceItem(over: Partial<EvidenceSourceItem> & { id: number }): EvidenceSourceItem {
+    return {
+      id: over.id,
+      urlCanonical: `https://example.test/${over.id}`,
+      title: `Item ${over.id}`,
+      signal: "it_move",
+      publishedAt: over.publishedAt ?? "2026-09-20T08:00:00.000Z",
+      sourceName: "Blocks & Files",
+      entities: over.entities ?? ["dell"],
+      domains: over.domains ?? ["storage"],
+    };
+  }
+
+  function recordingSource(items: EvidenceSourceItem[]): { source: EvidenceSource; calls: Array<[string[], string]> } {
+    const calls: Array<[string[], string]> = [];
+    return {
+      calls,
+      source: (ids, since) => {
+        calls.push([ids, since]);
+        return items;
+      },
+    };
+  }
+
+  it("asks for the graph's vendors and accounts over the evidence window", () => {
+    const rec = recordingSource([]);
+    collectVendorGraphFacts({ ...files(ALL), evidence: rec.source, now: () => NOW });
+    expect(rec.calls).toEqual([[["dell", "roche"], "2026-04-05T03:00:00.000Z"]]);
+  });
+
+  it("adds Evidence facts and a report line", () => {
+    const rec = recordingSource([
+      evidenceItem({ id: 1, entities: ["dell", "roche"] }),
+      evidenceItem({ id: 2, publishedAt: "2026-11-03T00:00:00.000Z" }),
+    ]);
+    const { batch, lines } = collectVendorGraphFacts({ ...files(ALL), evidence: rec.source, now: () => NOW });
+    const evidence = batch[batch.length - 1];
+    expect(evidence.nodes.map((n) => n.id)).toEqual(["watchlist:1"]);
+    expect(evidence.relationships.map((r) => r.to)).toEqual(["dell", "roche"]);
+    expect(lines).toContain("watchlist.db                 -> 1 evidence for 2 vendors/accounts, 1 future-dated skipped");
+  });
+
+  it("skips and reports a missing watchlist.db", () => {
+    const { batch, lines } = collectVendorGraphFacts({ ...files(ALL), evidence: () => null, now: () => NOW });
+    expect(batch).toHaveLength(3);
+    expect(lines).toContain("watchlist.db                 -> skipped (no such file)");
+  });
+
+  it("writes evidence through the rebuild, after the wipe", async () => {
+    const rec = recordingTransaction();
+    await rebuildVendorGraph(
+      { ...files(ALL), evidence: recordingSource([evidenceItem({ id: 1 })]).source, now: () => NOW },
+      rec.tx,
+    );
+    expect(rec.queries[0]).toBe("MATCH (n) DETACH DELETE n");
+    expect(rec.queries.some((q) => q.startsWith("MERGE (n:Evidence {id: $id})"))).toBe(true);
+    expect(rec.queries.some((q) => q.includes("MERGE (a)-[r:SUPPORTS {url: $id_url}]->(b)"))).toBe(true);
+  });
+
+  it("never opens a transaction when watchlist.db cannot be read", async () => {
+    const rec = recordingTransaction();
+    const unreadable: EvidenceSource = () => {
+      throw new Error("SQLITE_CORRUPT: database disk image is malformed");
+    };
+    await expect(rebuildVendorGraph({ ...files(ALL), evidence: unreadable, now: () => NOW }, rec.tx)).rejects.toThrow(
+      "watchlist.db: SQLITE_CORRUPT: database disk image is malformed",
+    );
+    expect(rec.calls).toBe(0);
   });
 });

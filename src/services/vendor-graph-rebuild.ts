@@ -1,5 +1,6 @@
-// Rebuilds the vendor-intelligence graph from its three deterministic sources:
-// knowledge/vendors/*.md, config/needs.yaml and config/accounts.local.yaml.
+// Rebuilds the vendor-intelligence graph from its four deterministic sources:
+// knowledge/vendors/*.md, config/needs.yaml, config/accounts.local.yaml and
+// the watchlist items about the graph's vendors and accounts (watchlist.db).
 // Shared by scripts/rebuild-vendor-graph.ts and POST /api/graph/rebuild.
 //
 // No model is involved, so a rebuild works on every stack -- the Python builder
@@ -10,6 +11,7 @@ import type { Driver } from "neo4j-driver";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { accountToGraphFacts, needsMapToGraphFacts, parseAccounts, parseNeedsMap } from "./graph-accounts.js";
+import { evidenceSince, evidenceToGraphFacts, type EvidenceSource, type EvidenceSourceItem } from "./graph-evidence.js";
 import { briefToGraphFacts, parseVendorBrief, type GraphFacts } from "./graph-schema.js";
 import { writeGraphFacts, type GraphWriter } from "./graph-writer.js";
 
@@ -17,6 +19,9 @@ export interface RebuildSources {
   root: string;
   readDir?: (dir: string) => string[];
   readFile?: (path: string) => string;
+  /** Watchlist items for the graph's vendors and accounts; omitted, evidence is not part of this rebuild. */
+  evidence?: EvidenceSource;
+  now?: () => Date;
 }
 
 export interface CollectedFacts {
@@ -99,6 +104,32 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
       }),
     ),
   );
+
+  if (sources.evidence !== undefined) {
+    // Evidence attaches to the vendors and accounts the other sources declared;
+    // it never introduces a node of its own.
+    const graphIds = new Set(
+      batch.flatMap((facts) => facts.nodes.filter((n) => n.label === "Vendor" || n.label === "Account").map((n) => n.id)),
+    );
+    const now = (sources.now ?? (() => new Date()))();
+    let items: EvidenceSourceItem[] | null;
+    try {
+      items = sources.evidence([...graphIds].sort(), evidenceSince(now));
+    } catch (err) {
+      // Same rule as a broken accounts file: fail before the wipe, never rebuild without it.
+      throw new Error(`watchlist.db: ${(err as Error).message}`);
+    }
+    if (items === null) {
+      lines.push(`${"watchlist.db".padEnd(28)} -> skipped (no such file)`);
+    } else {
+      const result = evidenceToGraphFacts(items, graphIds, now);
+      batch.push(result.facts);
+      lines.push(
+        `${"watchlist.db".padEnd(28)} -> ${result.evidence} evidence for ${result.entities} vendors/accounts, ` +
+          `${result.futureSkipped} future-dated skipped`,
+      );
+    }
+  }
 
   return { batch, lines };
 }

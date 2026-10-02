@@ -5,8 +5,10 @@
 // the live ones lazily (nothing connects at import time).
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { join } from "node:path";
 import { competitivePosition, type CompetitiveDeps } from "../services/competitive-graph.js";
 import { liveCompetitiveDeps } from "../services/competitive-graph-live.js";
+import { watchlistEvidence } from "../services/graph-evidence.js";
 import { getDriver, getNeo4jStats, isNeo4jAvailable } from "../services/graph-store.js";
 import { neo4jWriteTransaction, rebuildVendorGraph, type RebuildResult } from "../services/vendor-graph-rebuild.js";
 
@@ -108,7 +110,11 @@ export function liveGraphRouterDeps(): GraphRouterDeps {
   return {
     isAvailable: isNeo4jAvailable,
     stats: getNeo4jStats,
-    rebuild: () => rebuildVendorGraph({ root: process.cwd() }, neo4jWriteTransaction(getDriver())),
+    rebuild: () =>
+      rebuildVendorGraph(
+        { root: process.cwd(), evidence: watchlistEvidence(join(process.cwd(), "data", "watchlist.db")) },
+        neo4jWriteTransaction(getDriver()),
+      ),
     competitive: liveCompetitiveDeps,
   };
 }
