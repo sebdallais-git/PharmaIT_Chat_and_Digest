@@ -1,35 +1,43 @@
 import { describe, expect, it } from "@jest/globals";
 import {
+  ACCOUNT_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
+  EVENTS_PER_SEGMENT,
   MAX_ANSWER_CHARS,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
+  VENDOR_EVIDENCE_CYPHER,
   VENDORS_CYPHER,
   competitivePosition,
   fitBudget,
   readGraphSnapshot,
   type CompetitiveAnswer,
   type CompetitiveDeps,
-  type EvidenceItem,
   type RunCypher,
 } from "../src/services/competitive-graph.js";
 import { SEGMENTS } from "../src/services/graph-schema.js";
 import type { BriefExcerpt } from "../src/services/vendor-brief-excerpts.js";
-import type { Domain } from "../src/services/watchlist-config.js";
 
 interface Rows {
   accounts: Array<Record<string, unknown>>;
   needs: Array<Record<string, unknown>>;
   positions: Array<Record<string, unknown>>;
   vendors: Array<Record<string, unknown>>;
+  /** Rows for ACCOUNT_EVIDENCE_CYPHER; absent = a graph with no Evidence yet. */
+  accountEvidence?: Array<Record<string, unknown>>;
+  /** Rows for VENDOR_EVIDENCE_CYPHER, by vendor id. */
+  vendorEvidence?: Record<string, Array<Record<string, unknown>>>;
 }
 
-function fakeCypher(rows: Rows): RunCypher {
-  return async (query) => {
+function fakeCypher(rows: Rows, calls: Array<[string, Record<string, unknown> | undefined]> = []): RunCypher {
+  return async (query, params) => {
+    calls.push([query, params]);
     if (query === ACCOUNTS_CYPHER) return rows.accounts;
     if (query === NEED_SEGMENTS_CYPHER) return rows.needs;
     if (query === POSITIONS_CYPHER) return rows.positions;
     if (query === VENDORS_CYPHER) return rows.vendors;
+    if (query === ACCOUNT_EVIDENCE_CYPHER) return rows.accountEvidence ?? [];
+    if (query === VENDOR_EVIDENCE_CYPHER) return rows.vendorEvidence?.[String(params?.vendor)] ?? [];
     throw new Error(`unexpected query: ${query}`);
   };
 }
@@ -60,7 +68,6 @@ function excerpt(vendor: string, segment: string, claimCount = 1, detail = "deta
 function deps(overrides: Partial<CompetitiveDeps> = {}): CompetitiveDeps {
   return {
     runCypher: fakeCypher(ROWS),
-    recentItems: () => [{ title: "Dell ships PowerMax 9", url: "https://example.test/n", publishedAt: "2026-09-28" }],
     briefs: () => ({ excerpts: new Map([["dell/storage-block", excerpt("dell", "storage-block")]]), errors: [] }),
     vendorAliases: () => ({ "dell-technologies": "dell" }),
     ...overrides,
@@ -145,46 +152,71 @@ describe("competitivePosition", () => {
     expect(result.answer.notes).toContain("brief problem: x.md: bad");
   });
 
-  function recordingItems(): { calls: Array<[string, Domain[], number]>; fn: CompetitiveDeps["recentItems"] } {
-    const calls: Array<[string, Domain[], number]> = [];
-    return {
-      calls,
-      fn: (entity, domains, limit): EvidenceItem[] => {
-        calls.push([entity, domains, limit]);
-        return [];
-      },
-    };
+  function evidenceRow(n: number, over: Record<string, unknown> = {}): Record<string, unknown> {
+    return { title: `News ${n}`, url: `https://example.test/${n}`, publishedAt: `2026-09-${String(10 + n).padStart(2, "0")}`, signal: "it_move", ...over };
   }
 
-  it("fetches the vendor's recent items in the domains of its cited segments", async () => {
-    const items = recordingItems();
-    await competitivePosition(deps({ recentItems: items.fn }), { vendor: "dell" });
-    expect(items.calls).toEqual([["dell", ["storage"], 3]]);
-  });
-
-  it("returns no news rather than off-topic news when no cited segment maps to a domain", async () => {
-    // hpe has no cited standing here; its newest items from any domain would
-    // be presented as evidence for a segment they say nothing about.
-    const items = recordingItems();
-    const result = await competitivePosition(deps({ recentItems: items.fn }), { vendor: "hpe" });
+  it("reads the vendor's evidence for its cited segments from the graph, newest first", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    const rows: Rows = { ...ROWS, vendorEvidence: { dell: [evidenceRow(1), evidenceRow(4), evidenceRow(2), evidenceRow(3)] } };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows, calls) }), { vendor: "dell" });
     if (!result.ok) throw new Error(result.error);
-    expect(items.calls).toEqual([]);
-    expect(result.answer.evidence).toEqual({ hpe: [] });
-    expect(result.answer.notes).toContain("no segment-specific news for hpe: no cited segment maps to a news domain");
+    expect(calls.filter(([q]) => q === VENDOR_EVIDENCE_CYPHER).map(([, p]) => p)).toEqual([
+      { vendor: "dell", segments: ["storage-block"] },
+    ]);
+    expect(result.answer.evidence.dell.map((e) => e.title)).toEqual(["News 4", "News 3", "News 2"]);
   });
 
-  it("treats a vendor cited only in services as having no news domain", async () => {
+  it("returns no news and a note for a vendor with no cited segment", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(ROWS, calls) }), { vendor: "hpe" });
+    if (!result.ok) throw new Error(result.error);
+    expect(calls.some(([q]) => q === VENDOR_EVIDENCE_CYPHER)).toBe(false);
+    expect(result.answer.evidence).toEqual({ hpe: [] });
+    expect(result.answer.notes).toContain("no segment-specific news for hpe: it has no cited segment");
+  });
+
+  it("reads an Evidence row without a signal as signal null", async () => {
+    const row = evidenceRow(1);
+    delete row.signal;
+    const rows: Rows = { ...ROWS, vendorEvidence: { dell: [row] } };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { vendor: "dell" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.answer.evidence.dell[0].signal).toBeNull();
+  });
+
+  it("attaches the newest account events per segment and account-wide news as general", async () => {
     const rows: Rows = {
       ...ROWS,
-      positions: [{ vendor: "dell", segment: "services", position: "strong", confidence: "high", rationale: "r", asOf: "" }],
+      accountEvidence: [
+        ...[1, 2, 3, 4].map((n) => ({ account: "roche", segments: ["storage-block", "storage-file"], ...evidenceRow(n) })),
+        { account: "roche", segments: [], ...evidenceRow(5, { signal: "corporate" }) },
+        { account: "roche", segments: ["networking"], ...evidenceRow(6) },
+      ],
     };
-    const items = recordingItems();
-    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows), recentItems: items.fn }), {
-      segment: "services",
-    });
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche" });
     if (!result.ok) throw new Error(result.error);
-    expect(items.calls).toEqual([]);
-    expect(result.answer.evidence).toEqual({ dell: [] });
+    const roche = result.answer.accounts[0];
+    const block = roche.segments.find((s) => s.segment === "storage-block");
+    expect(block?.events.map((e) => e.title)).toEqual(["News 4", "News 3", "News 2"]);
+    expect(block?.events.length).toBe(EVENTS_PER_SEGMENT);
+    expect(roche.general).toEqual([
+      { title: "News 5", url: "https://example.test/5", publishedAt: "2026-09-15", signal: "corporate" },
+    ]);
+  });
+
+  it("answers on a graph with no Evidence yet: empty events, no notes about it", async () => {
+    const result = await competitivePosition(deps(), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    for (const segment of result.answer.accounts[0].segments) expect(segment.events).toEqual([]);
+    expect(result.answer.accounts[0].general).toEqual([]);
+    expect(result.answer.notes.some((n) => n.includes("event"))).toBe(false);
+  });
+
+  it("points the defend and displace guidance at the segment's events", async () => {
+    const result = await competitivePosition(deps(), { vendor: "dell" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.answer.modes.defend).toContain("the segment's events");
   });
 
   it("passes the resolver's error through", async () => {
@@ -247,6 +279,28 @@ describe("competitivePosition — size budget", () => {
     expect(JSON.stringify(result.answer).length).toBeLessThanOrEqual(MAX_ANSWER_CHARS);
     expect(result.answer.notes.some((n) => n.startsWith("trimmed to fit the answer budget"))).toBe(true);
     expect(result.answer.notes.some((n) => n.startsWith("the answer is still over budget"))).toBe(false);
+  });
+
+  it("drops account events beyond one per segment before it drops claims", async () => {
+    const rows: Rows = {
+      ...ROWS,
+      accountEvidence: [1, 2, 3].map((n) => ({
+        account: "roche",
+        segments: ["storage-block"],
+        title: `${"T".repeat(300)} ${n}`,
+        url: `https://example.test/${n}`,
+        publishedAt: `2026-09-1${n}`,
+        signal: "it_move",
+      })),
+    };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    const answer = result.answer;
+    fitBudget(answer, JSON.stringify(answer).length - 10);
+    const block = answer.accounts[0].segments.find((s) => s.segment === "storage-block");
+    expect(block?.events).toHaveLength(1);
+    expect(answer.standings["dell/storage-block"].strong.length).toBeGreaterThan(0);
+    expect(answer.notes.some((n) => n.includes("account events beyond 1 per segment and account"))).toBe(true);
   });
 
   it("drops claim details before it drops claims", async () => {

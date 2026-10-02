@@ -147,7 +147,7 @@ async function competitiveContext(message: string, deps: ChatGraphDeps): Promise
   const snapshot = await readGraphSnapshot(deps.competitive.runCypher, deps.competitive.vendorAliases());
   const query = matchCompetitiveQuery(message, snapshot);
   if (query === null) return null;
-  const result = competitivePositionFrom(deps.competitive, snapshot, query);
+  const result = await competitivePositionFrom(deps.competitive, snapshot, query);
   if (!result.ok) throw new Error(result.error);
   return { source: "competitive", label: label(result.answer.query), text: renderCompetitiveContext(result.answer) };
 }

@@ -7,9 +7,11 @@ import {
   type ChatGraphDeps,
 } from "../src/services/chat-graph-context.js";
 import {
+  ACCOUNT_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
+  VENDOR_EVIDENCE_CYPHER,
   VENDORS_CYPHER,
   type CompetitiveAnswer,
   type CompetitiveDeps,
@@ -87,14 +89,16 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
         account: "roche",
         name: "Roche",
         needs: ["cyber-resilience"],
+        general: [],
         segments: [
           {
             segment: "storage-block",
             via: ["cyber-resilience"],
             incumbents: ["dell"],
             vendors: [{ vendor: "dell", mode: "defend", position: "leader" }],
+            events: [],
           },
-          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }] },
+          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }], events: [] },
         ],
       },
     ],
@@ -110,7 +114,7 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
         sources: ["https://example.test/s"],
       },
     },
-    evidence: { dell: [{ title: "Dell ships PowerMax 9", url: "https://example.test/n", publishedAt: "2026-09-28" }] },
+    evidence: { dell: [{ title: "Dell ships PowerMax 9", url: "https://example.test/n", publishedAt: "2026-09-28", signal: "it_move" }] },
     notes: ["no curated evidence for dell in storage-object: the position rests on the graph alone"],
     ...overrides,
   };
@@ -180,6 +184,7 @@ function fakeCypher(calls: string[] = []): RunCypher {
     if (query === NEED_SEGMENTS_CYPHER) return ROWS.needs;
     if (query === POSITIONS_CYPHER) return ROWS.positions;
     if (query === VENDORS_CYPHER) return ROWS.vendors;
+    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER) return [];
     throw new Error(`unexpected query: ${query}`);
   };
 }
@@ -187,7 +192,6 @@ function fakeCypher(calls: string[] = []): RunCypher {
 function competitive(overrides: Partial<CompetitiveDeps> = {}): CompetitiveDeps {
   return {
     runCypher: fakeCypher(),
-    recentItems: () => [],
     briefs: () => ({ excerpts: new Map(), errors: [] }),
     vendorAliases: () => ({}),
     ...overrides,

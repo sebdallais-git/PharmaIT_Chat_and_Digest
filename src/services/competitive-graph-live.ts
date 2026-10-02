@@ -26,7 +26,6 @@ export function liveCompetitiveDeps(): CompetitiveDeps {
   const reader = liveReader();
   return {
     runCypher: (query, params) => reader.runCypher(query, params),
-    recentItems: (entity, domains, limit) => reader.itemsFor(entity, limit, domains),
     briefs: () => loadBriefExcerpts(join(process.cwd(), "knowledge", "vendors")),
     vendorAliases: watchlistAliases,
   };
