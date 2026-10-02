@@ -137,6 +137,20 @@ describe("renderCompetitiveContext", () => {
     expect(text).toContain("- no curated evidence for dell in storage-object");
   });
 
+  it("shows each segment's events under its installs, and account-wide news as general", () => {
+    const base = answer();
+    const roche = base.accounts[0];
+    roche.general = [{ title: "Roche reorganises IT", url: "https://example.test/g", publishedAt: "2026-09-02", signal: null }];
+    roche.segments[0].events = [
+      { title: "Roche consolidates EU data centres", url: "https://example.test/e", publishedAt: "2026-09-14", signal: "it_move" },
+    ];
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain("  general:\n    ↳ 2026-09-02 [untagged] Roche reorganises IT");
+    expect(text).toContain(
+      "  storage-block (via cyber-resilience), installed: dell\n    ↳ 2026-09-14 [it_move] Roche consolidates EU data centres",
+    );
+  });
+
   it("stays within the chat budget, saying it was cut", () => {
     const many = Object.fromEntries(
       Array.from({ length: 80 }, (_, i) => [

@@ -10,6 +10,7 @@ import {
   readGraphSnapshot,
   type CompetitiveAnswer,
   type CompetitiveDeps,
+  type EvidenceItem,
 } from "./competitive-graph.js";
 import type { CompetitiveQuery, GraphSnapshot } from "./competitive-position.js";
 
@@ -86,6 +87,10 @@ function label(query: CompetitiveAnswer["query"]): string {
 
 const CUT_NOTE = "… (cut to fit the chat context: ask about one vendor, account or segment for the rest)";
 
+function eventLine(e: EvidenceItem): string {
+  return `    ↳ ${e.publishedAt} [${e.signal ?? "untagged"}] ${e.title}`;
+}
+
 /** The answer as prompt text, within the chat budget. */
 export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHAT_CONTEXT_CHARS): string {
   const a = structuredClone(answer);
@@ -99,9 +104,11 @@ export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHA
   }
   for (const account of a.accounts) {
     lines.push(`${account.name} (${account.account}), needs: ${account.needs.join(", ") || "none recorded"}`);
+    if (account.general.length > 0) lines.push("  general:", ...account.general.map(eventLine));
     for (const s of account.segments) {
       const via = s.via.length > 0 ? ` (via ${s.via.join(", ")})` : "";
       lines.push(`  ${s.segment}${via}, installed: ${s.incumbents.join(", ") || "nobody"}`);
+      lines.push(...s.events.map(eventLine));
       for (const v of s.vendors) lines.push(`    ${v.vendor}: ${v.mode}, position ${v.position ?? "unknown"}`);
     }
   }
