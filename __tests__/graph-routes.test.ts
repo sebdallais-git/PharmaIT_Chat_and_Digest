@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { createGraphRouter, type GraphRouterDeps } from "../src/api/graph.js";
 import {
   ACCOUNT_EVIDENCE_CYPHER,
+  NEED_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
@@ -28,7 +29,7 @@ const competitive: CompetitiveDeps = {
       return [{ vendor: "dell", segment: "storage-block", position: "leader", confidence: "high", rationale: "r", asOf: "" }];
     }
     if (query === VENDORS_CYPHER) return [{ id: "dell" }];
-    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER) return [];
+    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER || query === NEED_EVIDENCE_CYPHER) return [];
     throw new Error("unexpected query");
   },
   briefs: () => ({ excerpts: new Map(), errors: [] }),

@@ -2,6 +2,8 @@ import { describe, expect, it } from "@jest/globals";
 import {
   ACCOUNT_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
+  NEED_EVIDENCE_CYPHER,
+  NEED_EVIDENCE_PER_NEED,
   EVENTS_PER_SEGMENT,
   MAX_ANSWER_CHARS,
   NEED_SEGMENTS_CYPHER,
@@ -28,6 +30,7 @@ interface Rows {
   accountEvidence?: Array<Record<string, unknown>>;
   /** Rows for VENDOR_EVIDENCE_CYPHER, by vendor id. */
   vendorEvidence?: Record<string, Array<Record<string, unknown>>>;
+  needEvidence?: Array<Record<string, unknown>>;
 }
 
 function fakeCypher(rows: Rows, calls: Array<[string, Record<string, unknown> | undefined]> = []): RunCypher {
@@ -39,6 +42,7 @@ function fakeCypher(rows: Rows, calls: Array<[string, Record<string, unknown> | 
     if (query === VENDORS_CYPHER) return rows.vendors;
     if (query === ACCOUNT_EVIDENCE_CYPHER) return rows.accountEvidence ?? [];
     if (query === VENDOR_EVIDENCE_CYPHER) return rows.vendorEvidence?.[String(params?.vendor)] ?? [];
+    if (query === NEED_EVIDENCE_CYPHER) return rows.needEvidence ?? [];
     throw new Error(`unexpected query: ${query}`);
   };
 }
@@ -245,6 +249,35 @@ describe("competitivePosition", () => {
     expect(result.answer.regimes).toEqual({ unknown: REGIME_GUIDANCE.unknown, defend: REGIME_GUIDANCE.defend });
   });
 
+  function needRow(n: number, over: Record<string, unknown> = {}): Record<string, unknown> {
+    return { account: "roche", need: "cyber-resilience", claim: `Claim ${n}`, quote: `Quote ${n}.`, source: "knowledge/a.md", ...over };
+  }
+
+  it("shows up to three approved reasons per declared need, in file order", async () => {
+    const rows: Rows = { ...ROWS, needEvidence: [1, 2, 3, 4].map((n) => needRow(n)) };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.answer.accounts[0].needEvidence).toEqual({
+      "cyber-resilience": [1, 2, 3].map((n) => ({ claim: `Claim ${n}`, quote: `Quote ${n}.`, source: "knowledge/a.md" })),
+    });
+    expect(NEED_EVIDENCE_PER_NEED).toBe(3);
+  });
+
+  it("leaves out a need without approved reasons, and a need the account does not declare, with no note", async () => {
+    const rows: Rows = { ...ROWS, needEvidence: [needRow(1, { need: "sustainability" })] };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.answer.accounts[0].needEvidence).toEqual({});
+    expect(result.answer.notes.some((n) => n.includes("need evidence"))).toBe(false);
+  });
+
+  it("reads only watchlist evidence as news, also on a graph built before kind existed", () => {
+    for (const query of [ACCOUNT_EVIDENCE_CYPHER, VENDOR_EVIDENCE_CYPHER]) {
+      expect(query).toContain('coalesce(e.kind, "watchlist") = "watchlist"');
+    }
+    expect(NEED_EVIDENCE_CYPHER).toContain('kind: "reference"');
+  });
+
   it("passes the resolver's error through", async () => {
     expect(await competitivePosition(deps(), {})).toEqual({
       ok: false,
@@ -329,6 +362,27 @@ describe("competitivePosition — size budget", () => {
     expect(block?.events).toHaveLength(1);
     expect(answer.standings["dell/storage-block"].strong.length).toBeGreaterThan(0);
     expect(answer.notes.some((n) => n.includes("account events beyond 1 per segment and account"))).toBe(true);
+  });
+
+  it("drops need-evidence quotes, then need evidence, before claims", async () => {
+    const rows: Rows = {
+      ...ROWS,
+      needEvidence: [1, 2, 3].map((n) => ({
+        account: "roche",
+        need: "cyber-resilience",
+        claim: `Claim ${n}`,
+        quote: "Q".repeat(400),
+        source: "knowledge/a.md",
+      })),
+    };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    const answer = result.answer;
+    fitBudget(answer, JSON.stringify(answer).length - 10);
+    const reasons = answer.accounts[0].needEvidence["cyber-resilience"];
+    expect(reasons.map((r) => r.quote)).toEqual(["", "", ""]);
+    expect(reasons.map((r) => r.claim)).toEqual(["Claim 1", "Claim 2", "Claim 3"]);
+    expect(answer.notes.some((n) => n.includes("need-evidence quotes"))).toBe(true);
   });
 
   it("drops claim details before it drops claims", async () => {

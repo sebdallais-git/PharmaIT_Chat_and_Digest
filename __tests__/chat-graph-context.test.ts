@@ -8,6 +8,7 @@ import {
 } from "../src/services/chat-graph-context.js";
 import {
   ACCOUNT_EVIDENCE_CYPHER,
+  NEED_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
@@ -91,6 +92,7 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
         name: "Roche",
         needs: ["cyber-resilience"],
         general: [],
+        needEvidence: {},
         segments: [
           {
             segment: "storage-block",
@@ -273,7 +275,7 @@ function fakeCypher(calls: string[] = []): RunCypher {
     if (query === NEED_SEGMENTS_CYPHER) return ROWS.needs;
     if (query === POSITIONS_CYPHER) return ROWS.positions;
     if (query === VENDORS_CYPHER) return ROWS.vendors;
-    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER) return [];
+    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER || query === NEED_EVIDENCE_CYPHER) return [];
     throw new Error(`unexpected query: ${query}`);
   };
 }

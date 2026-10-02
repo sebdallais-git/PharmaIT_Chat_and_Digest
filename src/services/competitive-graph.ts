@@ -63,7 +63,7 @@ export const VENDORS_CYPHER = `MATCH (v:Vendor) RETURN v.id AS id ORDER BY id`;
 
 export const ACCOUNT_EVIDENCE_CYPHER = `
   MATCH (e:Evidence)-[s:SUPPORTS]->(a:Account)
-  WHERE a.id IN $accounts
+  WHERE a.id IN $accounts AND coalesce(e.kind, "watchlist") = "watchlist"
   RETURN a.id AS account, s.segments AS segments, e.title AS title, e.url AS url,
          e.publishedAt AS publishedAt, e.signal AS signal
   ORDER BY publishedAt DESC, url
@@ -71,14 +71,23 @@ export const ACCOUNT_EVIDENCE_CYPHER = `
 
 export const VENDOR_EVIDENCE_CYPHER = `
   MATCH (e:Evidence)-[s:SUPPORTS]->(v:Vendor {id: $vendor})
-  WHERE any(segment IN s.segments WHERE segment IN $segments)
+  WHERE coalesce(e.kind, "watchlist") = "watchlist" AND any(segment IN s.segments WHERE segment IN $segments)
   RETURN e.title AS title, e.url AS url, e.publishedAt AS publishedAt, e.signal AS signal
   ORDER BY publishedAt DESC, url
+`;
+
+/** Approved reasons why an account has a need (need-evidence.ts), in the file's order. */
+export const NEED_EVIDENCE_CYPHER = `
+  MATCH (e:Evidence {kind: "reference"})-[s:SUPPORTS]->(a:Account)
+  WHERE a.id IN $accounts
+  RETURN a.id AS account, s.need AS need, e.claim AS claim, e.quote AS quote, e.source AS source
+  ORDER BY e.order
 `;
 
 export const EVIDENCE_PER_VENDOR = 3;
 export const EVENTS_PER_SEGMENT = 3;
 export const GENERAL_PER_ACCOUNT = 3;
+export const NEED_EVIDENCE_PER_NEED = 3;
 /** ~6k tokens: room in a 64K context for the question, the answer and the model's own reasoning. */
 export const MAX_ANSWER_CHARS = 24_000;
 export const TRIMMED_RATIONALE_CHARS = 200;
@@ -99,10 +108,18 @@ export interface AnswerSegment extends SegmentView {
   events: EvidenceItem[];
 }
 
+export interface NeedEvidenceItem {
+  claim: string;
+  quote: string;
+  source: string;
+}
+
 export interface AnswerAccount extends Omit<AccountView, "segments"> {
   segments: AnswerSegment[];
   /** Newest account news that maps to no segment (reorganisations, results, sites). */
   general: EvidenceItem[];
+  /** The user's approved reasons why the account has each need; needs without one are absent. */
+  needEvidence: Record<string, NeedEvidenceItem[]>;
 }
 
 export interface CompetitiveAnswer {
@@ -205,6 +222,22 @@ async function readAccountEvidence(runCypher: RunCypher, accounts: string[]): Pr
   return byAccount;
 }
 
+async function readNeedEvidence(runCypher: RunCypher, accounts: string[]): Promise<Map<string, Map<string, NeedEvidenceItem[]>>> {
+  const byAccount = new Map<string, Map<string, NeedEvidenceItem[]>>();
+  if (accounts.length === 0) return byAccount;
+  for (const row of await runCypher(NEED_EVIDENCE_CYPHER, { accounts })) {
+    const account = str(row.account, "account");
+    const need = str(row.need, "need");
+    const needs = byAccount.get(account) ?? new Map<string, NeedEvidenceItem[]>();
+    needs.set(need, [
+      ...(needs.get(need) ?? []),
+      { claim: str(row.claim, "claim"), quote: str(row.quote, "quote"), source: str(row.source, "source") },
+    ]);
+    byAccount.set(account, needs);
+  }
+  return byAccount;
+}
+
 export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Record<string, string>): Promise<GraphSnapshot> {
   const [accountRows, needRows, positionRows, vendorRows] = await Promise.all([
     runCypher(ACCOUNTS_CYPHER),
@@ -281,7 +314,21 @@ export const TRIM_STEPS: TrimStep[] = [
     apply: (a) => {
       for (const s of Object.values(a.standings)) for (const c of [...s.strong, ...s.weak]) c.detail = "";
     },
+  },  {
+    drops: "need-evidence quotes",
+    applies: (a) => a.accounts.some((acc) => Object.values(acc.needEvidence).some((list) => list.some((e) => e.quote !== ""))),
+    apply: (a) => {
+      for (const acc of a.accounts) for (const list of Object.values(acc.needEvidence)) for (const e of list) e.quote = "";
+    },
   },
+  {
+    drops: "need evidence",
+    applies: (a) => a.accounts.some((acc) => Object.keys(acc.needEvidence).length > 0),
+    apply: (a) => {
+      for (const acc of a.accounts) acc.needEvidence = {};
+    },
+  },
+
   {
     drops: "account events beyond 1 per segment and account",
     applies: (a) => a.accounts.some((acc) => acc.general.length > 1 || acc.segments.some((seg) => seg.events.length > 1)),
@@ -417,6 +464,10 @@ export async function competitivePositionFrom(
     deps.runCypher,
     r.accounts.map((a) => a.account),
   );
+  const reasons = await readNeedEvidence(
+    deps.runCypher,
+    r.accounts.map((a) => a.account),
+  );
   const accounts: AnswerAccount[] = r.accounts.map((account) => {
     const rows = events.get(account.account) ?? [];
     return {
@@ -432,6 +483,11 @@ export async function competitivePositionFrom(
         .filter((e) => e.segments.length === 0)
         .slice(0, GENERAL_PER_ACCOUNT)
         .map((e) => ({ ...e.item })),
+      needEvidence: Object.fromEntries(
+        account.needs
+          .map((need): [string, NeedEvidenceItem[]] => [need, (reasons.get(account.account)?.get(need) ?? []).slice(0, NEED_EVIDENCE_PER_NEED)])
+          .filter(([, list]) => list.length > 0),
+      ),
     };
   });
 
