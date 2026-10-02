@@ -219,6 +219,9 @@ Ranking was deliberately deferred as too complex. The tool must therefore return
 "Dell leads in storage" without it is precisely the false confidence this design exists
 to remove.
 
+> **2026-10-02:** win likelihood per account segment is now ranked (`2026-10-02-vendor-ranking-design.md`).
+> A market order across accounts stays unranked, for the reason above.
+
 One tool rather than two primitives, because the local model demonstrably fails at
 orchestration — on 2026-09-21 it called three tools by stale names and then batched them
 illegally. The result is compact structured JSON: positions, confidence, short excerpts,

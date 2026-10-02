@@ -80,7 +80,9 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   The nightly ingest runs it after each pass; exit 3 = ingest ok, rebuild failed (Telegram via the Hermes wrapper). MCP
   `competitive_position` (`competitive-graph.ts`) answers "what is <vendor> doing best for my accounts", incumbency first:
   defend / displace / greenfield (segment declared `[]`) / unknown (segment omitted from the accounts file). Account segments
-  carry `events`, accounts `general` (newest Evidence).
+  carry `events`, accounts `general` (newest Evidence), and a win-likelihood `ranking`
+  (`segment-ranking.ts`: whole rank groups up to 3 + the asked vendor; regimes defend/open/greenfield/unknown; `open`
+  needs an install-base trigger declared in `accounts.local.yaml`).
   The web chat's graph block uses the same answer, rendered to ~6k chars (`chat-graph-context.ts`), when the message
   names one briefed vendor or one account; otherwise, or on any failure or after 2.5 s, the old keyword lookup.
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)
