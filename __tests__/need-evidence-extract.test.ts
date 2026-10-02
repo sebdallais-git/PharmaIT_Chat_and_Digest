@@ -77,7 +77,13 @@ describe("parseReply / checkProposal", () => {
     expect(checkProposal({ ...GOOD, account: "acme" }, chunk, [roche])).toBe("unknown account");
     expect(checkProposal({ ...GOOD, need: "sustainability" }, chunk, [roche])).toBe("undeclared need");
     expect(checkProposal({ ...GOOD, claim: "x".repeat(201) }, chunk, [roche])).toBe("claim too long");
-    expect(checkProposal({ ...GOOD, quote: "Merck lost weeks to NotPetya." }, chunk, [roche])).toBe("quote not in source");
+    expect(checkProposal({ ...GOOD, quote: "Merck lost several weeks of output to NotPetya." }, chunk, [roche])).toBe(
+      "quote not in source",
+    );
+  });
+
+  it("drops a quote too short to anchor a claim", () => {
+    expect(checkProposal({ ...GOOD, quote: "Merck's operations" }, DOC, [roche])).toBe("quote too short");
   });
 
   it("matches a quote that wraps across lines in the source", () => {
@@ -128,9 +134,15 @@ describe("runExtraction", () => {
     const result = await runExtraction(
       empty(),
       [roche],
-      deps({ complete: async () => reply([{ ...GOOD, account: "acme" }, { ...GOOD, quote: "invented" }]) }),
+      deps({ complete: async () => reply([{ ...GOOD, account: "acme" }, { ...GOOD, quote: "an invented sentence that appears nowhere at all" }]) }),
     );
-    expect(result.dropped).toEqual({ "unknown account": 1, "undeclared need": 0, "claim too long": 0, "quote not in source": 1 });
+    expect(result.dropped).toEqual({
+      "unknown account": 1,
+      "undeclared need": 0,
+      "claim too long": 0,
+      "quote too short": 0,
+      "quote not in source": 1,
+    });
     expect(result.file.entries).toEqual([]);
   });
 
@@ -149,6 +161,28 @@ describe("runExtraction", () => {
     );
     expect(thrown.failedChunks).toBe(1);
     expect(thrown.file.sources).toEqual({});
+  });
+
+  it("skips a document it cannot read and carries on, retrying it next time", async () => {
+    const d = deps({ docs: { "knowledge/a.md": DOC, "knowledge/b.pdf": DOC } });
+    const result = await runExtraction(empty(), [roche], {
+      ...d,
+      read: async (path) => {
+        if (path.endsWith(".pdf")) throw new Error("bad XRef entry");
+        return DOC;
+      },
+    });
+    expect(result.failedDocs).toBe(1);
+    expect(Object.keys(result.file.sources)).toEqual(["knowledge/a.md"]);
+    expect(result.proposed).toHaveLength(1);
+  });
+
+  it("hands the file over after every document so a crash loses at most one", async () => {
+    const saved: number[] = [];
+    await runExtraction(empty(), [roche], deps({ docs: { "knowledge/a.md": DOC, "knowledge/b.md": `${DOC} more` } }), {
+      onDocument: (f) => saved.push(Object.keys(f.sources).length),
+    });
+    expect(saved).toEqual([1, 2]);
   });
 
   it("processes only the named document", async () => {

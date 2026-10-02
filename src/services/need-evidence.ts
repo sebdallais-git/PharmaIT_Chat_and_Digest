@@ -43,7 +43,7 @@ export function normaliseSpace(text: string): string {
 
 /** Stable across re-runs: the same quote for the same account and need is the same entry. */
 export function entryId(account: string, need: string, quote: string): string {
-  return `ne-${createHash("sha256").update(`${account}\n${need}\n${normaliseSpace(quote)}`).digest("hex").slice(0, 6)}`;
+  return `ne-${createHash("sha256").update(`${account}\n${need}\n${normaliseSpace(quote)}`).digest("hex").slice(0, 10)}`;
 }
 
 function text(value: unknown): string {
@@ -101,6 +101,19 @@ export function checkAgainstAccounts(file: NeedEvidenceFile, accounts: Account[]
     }
   }
   for (const [problem, ids] of stale) throw new Error(`${problem}: reject or re-approve ${ids.join(", ")}`);
+}
+
+/**
+ * Fold a run's result into the file as it is on disk now: the user may have
+ * approved entries while the run went on. Their entries win; the run only
+ * adds entries whose id is new, and the documents it processed.
+ */
+export function mergeNeedEvidence(onDisk: NeedEvidenceFile, fromRun: NeedEvidenceFile): NeedEvidenceFile {
+  const known = new Set(onDisk.entries.map((e) => e.id));
+  return {
+    sources: { ...onDisk.sources, ...fromRun.sources },
+    entries: [...onDisk.entries.map((e) => ({ ...e })), ...fromRun.entries.filter((e) => !known.has(e.id))],
+  };
 }
 
 export function renderNeedEvidence(file: NeedEvidenceFile): string {

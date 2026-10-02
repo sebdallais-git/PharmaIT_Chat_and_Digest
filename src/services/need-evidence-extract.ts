@@ -17,6 +17,8 @@ import {
 
 export const CHUNK_WORDS = 2500;
 export const MAX_PER_CHUNK = 5;
+/** A quote shorter than this anchors nothing: "Roche" is in every Roche document. */
+export const MIN_QUOTE_WORDS = 6;
 export const LEGACY_EXTENSIONS = [".md", ".pdf", ".docx"];
 
 export interface ProposedEntry {
@@ -26,7 +28,7 @@ export interface ProposedEntry {
   quote: string;
 }
 
-export type DropReason = "unknown account" | "undeclared need" | "claim too long" | "quote not in source";
+export type DropReason = "unknown account" | "undeclared need" | "claim too long" | "quote too short" | "quote not in source";
 
 export interface ExtractDeps {
   documents(): string[];
@@ -43,6 +45,8 @@ export interface ExtractResult {
   dropped: Record<DropReason, number>;
   skippedDocs: number;
   failedChunks: number;
+  /** Documents that could not be read (a broken PDF): left unrecorded, retried next run. */
+  failedDocs: number;
 }
 
 export interface ExtractArgs {
@@ -122,6 +126,7 @@ export function checkProposal(p: ProposedEntry, chunk: string, accounts: Account
   if (account === undefined) return "unknown account";
   if (!(account.needs as readonly string[]).includes(p.need)) return "undeclared need";
   if (p.claim.length > MAX_CLAIM_CHARS) return "claim too long";
+  if (words(p.quote).length < MIN_QUOTE_WORDS) return "quote too short";
   // A guard against invented quotes, not a trust signal: whitespace and line
   // wraps are forgiven, wording is not.
   if (!normaliseSpace(chunk).includes(normaliseSpace(p.quote))) return "quote not in source";
@@ -132,19 +137,29 @@ export async function runExtraction(
   file: NeedEvidenceFile,
   accounts: Account[],
   deps: ExtractDeps,
-  options: { only?: string } = {},
+  // onDocument receives the file after each document, so the caller can save
+  // progress: a crash or Ctrl-C then loses at most the document in hand.
+  options: { only?: string; onDocument?: (file: NeedEvidenceFile) => void } = {},
 ): Promise<ExtractResult> {
   const result: ExtractResult = {
     file: { sources: { ...file.sources }, entries: file.entries.map((e) => ({ ...e })) },
     proposed: [],
-    dropped: { "unknown account": 0, "undeclared need": 0, "claim too long": 0, "quote not in source": 0 },
+    dropped: { "unknown account": 0, "undeclared need": 0, "claim too long": 0, "quote too short": 0, "quote not in source": 0 },
     skippedDocs: 0,
     failedChunks: 0,
+    failedDocs: 0,
   };
   const known = new Set(result.file.entries.map((e) => e.id));
 
   for (const doc of deps.documents().filter((d) => options.only === undefined || d === options.only)) {
-    const text = await deps.read(doc);
+    let text: string;
+    try {
+      text = await deps.read(doc);
+    } catch (err) {
+      deps.log(`${doc}: cannot be read, skipped: ${err instanceof Error ? err.message : String(err)}`);
+      result.failedDocs++;
+      continue;
+    }
     const hash = createHash("sha256").update(text).digest("hex").slice(0, 16);
     if (result.file.sources[doc] === hash) {
       result.skippedDocs++;
@@ -182,6 +197,7 @@ export async function runExtraction(
     }
     // A failed chunk leaves the document unrecorded, so the next run retries it.
     if (!docFailed) result.file.sources[doc] = hash;
+    options.onDocument?.(result.file);
   }
   return result;
 }

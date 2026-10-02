@@ -2,6 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import type { Account } from "../src/services/graph-accounts.js";
 import {
   checkAgainstAccounts,
+  mergeNeedEvidence,
   entryId,
   needEvidenceToGraphFacts,
   parseNeedEvidence,
@@ -40,7 +41,7 @@ const roche: Account = {
 describe("entryId", () => {
   it("is stable, prefixed, and ignores whitespace differences in the quote", () => {
     const id = entryId("roche", "cyber-resilience", "Merck's operations were\n  disrupted.");
-    expect(id).toMatch(/^ne-[0-9a-f]{6}$/);
+    expect(id).toMatch(/^ne-[0-9a-f]{10}$/);
     expect(entryId("roche", "cyber-resilience", "Merck's operations were disrupted.")).toBe(id);
     expect(entryId("novartis", "cyber-resilience", "Merck's operations were disrupted.")).not.toBe(id);
   });
@@ -147,6 +148,23 @@ describe("needEvidenceToGraphFacts", () => {
   it("reports a file with nothing approved", () => {
     expect(needEvidenceToGraphFacts(file([entry({ id: "ne-000001", status: "proposed" })])).line).toBe(
       "need-evidence.local.yaml     -> 0 approved, 1 proposed, 0 rejected",
+    );
+  });
+});
+
+describe("mergeNeedEvidence", () => {
+  it("keeps the user's edits made during a run and appends only new entries", () => {
+    // Read at the start of a run, then approved by the user while it ran.
+    const onDisk = file([entry({ id: "ne-000001", status: "approved" })], { "knowledge/a.md": "h1" });
+    const fromRun = file(
+      [entry({ id: "ne-000001", status: "proposed" }), entry({ id: "ne-000002", status: "proposed", need: "gxp-compliance" })],
+      { "knowledge/a.md": "h1", "knowledge/b.md": "h2" },
+    );
+    expect(mergeNeedEvidence(onDisk, fromRun)).toEqual(
+      file(
+        [entry({ id: "ne-000001", status: "approved" }), entry({ id: "ne-000002", status: "proposed", need: "gxp-compliance" })],
+        { "knowledge/a.md": "h1", "knowledge/b.md": "h2" },
+      ),
     );
   });
 });
