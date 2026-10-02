@@ -206,3 +206,52 @@ describe("collectVendorGraphFacts — watchlist evidence", () => {
     expect(rec.calls).toBe(0);
   });
 });
+
+describe("collectVendorGraphFacts — need evidence", () => {
+  const NEED_EVIDENCE = `entries:
+  - id: ne-000001
+    status: approved
+    account: roche
+    need: cyber-resilience
+    claim: Ransomware halted a peer for weeks
+    quote: Operations were disrupted for weeks.
+    source: knowledge/a.md
+    extracted: 2026-10-02
+  - id: ne-000002
+    status: proposed
+    account: roche
+    need: cyber-resilience
+    claim: Another
+    quote: Another quote.
+    source: knowledge/a.md
+    extracted: 2026-10-02
+`;
+
+  it("writes approved entries as reference Evidence and reports the file", () => {
+    const { batch, lines } = collectVendorGraphFacts(files({ ...ALL, "/repo/config/need-evidence.local.yaml": NEED_EVIDENCE }));
+    const ids = batch.flatMap((f) => f.nodes.filter((n) => n.label === "Evidence").map((n) => n.id));
+    expect(ids).toEqual(["ne-000001"]);
+    expect(lines).toContain("need-evidence.local.yaml     -> 1 approved (roche 1), 1 proposed, 0 rejected");
+  });
+
+  it("skips and reports a missing file", () => {
+    expect(collectVendorGraphFacts(files(ALL)).lines).toContain("need-evidence.local.yaml     -> skipped (no such file)");
+  });
+
+  it("fails before the wipe on an approved entry for a need the account does not declare", async () => {
+    const rec = recordingTransaction();
+    const stale = NEED_EVIDENCE.replace("need: cyber-resilience", "need: data-sovereignty");
+    await expect(
+      rebuildVendorGraph(files({ ...ALL, "/repo/config/need-evidence.local.yaml": stale }), rec.tx),
+    ).rejects.toThrow("need-evidence.local.yaml: roche no longer declares data-sovereignty: reject or re-approve ne-000001");
+    expect(rec.calls).toBe(0);
+  });
+
+  it("fails before the wipe on a file that is not valid YAML, naming it", async () => {
+    const rec = recordingTransaction();
+    await expect(
+      rebuildVendorGraph(files({ ...ALL, "/repo/config/need-evidence.local.yaml": "entries: [\n  - id: x" }), rec.tx),
+    ).rejects.toThrow(/^need-evidence\.local\.yaml: /);
+    expect(rec.calls).toBe(0);
+  });
+});

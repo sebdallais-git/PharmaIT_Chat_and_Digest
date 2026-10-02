@@ -62,6 +62,7 @@ describe("evidenceToGraphFacts", () => {
         label: "Evidence",
         id: "watchlist:7",
         properties: {
+          kind: "watchlist",
           title: "Item 7",
           url: "https://example.test/7",
           publishedAt: "2026-09-20",
