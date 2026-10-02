@@ -112,9 +112,18 @@ export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHA
 
 function rankingLine(s: AnswerSegment): string {
   if (s.ranking === null) return "    ranking: none, find out who is installed";
-  const shown = s.ranking.map((r) => `${r.rank} ${r.vendor} (${r.reasons.join(", ")})`);
-  const more = s.ranked - s.ranking.length;
-  if (more > 0) shown.push(`+${more} more`);
+  const ranking = s.ranking;
+  const hidden = s.hidden ?? [];
+  // How many share a rank: the listed ones plus those hidden at it. "2=" marks a
+  // shared rank, or a shown vendor reads as uniquely placed when its peers are hidden.
+  const tied = (rank: number): number =>
+    ranking.filter((r) => r.rank === rank).length + (hidden.find((h) => h.rank === rank)?.count ?? 0);
+  const shown = ranking.map((r) => {
+    const n = tied(r.rank);
+    return `${r.rank}${n > 1 ? "=" : ""} ${r.vendor} (${[...r.reasons, ...(n > 1 ? [`tied with ${n - 1}`] : [])].join(", ")})`;
+  });
+  for (const h of hidden) shown.push(`+${h.count} more tied at ${h.rank}`);
+  if (s.unranked !== undefined) shown.push(`${s.unranked} (no brief, not ranked)`);
   return `    ranking (${s.regime}): ${shown.join(" · ") || "nobody ranked"}`;
 }
 

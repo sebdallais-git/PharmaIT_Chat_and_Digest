@@ -95,10 +95,14 @@ export interface SegmentView {
   regime: Regime;
   /** The declared install-base trigger, stated once per segment. */
   trigger: string | null;
-  /** Win likelihood here: top 3 plus the asked vendor; null when who is installed is unknown. */
+  /** Win likelihood here: whole rank groups up to 3 plus the asked vendor; null when who is installed is unknown. */
   ranking: RankedVendor[] | null;
   /** How many vendors were ranked, shown or not. */
   ranked: number;
+  /** Per rank, how many tied vendors are not listed; omitted when none. */
+  hidden?: Array<{ rank: number; count: number }>;
+  /** The asked vendor when no brief places it here and it is not installed: shown, never ranked. */
+  unranked?: string;
 }
 
 export interface AccountView {
@@ -211,6 +215,11 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
     notes.add("no accounts are declared: copy config/accounts.example.yaml to config/accounts.local.yaml and rebuild the graph");
   }
 
+  // Vendor -> segments where no brief places it: one note per vendor, not per
+  // pair (every ranking entry already says "no brief"; per-pair notes cost ~1.6k
+  // on a full graph, out of a budget rankings are never trimmed from).
+  const unbriefed = new Map<string, Set<string>>();
+
   const accounts = scope.map((account): AccountView => {
     const inPlay = new Set<string>();
     if (segment !== null) {
@@ -231,7 +240,7 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
 
       const vendors = names.map((v): VendorInSegment => {
         const position = cite(v, seg);
-        if (position === null) notes.add(`no curated brief for ${v} in ${seg}: its position there is unknown, not absent`);
+        if (position === null) unbriefed.set(v, new Set([...(unbriefed.get(v) ?? []), seg]));
         const mode: IncumbencyMode = incumbents.includes(v)
           ? "defend"
           : incumbents.length > 0
@@ -244,7 +253,7 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
 
       const via = account.needs.filter((need) => (snap.needSegments[need] ?? []).includes(seg));
       const trigger = account.triggers?.[seg] ?? null;
-      const { regime, ranking, ranked } = rankSegment({
+      const { regime, ranking, ranked, hidden, unranked } = rankSegment({
         // A graph built before declaredSegments existed still knows its incumbents.
         declared: account.declared.includes(seg) || incumbents.length > 0,
         incumbents,
@@ -256,11 +265,26 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
         ),
         keep: vendor,
       });
-      return { segment: seg, via, incumbents, vendors, regime, trigger, ranking, ranked };
+      return {
+        segment: seg,
+        via,
+        incumbents,
+        vendors,
+        regime,
+        trigger,
+        ranking,
+        ranked,
+        ...(hidden !== undefined ? { hidden } : {}),
+        ...(unranked !== undefined ? { unranked } : {}),
+      };
     });
 
     return { account: account.id, name: account.name, needs: account.needs, segments };
   });
+
+  for (const [v, segs] of [...unbriefed].sort(([a], [b]) => a.localeCompare(b))) {
+    notes.add(`no curated brief for ${v} in ${[...segs].sort(bySegment).join(", ")}: its position there is unknown, not absent`);
+  }
 
   return {
     ok: true,

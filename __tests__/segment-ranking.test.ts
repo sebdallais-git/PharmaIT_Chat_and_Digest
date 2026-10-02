@@ -53,13 +53,15 @@ describe("rankSegment", () => {
     expect(brief(result.ranking)).toEqual(["1 hpe", "2 dell", "2 netapp"]);
   });
 
-  it("ranks the asked vendor without a brief as unknown, not leave it out", () => {
-    // A missing brief means unknown, not absent: leaving the asked vendor out
-    // would read as "not in contention".
+  it("shows the asked vendor without a brief, but never ranks it", () => {
+    // A missing brief means unknown, not absent: it is shown, but ranking it
+    // could put it first on evidence it does not have.
     const result = rankSegment(input({ incumbents: ["hpe", "lenovo"], keep: "dell" }));
-    expect(brief(result.ranking)).toEqual(["1 hpe", "1 lenovo", "3 dell"]);
-    expect(result.ranking?.[2].reasons).toEqual(["rival", "no brief"]);
-    expect(result.ranked).toBe(3);
+    expect(brief(result.ranking)).toEqual(["1 hpe", "1 lenovo"]);
+    expect(result.unranked).toBe("dell");
+    expect(result.ranked).toBe(2);
+    const empty = rankSegment(input({ keep: "dell" }));
+    expect(empty).toEqual({ regime: "greenfield", ranking: [], unranked: "dell", ranked: 0 });
   });
 
   it("leaves out a vendor absent from the segment unless it is installed there", () => {
@@ -85,8 +87,16 @@ describe("rankSegment", () => {
     const rivals = Object.fromEntries(["a", "b", "c", "d", "e", "f", "g", "h"].map((v) => [v, "strong"]));
     const result = rankSegment(input({ incumbents: ["x", "y"], positions: positions(rivals), keep: "c" }));
     expect(brief(result.ranking)).toEqual(["1 x", "1 y", "3 c"]);
+    expect(result.hidden).toEqual([{ rank: 3, count: 7 }]);
     expect(result.ranked).toBe(10);
     const small = rankSegment(input({ positions: positions({ a: "leader", b: "strong", c: "strong", d: "strong" }) }));
     expect(brief(small.ranking)).toEqual(["1 a"]);
+    expect(small.hidden).toEqual([{ rank: 2, count: 3 }]);
+  });
+
+  it("says how many share the top rank when that group alone passes the limit", () => {
+    const result = rankSegment(input({ positions: positions({ a: "leader", b: "leader", c: "leader", d: "leader" }) }));
+    expect(result.ranking).toEqual([]);
+    expect(result.hidden).toEqual([{ rank: 1, count: 4 }]);
   });
 });

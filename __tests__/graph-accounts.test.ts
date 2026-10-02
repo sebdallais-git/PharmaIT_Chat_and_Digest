@@ -129,6 +129,13 @@ ${triggers}`);
     expect(() => parseAccounts(withTriggers('      storage-block: "x"\n', "      storage-file: [netapp]\n"))).toThrow(message);
   });
 
+  it("refuses a trigger longer than one line of install-base fact", () => {
+    // Triggers are never trimmed from answers: an unbounded one would eat the budget.
+    expect(() => parseAccounts(withTriggers(`      storage-block: "${"x".repeat(201)}"\n`))).toThrow(
+      "roche: triggers.storage-block is longer than 200 characters: an install-base fact fits one line",
+    );
+  });
+
   it("refuses triggers written as a list or a scalar", () => {
     const message = "roche: triggers must be a map of segment to description";
     expect(() => parseAccounts(withTriggers("      - storage-block\n"))).toThrow(message);

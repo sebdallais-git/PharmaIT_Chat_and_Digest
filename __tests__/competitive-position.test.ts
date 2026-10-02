@@ -157,7 +157,9 @@ describe("resolveCompetitivePosition — the Dell question", () => {
   });
 
   it("says a missing brief means unknown, not absent", () => {
-    expect(answer.notes).toContain("no curated brief for dell in compute-ai: its position there is unknown, not absent");
+    expect(answer.notes.find((n) => n.startsWith("no curated brief for dell in compute-ai"))).toMatch(
+      /: its position there is unknown, not absent$/,
+    );
   });
 });
 
@@ -269,6 +271,31 @@ describe("resolveCompetitivePosition — win-likelihood ranking", () => {
     const seg = segmentOf(answer, "storage-block");
     expect(seg?.vendors.map((v) => v.vendor)).toEqual(["hpe"]);
     expect(brief(seg?.ranking)).toEqual(["1 dell", "2 hpe"]);
+  });
+
+  it("shows the asked vendor without a brief as unranked, never ranked", () => {
+    // netapp has no brief anywhere; storage-block is held by dell.
+    const answer = ok(resolveCompetitivePosition(snapshot(), { vendor: "netapp", account: "roche", segment: "storage-block" }));
+    const seg = segmentOf(answer, "storage-block");
+    expect(brief(seg?.ranking)).toEqual(["1 dell", "2 hpe"]);
+    expect(seg?.unranked).toBe("netapp");
+    expect(seg?.hidden).toBeUndefined();
+  });
+
+  it("says once per vendor which segments have no brief, not once per segment", () => {
+    // Every ranking entry already says "no brief"; one note per pair repeated it
+    // ~20 times on a full graph, out of a budget rankings cannot be trimmed from.
+    const answer = ok(resolveCompetitivePosition(snapshot(), { account: "roche" }));
+    const netapp = answer.notes.filter((n) => n.startsWith("no curated brief for netapp"));
+    expect(netapp).toEqual(["no curated brief for netapp in storage-file: its position there is unknown, not absent"]);
+    const hpe = answer.notes.filter((n) => n.startsWith("no curated brief for hpe"));
+    expect(hpe).toEqual(["no curated brief for hpe in compute-ai: its position there is unknown, not absent"]);
+    const dell = ok(resolveCompetitivePosition(snapshot(), { vendor: "dell", account: "roche" })).notes.filter((n) =>
+      n.startsWith("no curated brief for dell"),
+    );
+    expect(dell).toEqual([
+      "no curated brief for dell in compute-ai, compute-standard, data-protection: its position there is unknown, not absent",
+    ]);
   });
 
   it("ranks a legacy graph's installed segment as defend, not unknown", () => {

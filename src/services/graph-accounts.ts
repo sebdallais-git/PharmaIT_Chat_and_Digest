@@ -71,6 +71,10 @@ export function parseAccounts(yaml: string): Account[] {
         if (typeof text !== "string" || text.trim().length === 0) {
           throw new Error(`${id}: triggers.${key} must be a non-empty description of the install-base event`);
         }
+        // Triggers are never trimmed from answers: an unbounded one would eat the budget.
+        if (text.trim().length > 200) {
+          throw new Error(`${id}: triggers.${key} is longer than 200 characters: an install-base fact fits one line`);
+        }
         // A trigger opens a segment a rival holds: on [] there is nothing to
         // displace, and on an undeclared segment it would hide "find out first".
         if ((incumbents[key] ?? []).length === 0) {

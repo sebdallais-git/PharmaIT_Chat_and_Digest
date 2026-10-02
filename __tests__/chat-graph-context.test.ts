@@ -208,13 +208,15 @@ describe("renderCompetitiveContext", () => {
       { vendor: "dell", rank: 2, reasons: ["incumbent", "present/low"] },
     ];
     block.ranked = 4;
+    block.hidden = [{ rank: 2, count: 2 }];
+    block.unranked = "netapp";
     base.accounts[0].segments[1].regime = "unknown";
     base.accounts[0].segments[1].ranking = null;
     const text = renderCompetitiveContext(base);
     expect(text).toContain(
       "  storage-block (via cyber-resilience), installed: dell\n" +
         "    trigger: PowerMax end of support 2027-03\n" +
-        "    ranking (open): 1 hpe (rival, leader/high) · 2 dell (incumbent, present/low) · +2 more",
+        "    ranking (open): 1 hpe (rival, leader/high) · 2= dell (incumbent, present/low, tied with 2) · +2 more tied at 2 · netapp (no brief, not ranked)",
     );
     expect(text).toContain("  storage-object, installed: nobody\n    ranking: none, find out who is installed");
   });

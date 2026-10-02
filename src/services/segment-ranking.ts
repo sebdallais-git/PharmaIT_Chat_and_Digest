@@ -36,6 +36,13 @@ export interface SegmentRanking {
   ranking: RankedVendor[] | null;
   /** How many candidates were ranked, shown or not. */
   ranked: number;
+  /**
+   * Per rank, how many of its vendors are not listed (a tied group too big to
+   * show whole); omitted when none. A tie shows as a repeated rank number.
+   */
+  hidden?: Array<{ rank: number; count: number }>;
+  /** The asked vendor when no brief places it here and it is not installed: shown, never ranked. Omitted otherwise. */
+  unranked?: string;
 }
 
 /** A full list costs ~7k of untrimmable JSON on a full graph; the top 3 answers the question. */
@@ -54,13 +61,12 @@ export function rankSegment(input: RankingInput): SegmentRanking {
   if (!input.declared) return { regime: "unknown", ranking: null, ranked: 0 };
   const regime: Regime = input.incumbents.length === 0 ? "greenfield" : input.trigger !== null ? "open" : "defend";
 
-  // An installed vendor is always a candidate; anyone else needs a brief that places it here,
-  // except the asked vendor (below).
+  // An installed vendor is always a candidate; anyone else needs a brief that places it here.
   const candidates = new Set(input.incumbents);
   for (const [vendor, p] of input.positions) if (p.position !== "absent") candidates.add(vendor);
-  // The asked vendor without a brief is unknown here, not absent: leaving it out
-  // would read as "not in contention". Only a brief saying absent removes it.
-  if (input.keep !== null && input.positions.get(input.keep)?.position !== "absent") candidates.add(input.keep);
+  // The asked vendor without a brief is unknown here, not absent: it is shown,
+  // but ranking it could put it first on evidence it does not have.
+  const unranked = input.keep !== null && !candidates.has(input.keep) && !input.positions.has(input.keep) ? input.keep : null;
 
   const entries = [...candidates].map((vendor) => {
     const p = input.positions.get(vendor) ?? null;
@@ -73,7 +79,11 @@ export function rankSegment(input: RankingInput): SegmentRanking {
   });
 
   const ranked = entries
-    .map((e) => ({ vendor: e.vendor, rank: 1 + entries.filter((o) => above(o.key, e.key)).length, reasons: e.reasons }))
+    .map((e) => ({
+      vendor: e.vendor,
+      rank: 1 + entries.filter((o) => above(o.key, e.key)).length,
+      reasons: e.reasons,
+    }))
     // Tied entries are listed by id only so the output is stable; the shared rank carries the meaning.
     .sort((a, b) => a.rank - b.rank || a.vendor.localeCompare(b.vendor));
 
@@ -88,5 +98,17 @@ export function rankSegment(input: RankingInput): SegmentRanking {
   }
   if (input.keep !== null) shown.add(input.keep);
 
-  return { regime, ranking: ranked.filter((r) => shown.has(r.vendor)), ranked: ranked.length };
+  const ranking = ranked.filter((r) => shown.has(r.vendor));
+  const hidden = [...new Set(ranked.map((r) => r.rank))]
+    .map((rank) => ({ rank, count: ranked.filter((r) => r.rank === rank && !shown.has(r.vendor)).length }))
+    .filter((h) => h.count > 0);
+  // Optional fields are left out when empty: rankings are never trimmed, so every
+  // byte here comes out of a budget already near its cap on a full graph.
+  return {
+    regime,
+    ranking,
+    ranked: ranked.length,
+    ...(hidden.length > 0 ? { hidden } : {}),
+    ...(unranked !== null ? { unranked } : {}),
+  };
 }
