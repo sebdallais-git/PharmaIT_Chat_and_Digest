@@ -151,6 +151,46 @@ describe("renderCompetitiveContext", () => {
     );
   });
 
+  it("measures the budget on the rendered text, so JSON-only bulk does not cost the events", () => {
+    // Claim details and source URLs are in the answer's JSON but never in the
+    // text; measured as JSON this answer is far over budget and would lose
+    // every event, although its text fits easily.
+    const base = answer();
+    const standing = base.standings["dell/storage-block"];
+    standing.strong = [{ claim: "Cyber vault.", detail: "d".repeat(3000) }];
+    standing.sources = Array.from({ length: 10 }, (_, i) => `https://example.test/${"s".repeat(700)}/${i}`);
+    base.accounts[0].segments[0].events = [
+      { title: "Roche consolidates EU data centres", url: "https://example.test/e", publishedAt: "2026-09-14", signal: "it_move" },
+    ];
+    expect(JSON.stringify(base).length).toBeGreaterThan(CHAT_CONTEXT_CHARS);
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain("↳ 2026-09-14 [it_move] Roche consolidates EU data centres");
+    expect(text).not.toMatch(/trimmed to fit|cut to fit/);
+  });
+
+  it("keeps one event per segment over claims and rationale when the text must shrink", () => {
+    // An event is one short line in the prompt; claims and rationale are the
+    // bulk. The chat drops all events only after everything else.
+    const base = answer();
+    const claims = Array.from({ length: 4 }, (_, i) => ({ claim: `${"c".repeat(150)} ${i}.`, detail: "" }));
+    base.standings = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [
+        `dell/seg-${i}`,
+        { ...base.standings["dell/storage-block"], rationale: "r".repeat(300), strong: claims, weak: claims },
+      ]),
+    );
+    base.accounts[0].segments[0].events = [1, 2, 3].map((n) => ({
+      title: `Roche event ${n}`,
+      url: `https://example.test/${n}`,
+      publishedAt: `2026-09-1${n}`,
+      signal: "it_move",
+    }));
+    const text = renderCompetitiveContext(base);
+    expect(text.length).toBeLessThanOrEqual(CHAT_CONTEXT_CHARS);
+    expect((text.match(/↳/g) ?? []).length).toBe(1);
+    expect(text).not.toContain("strong: ");
+  });
+
   it("stays within the chat budget, saying it was cut", () => {
     const many = Object.fromEntries(
       Array.from({ length: 80 }, (_, i) => [

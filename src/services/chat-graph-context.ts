@@ -6,6 +6,7 @@
 // injected, so no test reaches Neo4j; src/api/chat.ts binds the real services.
 import {
   competitivePositionFrom,
+  TEXT_TRIM_STEPS,
   fitBudget,
   readGraphSnapshot,
   type CompetitiveAnswer,
@@ -94,8 +95,21 @@ function eventLine(e: EvidenceItem): string {
 /** The answer as prompt text, within the chat budget. */
 export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHAT_CONTEXT_CHARS): string {
   const a = structuredClone(answer);
-  fitBudget(a, budget);
+  // Measured as text, not JSON: claim details and source URLs never reach the
+  // prompt, and counting them would trim the account events away first. Text
+  // order: events are short lines, so all of them go last.
+  fitBudget(a, budget, (x) => renderLines(x).length, TEXT_TRIM_STEPS);
+  let text = renderLines(a);
+  // fitBudget never drops structure, so many accounts can still overflow:
+  // cut at a line boundary and say so.
+  if (text.length > budget) {
+    const room = budget - CUT_NOTE.length - 1;
+    text = `${text.slice(0, text.lastIndexOf("\n", room))}\n${CUT_NOTE}`;
+  }
+  return text;
+}
 
+function renderLines(a: CompetitiveAnswer): string {
   const lines = [header(a.query)];
   const modes = Object.entries(a.modes);
   if (modes.length > 0) {
@@ -132,14 +146,7 @@ export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHA
   if (news.length > 0) lines.push("Recent news:", ...news);
   if (a.notes.length > 0) lines.push("Notes:", ...a.notes.map((n) => `- ${n}`));
 
-  // fitBudget measures JSON and never drops structure, so many accounts can
-  // still overflow: cut at a line boundary and say so.
-  let text = lines.join("\n");
-  if (text.length > budget) {
-    const room = budget - CUT_NOTE.length - 1;
-    text = `${text.slice(0, text.lastIndexOf("\n", room))}\n${CUT_NOTE}`;
-  }
-  return text;
+  return lines.join("\n");
 }
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {

@@ -221,7 +221,7 @@ function narrowingAdvice(query: CompetitiveAnswer["query"]): string | null {
   return missing.length > 0 ? missing.join(" or ") : null;
 }
 
-interface TrimStep {
+export interface TrimStep {
   /** What the step leaves out, for the note. */
   drops: string;
   apply(answer: CompetitiveAnswer): void;
@@ -229,12 +229,23 @@ interface TrimStep {
   applies?(answer: CompetitiveAnswer): boolean;
 }
 
+const DROP_ALL_EVENTS: TrimStep = {
+  drops: "account events",
+  applies: (a) => a.accounts.some((acc) => acc.general.length > 0 || acc.segments.some((seg) => seg.events.length > 0)),
+  apply: (a) => {
+    for (const account of a.accounts) {
+      account.general = [];
+      for (const segment of account.segments) segment.events = [];
+    }
+  },
+};
+
 /**
  * In the order applied: cheapest information first; repetitive account events
  * go before claims. Structure (accounts, modes, positions, confidence, dates)
  * is never dropped -- it is what the question is about.
  */
-const TRIM_STEPS: TrimStep[] = [
+export const TRIM_STEPS: TrimStep[] = [
   {
     drops: "claim details",
     apply: (a) => {
@@ -251,16 +262,7 @@ const TRIM_STEPS: TrimStep[] = [
       }
     },
   },
-  {
-    drops: "account events",
-    applies: (a) => a.accounts.some((acc) => acc.general.length > 0 || acc.segments.some((seg) => seg.events.length > 0)),
-    apply: (a) => {
-      for (const account of a.accounts) {
-        account.general = [];
-        for (const segment of account.segments) segment.events = [];
-      }
-    },
-  },
+  DROP_ALL_EVENTS,
   {
     drops: "claims",
     apply: (a) => {
@@ -298,12 +300,24 @@ const TRIM_STEPS: TrimStep[] = [
 ];
 
 /**
+ * For text renderings (the chat), where an event is one short line and claims
+ * and rationale are the bulk: extra events still go early, every event last.
+ */
+export const TEXT_TRIM_STEPS: TrimStep[] = [...TRIM_STEPS.filter((step) => step !== DROP_ALL_EVENTS), DROP_ALL_EVENTS];
+
+/**
  * Shrink an over-budget answer step by step until it fits, then say what was
  * left out and how to ask for it. Exported with a budget parameter so the trim
  * order can be tested without building answers of exactly the right size.
  */
-export function fitBudget(answer: CompetitiveAnswer, budget = MAX_ANSWER_CHARS): void {
-  if (size(answer) <= budget) return;
+export function fitBudget(
+  answer: CompetitiveAnswer,
+  budget = MAX_ANSWER_CHARS,
+  // The tool returns JSON; the chat measures its rendered text instead.
+  measure: (answer: CompetitiveAnswer) => number = size,
+  steps: TrimStep[] = TRIM_STEPS,
+): void {
+  if (measure(answer) <= budget) return;
   const advice = narrowingAdvice(answer.query);
   const dropped: string[] = [];
   // Measured with the note in place, so adding it cannot push the answer back over.
@@ -313,12 +327,12 @@ export function fitBudget(answer: CompetitiveAnswer, budget = MAX_ANSWER_CHARS):
   answer.notes.push("");
   const noteAt = answer.notes.length - 1;
 
-  for (const step of TRIM_STEPS) {
+  for (const step of steps) {
     if (step.applies !== undefined && !step.applies(answer)) continue;
     step.apply(answer);
     dropped.push(step.drops);
     answer.notes[noteAt] = note();
-    if (size(answer) <= budget) return;
+    if (measure(answer) <= budget) return;
   }
   answer.notes.push(
     advice !== null
