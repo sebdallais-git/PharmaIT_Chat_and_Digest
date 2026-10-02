@@ -24,6 +24,7 @@ Decided with the user:
 | Method | Deterministic rules, no model call: same input, same order |
 | What opens a segment held by a rival | **Declared triggers only**, in `accounts.local.yaml`; watchlist events never promote on their own (tagging noise, e.g. a EURETINA item tagged `it_move`) |
 | Where it lives | A `ranking` field inside `competitive_position` (one tool: the local model fails at orchestration) |
+| Budget (decided while planning) | Each segment shows the **top 3** (ties at 3 included) **plus the queried vendor**, with `ranked: <total>`; compact reasons; never trimmed |
 
 Rejected: a separate `win_likelihood` tool (a second tool to choose and call), and sorting the existing `vendors`
 arrays (ranking by ordering, without reasons).
@@ -81,11 +82,16 @@ Computed in the resolver (`competitive-position.ts`) from the snapshot alone: pu
 | Incumbents, no trigger | `defend` | Incumbents first (by position among themselves), then rivals by position |
 | Incumbents and a declared trigger | `open` | Everyone by position; the incumbent wins a tie |
 
-### Candidates
+### Candidates and what is shown
 
 The segment's incumbents plus every vendor with a `COMPETES_IN` position in that segment, **whatever the query**:
 a Dell-only question still shows where Dell stands against its rivals there. Vendors whose position is `absent` are
 excluded (unless incumbent: an installed vendor is always a candidate).
+
+All candidates are ranked; the answer **shows** the entries with rank ≤ 3 (`RANKING_TOP`, ties at 3 included) plus the
+queried vendor wherever it lands, and `ranked` gives the total number ranked. Found while planning: a full list for an
+account question on a full graph (11 segments × up to 10 vendors) is ~7k of untrimmable JSON on answers already at the
+24k cap.
 
 ### Position order and ties
 
@@ -98,12 +104,11 @@ shared rank number is what carries meaning.
 
 ### Reasons
 
-Every entry has at least one reason, short and fixed-vocabulary:
+Every entry has exactly two reasons, compact and fixed-vocabulary (the segment already carries `incumbents`, `regime`
+and `trigger`, so nothing is repeated per vendor):
 
-- `incumbent` / `rival of incumbent <ids>`
-- `trigger declared` (the text itself is on the segment, once)
-- `nobody installed` (greenfield)
-- `position <label> (<confidence> confidence)` or `position unknown: no brief`
+1. its role: `incumbent`, `rival` (defend/open) or `nobody installed` (greenfield);
+2. its position: `<label>/<confidence>` (e.g. `leader/high`) or `no brief`.
 
 ### Shape
 
@@ -113,7 +118,8 @@ interface RankedVendor { vendor: string; rank: number; reasons: string[] }
 // SegmentView gains:
 regime: Regime;
 trigger: string | null;
-ranking: RankedVendor[] | null; // null exactly when regime is "unknown"
+ranking: RankedVendor[] | null; // null exactly when regime is "unknown"; top 3 + queried vendor
+ranked: number;                 // how many candidates were ranked (0 when unknown)
 ```
 
 `SegmentView.vendors` keeps its current content and order.
@@ -136,8 +142,10 @@ Under a segment's `installed:` line (before its events):
 
 ```
     trigger: everpure arrays reach end of support 2027-03
-    ranking (open): 1 dell (leader, high) · 2 everpure (incumbent, no brief) · 2 hpe (strong, high)
+    ranking (open): 1 dell (rival, leader/high) · 2 hpe (rival, strong/high) · 3 everpure (incumbent, no brief) · +1 more
 ```
+
+(`+N more` when `ranked` exceeds the entries shown.)
 
 `unknown` prints `    ranking: none, find out who is installed`. A `defend`/`greenfield` segment prints its ranking
 line the same way, without a trigger line. Text trim order unchanged.
@@ -162,7 +170,8 @@ All unit tests use fakes.
 - **Ranking:** one test per regime; `defend` keeps the incumbent above a leader rival; `open` puts a leader rival above
   the incumbent and the incumbent wins a tie; `absent` excluded unless incumbent; brief-less incumbent = position
   unknown; a vendor-only query ranks the rivals; ties share ranks (1, 1, 3) and are never broken alphabetically; every
-  entry has reasons with confidence; `vendors` arrays unchanged.
+  entry has its two reasons with confidence; top 3 with ties at 3 plus the queried vendor shown, `ranked` = total;
+  `vendors` arrays unchanged.
 - **Budget:** a full-graph answer fits 24k and keeps ranking/trigger at every trim step.
 - **Chat:** trigger line, ranking line, `unknown` line.
 - **MCP:** `npm --prefix mcp test`, `npm --prefix mcp run typecheck`.
