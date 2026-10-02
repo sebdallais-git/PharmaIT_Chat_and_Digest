@@ -53,6 +53,15 @@ describe("rankSegment", () => {
     expect(brief(result.ranking)).toEqual(["1 hpe", "2 dell", "2 netapp"]);
   });
 
+  it("ranks the asked vendor without a brief as unknown, not leave it out", () => {
+    // A missing brief means unknown, not absent: leaving the asked vendor out
+    // would read as "not in contention".
+    const result = rankSegment(input({ incumbents: ["hpe", "lenovo"], keep: "dell" }));
+    expect(brief(result.ranking)).toEqual(["1 hpe", "1 lenovo", "3 dell"]);
+    expect(result.ranking?.[2].reasons).toEqual(["rival", "no brief"]);
+    expect(result.ranked).toBe(3);
+  });
+
   it("leaves out a vendor absent from the segment unless it is installed there", () => {
     const result = rankSegment(
       input({ incumbents: ["ibm"], positions: positions({ ibm: "absent", dell: "absent", hpe: "strong" }), keep: "dell" }),

@@ -54,9 +54,13 @@ export function rankSegment(input: RankingInput): SegmentRanking {
   if (!input.declared) return { regime: "unknown", ranking: null, ranked: 0 };
   const regime: Regime = input.incumbents.length === 0 ? "greenfield" : input.trigger !== null ? "open" : "defend";
 
-  // An installed vendor is always a candidate; anyone else needs a brief that places it here.
+  // An installed vendor is always a candidate; anyone else needs a brief that places it here,
+  // except the asked vendor (below).
   const candidates = new Set(input.incumbents);
   for (const [vendor, p] of input.positions) if (p.position !== "absent") candidates.add(vendor);
+  // The asked vendor without a brief is unknown here, not absent: leaving it out
+  // would read as "not in contention". Only a brief saying absent removes it.
+  if (input.keep !== null && input.positions.get(input.keep)?.position !== "absent") candidates.add(input.keep);
 
   const entries = [...candidates].map((vendor) => {
     const p = input.positions.get(vendor) ?? null;
