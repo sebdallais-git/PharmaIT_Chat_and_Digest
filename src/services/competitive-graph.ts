@@ -15,6 +15,7 @@ import {
   type Standing,
 } from "./competitive-position.js";
 import type { Segment } from "./graph-schema.js";
+import { SEGMENT_DOMAINS } from "./graph-evidence.js";
 import type { BriefExcerpts, Claim } from "./vendor-brief-excerpts.js";
 import type { Domain } from "./watchlist-config.js";
 
@@ -58,25 +59,6 @@ export const POSITIONS_CYPHER = `
 `;
 
 export const VENDORS_CYPHER = `MATCH (v:Vendor) RETURN v.id AS id ORDER BY id`;
-
-/**
- * The watchlist domains whose items count as evidence for a segment. The
- * watchlist tags items with 12 IT domains, the graph speaks in segments; this
- * is the only place the two vocabularies meet.
- */
-export const SEGMENT_DOMAINS: Record<Segment, Domain[]> = {
-  "compute-ai": ["ai", "infrastructure"],
-  "compute-standard": ["infrastructure"],
-  "storage-block": ["storage"],
-  "storage-file": ["storage"],
-  "storage-object": ["storage"],
-  "data-platform": ["data"],
-  "data-protection": ["backup", "cyber"],
-  hci: ["infrastructure"],
-  networking: ["networking"],
-  client: ["euc"],
-  services: [],
-};
 
 export const EVIDENCE_PER_VENDOR = 3;
 /** ~6k tokens: room in a 64K context for the question, the answer and the model's own reasoning. */
