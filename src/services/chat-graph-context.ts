@@ -10,6 +10,7 @@ import {
   fitBudget,
   readGraphSnapshot,
   type CompetitiveAnswer,
+  type AnswerSegment,
   type CompetitiveDeps,
   type EvidenceItem,
 } from "./competitive-graph.js";
@@ -109,6 +110,14 @@ export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHA
   return text;
 }
 
+function rankingLine(s: AnswerSegment): string {
+  if (s.ranking === null) return "    ranking: none, find out who is installed";
+  const shown = s.ranking.map((r) => `${r.rank} ${r.vendor} (${r.reasons.join(", ")})`);
+  const more = s.ranked - s.ranking.length;
+  if (more > 0) shown.push(`+${more} more`);
+  return `    ranking (${s.regime}): ${shown.join(" · ") || "nobody ranked"}`;
+}
+
 function renderLines(a: CompetitiveAnswer): string {
   const lines = [header(a.query)];
   const modes = Object.entries(a.modes);
@@ -122,6 +131,8 @@ function renderLines(a: CompetitiveAnswer): string {
     for (const s of account.segments) {
       const via = s.via.length > 0 ? ` (via ${s.via.join(", ")})` : "";
       lines.push(`  ${s.segment}${via}, installed: ${s.incumbents.join(", ") || "nobody"}`);
+      if (s.trigger !== null) lines.push(`    trigger: ${s.trigger}`);
+      lines.push(rankingLine(s));
       lines.push(...s.events.map(eventLine));
       for (const v of s.vendors) lines.push(`    ${v.vendor}: ${v.mode}, position ${v.position ?? "unknown"}`);
     }
