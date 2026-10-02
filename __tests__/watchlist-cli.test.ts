@@ -11,6 +11,7 @@ import type { IrPageResult } from "../src/services/watchlist-edgar.js";
 import type { Tagging } from "../src/services/watchlist-tagger.js";
 import { openWatchlistStore, type WatchlistStore } from "../src/services/watchlist-store.js";
 import { DEFAULT_INGEST_LIMIT, type IngestAdapters } from "../src/services/watchlist-ingest.js";
+import type { RebuildResult } from "../src/services/vendor-graph-rebuild.js";
 import {
   DEFAULT_STATUS_WINDOW_DAYS,
   countPlannedFeeds,
@@ -236,6 +237,7 @@ function makeIngestHarness(options: {
   watchlist: Watchlist;
   rss?: IngestAdapters["rss"];
   tag?: RunIngestDeps["tag"];
+  rebuildGraph?: RunIngestDeps["rebuildGraph"];
 }): IngestHarness {
   const store = openWatchlistStore(":memory:");
   const logs: string[] = [];
@@ -265,6 +267,7 @@ function makeIngestHarness(options: {
         now: () => new Date("2026-09-20T02:30:00.000Z"),
         log: (line) => logs.push(line),
         stackName: "mlx",
+        rebuildGraph: options.rebuildGraph,
       }),
   };
 }
@@ -420,6 +423,81 @@ function baseItem(over: Partial<Parameters<WatchlistStore["insertItem"]>[0]> = {
     domains: over.domains ?? ["cloud"],
   };
 }
+
+describe("runIngest — graph rebuild", () => {
+  const roche = makeEntity({ id: "roche", feeds: [{ kind: "rss", url: "https://roche/feed.xml" }] });
+  const rebuilt: RebuildResult = { nodes: 12, relationships: 30, lines: ["watchlist.db                 -> 4 evidence for 2 vendors/accounts, 0 future-dated skipped"] };
+
+  function counting(result: () => Promise<RebuildResult>): { fn: () => Promise<RebuildResult>; calls: () => number } {
+    let calls = 0;
+    return {
+      fn: () => {
+        calls++;
+        return result();
+      },
+      calls: () => calls,
+    };
+  }
+
+  it("rebuilds the graph after a pass and logs the report", async () => {
+    const rebuild = counting(async () => rebuilt);
+    const harness = makeIngestHarness({ watchlist: makeWatchlist([roche]), rebuildGraph: rebuild.fn });
+    expect(await harness.run([])).toBe(0);
+    expect(rebuild.calls()).toBe(1);
+    expect(harness.logs).toContain("Graph rebuilt: 12 nodes, 30 relationships");
+    expect(harness.logs).toContain(rebuilt.lines[0]);
+    harness.store.close();
+  });
+
+  it("exits 3 when the ingest succeeded but the rebuild failed", async () => {
+    const harness = makeIngestHarness({
+      watchlist: makeWatchlist([roche]),
+      rebuildGraph: async () => {
+        throw new Error("Neo4j unreachable");
+      },
+    });
+    expect(await harness.run([])).toBe(3);
+    expect(harness.logs[harness.logs.length - 1]).toBe("graph rebuild failed: Neo4j unreachable");
+    harness.store.close();
+  });
+
+  it("keeps exit 1 for a failed ingest whatever the rebuild did", async () => {
+    const harness = makeIngestHarness({
+      watchlist: makeWatchlist([roche]),
+      rss: async () => {
+        throw new Error("connection refused");
+      },
+      rebuildGraph: async () => {
+        throw new Error("Neo4j unreachable");
+      },
+    });
+    expect(await harness.run([])).toBe(1);
+    harness.store.close();
+  });
+
+  it("still rebuilds after a pass with failed feeds", async () => {
+    const rebuild = counting(async () => rebuilt);
+    const harness = makeIngestHarness({
+      watchlist: makeWatchlist([roche]),
+      rss: async () => {
+        throw new Error("connection refused");
+      },
+      rebuildGraph: rebuild.fn,
+    });
+    await harness.run([]);
+    expect(rebuild.calls()).toBe(1);
+    harness.store.close();
+  });
+
+  it("does not rebuild on a usage error or a --only debugging pass", async () => {
+    const rebuild = counting(async () => rebuilt);
+    const harness = makeIngestHarness({ watchlist: makeWatchlist([roche]), rebuildGraph: rebuild.fn });
+    expect(await harness.run(["--only", "not-a-real-entity"])).toBe(2);
+    expect(await harness.run(["--only", "roche"])).toBe(0);
+    expect(rebuild.calls()).toBe(0);
+    harness.store.close();
+  });
+});
 
 describe("parseStatusArgs", () => {
   it("defaults to DEFAULT_STATUS_WINDOW_DAYS", () => {
