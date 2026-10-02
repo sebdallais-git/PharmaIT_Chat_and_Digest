@@ -38,7 +38,8 @@ export const ACCOUNTS_CYPHER = `
   OPTIONAL MATCH (a)-[:HAS_NEED]->(n:Need)
   WITH a, collect(DISTINCT n.id) AS needs
   OPTIONAL MATCH (a)-[u:USES]->(v:Vendor)
-  RETURN a.id AS id, a.name AS name, a.aliases AS aliases, a.declaredSegments AS declaredSegments, needs,
+  RETURN a.id AS id, a.name AS name, a.aliases AS aliases, a.declaredSegments AS declaredSegments,
+         a.triggers AS triggers, needs,
          collect(CASE WHEN v IS NULL THEN null ELSE {segment: u.segment, vendor: v.id} END) AS uses
   ORDER BY id
 `;
@@ -146,6 +147,28 @@ function commaList(value: unknown): string[] {
     .filter((a) => a.length > 0);
 }
 
+// graph-accounts.ts stores triggers as JSON (Neo4j properties cannot be maps).
+// A graph built before triggers existed has none; a bad value is reported and
+// ignored, never thrown: one account's typo must not take every answer down.
+function triggers(value: unknown, account: string, notes: string[]): Record<string, string> {
+  if (value === undefined || value === null) return {};
+  try {
+    const parsed: unknown = typeof value === "string" ? JSON.parse(value) : null;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every((v) => typeof v === "string")
+    ) {
+      return { ...(parsed as Record<string, string>) };
+    }
+  } catch {
+    // Reported below.
+  }
+  notes.push(`account ${account}: unreadable triggers, ignored until the next rebuild`);
+  return {};
+}
+
 function evidenceItem(row: Record<string, unknown>): EvidenceItem {
   return {
     title: str(row.title, "title"),
@@ -186,6 +209,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
     runCypher(VENDORS_CYPHER),
   ]);
 
+  const notes: string[] = [];
   return {
     accounts: accountRows.map((r) => ({
       id: str(r.id, "id"),
@@ -196,6 +220,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
       declared: commaList(r.declaredSegments),
       needs: strList(r.needs, "needs"),
       uses: uses(r.uses),
+      triggers: triggers(r.triggers, str(r.id, "id"), notes),
     })),
     needSegments: Object.fromEntries(needRows.map((r) => [str(r.need, "need"), strList(r.segments, "segments")])),
     positions: positionRows.map((r) => ({
@@ -208,6 +233,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
     })),
     vendors: vendorRows.map((r) => str(r.id, "id")),
     vendorAliases,
+    notes,
   };
 }
 

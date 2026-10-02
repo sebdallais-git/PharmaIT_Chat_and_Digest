@@ -39,6 +39,8 @@ export interface SnapshotAccount {
    */
   declared: string[];
   uses: Array<{ segment: string; vendor: string }>;
+  /** Declared install-base triggers by segment; absent on hand-built snapshots. */
+  triggers?: Record<string, string>;
 }
 
 export interface SnapshotPosition {
@@ -57,6 +59,8 @@ export interface GraphSnapshot {
   vendors: string[];
   /** Normalised alias -> vendor id, e.g. "pure-storage" -> "everpure". */
   vendorAliases: Record<string, string>;
+  /** Problems met while reading the graph, passed on to the answer's notes. */
+  notes?: string[];
 }
 
 export interface Standing {

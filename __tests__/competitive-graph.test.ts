@@ -86,6 +86,7 @@ describe("readGraphSnapshot", () => {
           declared: ["storage-block"],
           needs: ["cyber-resilience"],
           uses: [{ segment: "storage-block", vendor: "dell" }],
+          triggers: {},
         },
       ],
       needSegments: { "cyber-resilience": ["data-protection", "storage-block"] },
@@ -94,6 +95,7 @@ describe("readGraphSnapshot", () => {
       ],
       vendors: ["dell", "hpe"],
       vendorAliases: { x: "dell" },
+      notes: [],
     });
   });
 
@@ -104,6 +106,23 @@ describe("readGraphSnapshot", () => {
     delete legacy.declaredSegments;
     const snap = await readGraphSnapshot(fakeCypher({ ...ROWS, accounts: [legacy] }), {});
     expect(snap.accounts[0].declared).toEqual([]);
+  });
+
+  it("reads an account's triggers, quotes and newlines intact", async () => {
+    const text = 'NetApp "ONTAP 9": renewal\nsecond line';
+    const rows = { ...ROWS, accounts: [{ ...ROWS.accounts[0], triggers: JSON.stringify({ "storage-block": text }) }] };
+    const snap = await readGraphSnapshot(fakeCypher(rows), {});
+    expect(snap.accounts[0].triggers).toEqual({ "storage-block": text });
+    expect(snap.notes).toEqual([]);
+  });
+
+  it("reads unreadable triggers as none, with a note, and never throws", async () => {
+    for (const bad of ["{not json", JSON.stringify(["storage-block"]), JSON.stringify({ "storage-block": 3 })]) {
+      const rows = { ...ROWS, accounts: [{ ...ROWS.accounts[0], triggers: bad }] };
+      const snap = await readGraphSnapshot(fakeCypher(rows), {});
+      expect(snap.accounts[0].triggers).toEqual({});
+      expect(snap.notes).toEqual(["account roche: unreadable triggers, ignored until the next rebuild"]);
+    }
   });
 
   it("refuses a malformed row rather than printing 'undefined' into an answer", async () => {
