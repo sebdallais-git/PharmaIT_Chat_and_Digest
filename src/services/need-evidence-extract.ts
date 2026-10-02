@@ -221,11 +221,27 @@ export function statusReport(file: NeedEvidenceFile): string[] {
   return lines;
 }
 
-export function legacyDocuments(names: string[]): string[] {
+/**
+ * Vendor material is authoritative for what products exist, never evidence of
+ * why an account has a need (2026-09-21 spec, source policy): extracted, it
+ * turns a pitch into "Roche requires ransomware-proof architecture".
+ * vendor-*.md are left out by name; other vendor documents by the list in
+ * config/need-evidence.exclude.
+ */
+export function legacyDocuments(names: string[], excluded: string[] = []): string[] {
   return names
     .filter((n) => LEGACY_EXTENSIONS.some((ext) => n.toLowerCase().endsWith(ext)))
+    .filter((n) => !n.startsWith("vendor-") && !excluded.includes(n))
     .sort()
     .map((n) => `knowledge/${n}`);
+}
+
+/** One file name per line; "#" starts a comment. */
+export function parseExcludeList(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/#.*/, "").trim())
+    .filter((line) => line.length > 0);
 }
 
 export function parseExtractArgs(argv: string[]): ExtractArgs {

@@ -6,6 +6,7 @@ import {
   checkProposal,
   extractionPrompt,
   legacyDocuments,
+  parseExcludeList,
   parseExtractArgs,
   parseReply,
   runExtraction,
@@ -214,6 +215,20 @@ describe("documents and arguments", () => {
       "knowledge/b.md",
       "knowledge/c.docx",
     ]);
+  });
+
+  it("leaves out vendor-authored documents: vendor-*.md and the listed ones", () => {
+    // Vendor material is authoritative for what products exist, never evidence
+    // of why an account has a need (2026-09-21 spec, source policy).
+    expect(
+      legacyDocuments(["vendor-dell-cyber-recovery.md", "pharma-basics.md", "Vendor Pitch.pdf", "roche paper.docx"], [
+        "Vendor Pitch.pdf",
+      ]),
+    ).toEqual(["knowledge/pharma-basics.md", "knowledge/roche paper.docx"]);
+  });
+
+  it("reads the exclusion list one name per line, ignoring comments and blanks", () => {
+    expect(parseExcludeList("# vendor PDFs\nA.pdf\n\n  B.pdf  \n")).toEqual(["A.pdf", "B.pdf"]);
   });
 
   it("parses the flags and refuses unknown ones", () => {

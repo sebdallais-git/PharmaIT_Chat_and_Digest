@@ -18,7 +18,13 @@ import {
   renderNeedEvidence,
   type NeedEvidenceFile,
 } from "../src/services/need-evidence.js";
-import { legacyDocuments, parseExtractArgs, runExtraction, statusReport } from "../src/services/need-evidence-extract.js";
+import {
+  legacyDocuments,
+  parseExcludeList,
+  parseExtractArgs,
+  runExtraction,
+  statusReport,
+} from "../src/services/need-evidence-extract.js";
 
 const root = process.cwd();
 const args = parseExtractArgs(process.argv.slice(2));
@@ -52,7 +58,11 @@ function save(fromRun: NeedEvidenceFile): void {
 }
 
 const result = await runExtraction(file, accounts, {
-  documents: () => legacyDocuments(readdirSync(join(root, "knowledge"))),
+  documents: () => {
+    const excludePath = join(root, "config", "need-evidence.exclude");
+    const excluded = existsSync(excludePath) ? parseExcludeList(readFileSync(excludePath, "utf8")) : [];
+    return legacyDocuments(readdirSync(join(root, "knowledge")), excluded);
+  },
   read: (path) => parseFile(join(root, path)),
   complete: (prompt) => llm.chat([{ role: "user", content: prompt }], { temperature: 0.1 }),
   today: () => new Date().toISOString().slice(0, 10),

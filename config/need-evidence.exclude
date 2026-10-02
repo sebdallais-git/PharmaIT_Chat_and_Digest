@@ -1,0 +1,5 @@
+# Vendor-authored documents in knowledge/ that extract-need-evidence.ts skips:
+# vendor material says what products exist, never why an account has a need.
+# vendor-*.md are skipped by name; list the others here, one file name per line.
+The AI Pharma Challenge - Executive Edition - Everpure.pdf
+The AI Pharma Challenge - The Data Readiness Strategy for AI at Scale - everpure.pdf
