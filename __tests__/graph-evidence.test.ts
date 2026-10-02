@@ -83,6 +83,13 @@ describe("evidenceToGraphFacts", () => {
     expect(facts.relationships.map((r) => r.properties.segments)).toEqual([[], []]);
   });
 
+  it("gives an untitled item its URL as title, since the answer refuses an empty one", () => {
+    // The RSS parser yields "" for an item without <title>; stored as is, one
+    // such Roche item would fail every competitive answer about Roche.
+    const { facts } = evidenceToGraphFacts([item({ id: 13, title: "  " })], graph, NOW);
+    expect(facts.nodes[0].properties.title).toBe("https://example.test/13");
+  });
+
   it("keeps a missing signal as null", () => {
     const { facts } = evidenceToGraphFacts([item({ id: 9, signal: null })], graph, NOW);
     expect(facts.nodes[0].properties.signal).toBeNull();

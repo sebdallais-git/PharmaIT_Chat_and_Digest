@@ -83,7 +83,9 @@ export function evidenceToGraphFacts(items: EvidenceSourceItem[], graphIds: Read
       label: "Evidence",
       id,
       properties: {
-        title: item.title,
+        // The RSS parser yields "" for an untitled item, and the answer refuses an
+        // empty title: one such row would fail every answer about its account.
+        title: item.title.trim() || item.urlCanonical,
         url: item.urlCanonical,
         publishedAt: item.publishedAt.slice(0, 10),
         signal: item.signal,
