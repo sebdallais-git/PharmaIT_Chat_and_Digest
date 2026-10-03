@@ -506,11 +506,15 @@ export interface DigestResult {
   markdown: string;
   period: string;
   items: number;
+  // The same digest rendered within options.fullBudget (the email's copy)
+  fullMarkdown?: string;
 }
 
 export interface DigestOptions {
   // Yesterday's account news and action items only; empty when there is none
   briefing?: boolean;
+  // Also render the same prose within this budget: no extra model call
+  fullBudget?: number;
 }
 
 export async function buildDigest(request: DigestRequest, deps: DigestDeps, budget: number, options: DigestOptions = {}): Promise<DigestResult> {
@@ -532,12 +536,14 @@ export async function buildDigest(request: DigestRequest, deps: DigestDeps, budg
   const prose = await writeProse(selection, deps.role, deps.watchlist, request.label, deps.complete, options.briefing === true);
   // A briefing exists to prompt action: with none left, say nothing
   if (options.briefing && prose.actions.length === 0) return { markdown: "", period: request.label, items: 0 };
-  const markdown = renderDigest(selection, prose, { failingFeeds: deps.failingFeeds() }, {
-    budget,
+  const footer = { failingFeeds: deps.failingFeeds() };
+  const render = (limit: number) =>
+    renderDigest(selection, prose, footer, { budget: limit, period: request.label, role: deps.role, now: deps.now(), briefing: options.briefing === true });
+  const markdown = render(budget);
+  return {
+    markdown,
     period: request.label,
-    role: deps.role,
-    now: deps.now(),
-    briefing: options.briefing === true,
-  });
-  return { markdown, period: request.label, items: selection.numbered.length };
+    items: selection.numbered.length,
+    ...(options.fullBudget !== undefined ? { fullMarkdown: render(options.fullBudget) } : {}),
+  };
 }

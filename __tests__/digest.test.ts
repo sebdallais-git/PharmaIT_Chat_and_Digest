@@ -613,3 +613,41 @@ describe("accounts grouped by theater", () => {
     expect(am.match(/^- /gm)).toHaveLength(2);
   });
 });
+
+// The email gets the whole digest; Telegram the budgeted one. Both come from
+// the same prose: the model is never asked twice.
+describe("buildDigest with a full render for email", () => {
+  it("renders the same prose twice, once within the budget and once uncut", async () => {
+    const prompts: string[] = [];
+    const complete: CompleteFn = async (prompt) => {
+      prompts.push(prompt);
+      return `- ${"long words ".repeat(20)}[1]\n- ${"more words ".repeat(20)}[2]`;
+    };
+    const deps = {
+      itemsInPeriod: () => [
+        item({ title: "Roche buys GPUs", entities: ["roche"], domains: ["ai"] }),
+        item({ title: "NetApp launches array", entities: ["netapp"], domains: ["storage"] }),
+      ],
+      failingFeeds: () => [],
+      watchlist,
+      role: dellGam,
+      complete,
+      now: () => now,
+    };
+    const result = await buildDigest(parseDigestRequest("digest this week", now, []), deps, 900, { fullBudget: 20_000 });
+    expect(prompts).toHaveLength(4);
+    expect(result.markdown.length).toBeLessThanOrEqual(900);
+    expect(result.fullMarkdown).toBeDefined();
+    expect(result.fullMarkdown!.length).toBeGreaterThan(result.markdown.length);
+    expect(result.fullMarkdown).toContain("](https://news.example/");
+  });
+
+  it("has no full render unless asked", async () => {
+    const result = await buildDigest(
+      parseDigestRequest("digest this week", now, []),
+      { itemsInPeriod: () => [], failingFeeds: () => [], watchlist, role: dellGam, complete: async () => "", now: () => now },
+      3900,
+    );
+    expect(result.fullMarkdown).toBeUndefined();
+  });
+});

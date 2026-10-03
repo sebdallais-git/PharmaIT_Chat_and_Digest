@@ -880,6 +880,30 @@ flowchart TB
 
 **Weekday briefing** (Tuesday to Friday, 07:30): yesterday's news about your accounts, with the account bullets and action items only. It is sent only when at least one real action item survives: importance-1 account items (the tagger's "barely relevant", where mis-tagged stories sit) are left out, and bullets that say "no action" or "unrelated" are dropped. Tested live on 2026-09-30, yesterday's only "Roche" item was a mis-tagged financial-analyst story, and the first version turned it into six "No action" lines; now that day is silent.
 
+### By email
+
+The weekly digest and the weekday briefing can also come by email, next to Telegram. Telegram cuts a message at 4,096 characters, so it keeps the 3,900-character render. The email gets the **whole** digest from the same prose, with no second model call: HTML with headings, bold, clickable item links and a plain-text fallback.
+
+```mermaid
+flowchart LR
+    J["Hermes job<br/>Mon / Tue–Fri 07:30"] --> D["scripts/digest.ts --email"]
+    D --> P["27B prose<br/>(once)"]
+    P --> T["≤ 3,900 chars"] --> TG["stdout → Telegram<br/>(unchanged)"]
+    P --> F["Full render"] --> H["Markdown → HTML<br/>(escaped, http(s) links only)"] --> S["SMTP<br/>nodemailer"] --> IN["Inbox"]
+    S -. "fails" .-> L["'email failed: …' in the job log;<br/>Telegram still sent"]
+```
+
+| Piece | Where | Notes |
+|---|---|---|
+| Recipient, sender, SMTP server | `config/email.local.yaml` (gitignored; copy `config/email.example.yaml`) | Without it email is off, and the job log says so |
+| SMTP password | `data/run/smtp-password`, mode 600 | For Gmail, an **app password** (Google Account → Security → App passwords). Refused if others can read it |
+| Test send | `npx tsx scripts/digest.ts --email-only --request "digest of last week"` | Emails without printing for Telegram; exits 1 when it cannot send |
+| Result of each run | `data/logs/weekly-digest-<date>.log`, `daily-briefing-<date>.log` | `email: sent to …`, `email: off (…)` or `email failed: …` |
+
+- **Send-only.** Nothing reads a mailbox (Hermes' own email channel would poll the inbox and send plain text cut to the Telegram length, which is why it is not used).
+- **Quiet days stay quiet**: a briefing with nothing actionable sends neither a Telegram message nor an email.
+- **The only part that leaves the machine is the delivery**, like Telegram. Every model call stays local.
+
 Run either by hand: `npx tsx scripts/digest.ts --request "digest of last week"` or `--request "briefing of yesterday" --briefing` (`--budget N` changes the character budget, default 3,900). The script runs the digest agent in-process rather than through HTTP, because Node's `fetch` gives up after 300 s. Each scheduled run is kept in `data/logs/weekly-digest-<date>.log` or `daily-briefing-<date>.log`.
 
 ---
@@ -2191,6 +2215,7 @@ Everything works with defaults. `scripts/switch-stack.sh` and `npm run dev` set 
 | `config/accounts.example.yaml` | Yes | You (copy it) | Commented template for the accounts file: needs, incumbents, triggers, notes, and the `[]` versus omitted rule |
 | `config/accounts.local.yaml` | **No (gitignored)** | Graph rebuild (source 3), need-evidence extraction | Your accounts' needs, per-segment incumbents and install-base triggers. See [The accounts file](#the-accounts-file) |
 | `config/need-evidence.local.yaml` | **No (gitignored)** | Graph rebuild (source 4); written by `extract-need-evidence.ts` | Proposed, approved and rejected need-evidence entries and processed-document hashes. You edit only `status` |
+| `config/email.local.yaml` | **No (gitignored)** | `scripts/digest.ts --email` (the Hermes digest jobs) | Recipient, sender and SMTP server for the emailed digest; copy `config/email.example.yaml`. The password lives in `data/run/smtp-password` (600) |
 | `config/need-evidence.exclude` | Yes | `extract-need-evidence.ts` | Vendor-authored documents to skip (one file name per line; `vendor-*` files are skipped by name already) |
 | `config/decide.yaml` | Yes | `src/services/decide-config.ts` | Scorer model, timeout (15 s), thresholds (0.85 / 0.5), `shadow_detection`, `page_relevance_skip_below` (0.1) |
 | `config/kb-canaries.yaml` | Yes | `scripts/kb-canary.ts` | 8 canary questions and the term groups each answer must contain |

@@ -1,0 +1,15 @@
+# Copy to config/email.local.yaml (gitignored) to also get the weekly digest and
+# the weekday briefing by email, in full and with clickable links. Telegram is
+# unchanged. Without the .local file, email is off.
+#
+# The password is NOT here: put the SMTP (Gmail app) password in
+# data/run/smtp-password, mode 600:
+#   ( umask 077; pbpaste > data/run/smtp-password )   # after copying the app password
+#
+# Test send (no Telegram): npx tsx scripts/digest.ts --email-only --request "digest of last week"
+
+to: you@example.com
+user: you@example.com        # SMTP login; also the sender unless `from` is set
+smtp_host: smtp.gmail.com
+smtp_port: 587               # 587 = STARTTLS, 465 = TLS
+# from: you@example.com
