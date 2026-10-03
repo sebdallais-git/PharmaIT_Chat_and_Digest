@@ -7,6 +7,7 @@ import {
   MODE_GUIDANCE,
   REGIME_GUIDANCE,
   resolveCompetitivePosition,
+  stintDay,
   type AccountView,
   type CompetitiveQuery,
   type CompetitiveResolution,
@@ -354,7 +355,16 @@ export const TRIM_STEPS: TrimStep[] = [
     drops: "history beyond the newest change per segment",
     applies: (a) => a.accounts.some((acc) => acc.segments.some((s) => (s.history?.length ?? 0) > 1)),
     apply: (a) => {
-      for (const acc of a.accounts) for (const s of acc.segments) if (s.history !== undefined) s.history = s.history.slice(0, 1);
+      for (const acc of a.accounts) {
+        for (const s of acc.segments) {
+          if (s.history === undefined || s.history.length <= 1) continue;
+          // The newest change, not the first row: current stints sort first even
+          // when they began years before a past stint ended
+          const newest = s.history.reduce((best, h) => (stintDay(h) > stintDay(best) ? h : best));
+          s.olderChanges = (s.olderChanges ?? 0) + s.history.length - 1;
+          s.history = [newest];
+        }
+      }
     },
   },
   NEED_EVIDENCE_QUOTES,

@@ -425,6 +425,31 @@ describe("competitivePosition — size budget", () => {
     expect(answer.notes.some((n) => n.includes("history beyond the newest change per segment"))).toBe(true);
   });
 
+  // Review of #70: the step kept the current stint (sorted first) rather than the
+  // newest change, and left olderChanges counting only the window
+  it("keeps the newest change when trimming history, and counts what it dropped as older", async () => {
+    const rows: Rows = {
+      ...ROWS,
+      accounts: [
+        {
+          ...ROWS.accounts[0],
+          uses: [
+            { segment: "storage-block", vendor: "hpe", since: "2019", until: "", source: "declared" },
+            { segment: "storage-block", vendor: "dell", since: "2020", until: "2026-03", source: "declared" },
+            ...[1, 2].map((n) => ({ segment: "storage-block", vendor: `v${n}${"x".repeat(200)}`, since: "2015", until: "2018", source: "declared" })),
+          ],
+        },
+      ],
+    };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche", history: "full" });
+    if (!result.ok) throw new Error(result.error);
+    const answer = result.answer;
+    fitBudget(answer, JSON.stringify(answer).length - 10);
+    const block = answer.accounts[0].segments.find((s) => s.segment === "storage-block");
+    expect(block?.history?.map((h) => h.vendor)).toEqual(["dell"]);
+    expect(block?.olderChanges).toBe(3);
+  });
+
   it("drops claim details before it drops claims", async () => {
     // One account: rankings on all 33 segments of a vendor-only question take
     // ~6k, so that answer needs more than the first step; this one needs it alone.

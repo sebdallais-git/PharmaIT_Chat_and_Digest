@@ -41,7 +41,7 @@ export interface HistoryStint {
 }
 
 /** The latest day a stint's dates mention, for ordering and the recent window ("" when undated). */
-function stintDay(s: HistoryStint): string {
+export function stintDay(s: HistoryStint): string {
   const dates = [s.since, s.until].filter((d) => d !== "" && d !== "?");
   return dates.map((d) => (d.length === 4 ? `${d}-12-31` : d.length === 7 ? `${d}-28` : d)).sort().pop() ?? "";
 }
