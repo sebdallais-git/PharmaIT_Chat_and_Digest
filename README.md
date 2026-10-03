@@ -46,7 +46,7 @@ PharmaITChat watches the IT and security scene around three pharma customers, th
 [![Resolution agreement](https://img.shields.io/badge/scorer_vs_27B-resolution_91%25-1e3a8a?style=flat-square)](#the-system-one-scorer)
 [![Autostart](https://img.shields.io/badge/after_reboot-everything_returns-064e3b?style=flat-square)](#hermes-agent-on-telegram)
 
-[Workflows](#workflows) · [Stacks](#four-interchangeable-stacks) · [Watchlist](#the-watchlist) · [Chat](#chat-retrieval-and-the-knowledge-base) · [Dates](#dates-on-every-source) · [Vendor graph](#the-vendor-intelligence-graph) · [Need evidence](#need-evidence) · [Telegram](#hermes-agent-on-telegram) · [Setup](#setup) · [Commands](#commands) · [API](#api-reference)
+[Workflows](#workflows) · [Stacks](#four-interchangeable-stacks) · [Watchlist](#the-watchlist) · [Chat](#chat-retrieval-and-the-knowledge-base) · [Dates](#dates-on-every-source) · [Vendor graph](#the-vendor-intelligence-graph) · [Need evidence](#need-evidence) · [History](#install-base-history) · [Telegram](#hermes-agent-on-telegram) · [Setup](#setup) · [Commands](#commands) · [API](#api-reference)
 
 </div>
 
@@ -73,6 +73,7 @@ PharmaITChat watches the IT and security scene around three pharma customers, th
   - [Win-likelihood ranking](#win-likelihood-ranking)
   - [The graph block in the web chat](#the-graph-block-in-the-web-chat)
   - [Need evidence](#need-evidence)
+  - [Install-base history](#install-base-history)
 - [Artifact export](#artifact-export)
 - [Hermes Agent on Telegram](#hermes-agent-on-telegram)
 - [The MCP server and the model gateway](#the-mcp-server-and-the-model-gateway)
@@ -106,7 +107,7 @@ The whole system runs on one local box with 48 GB of unified memory: no cloud te
 
 Outbound traffic is limited to what the system goes out to *get* and the one channel it answers on: RSS and Atom feeds, Google News RSS, SEC EDGAR, URLs you explicitly add to the knowledge base, web search, and Telegram. The search queries themselves leave the machine: chat's optional web search sends the question to Google News RSS, and the self-healing loop's queries (written by the local model from a knowledge gap) go through SearXNG, which runs locally but only as a proxy, to Brave's Search API under your own key (SearXNG's page-scraping engines are switched off). Web search can be switched off in the chat UI; the self-healing loop always searches. There is no `.env` file: tokens live in `data/run/` at mode 600 and reach the process through the environment.
 
-Account intelligence never leaves the machine and never enters git: `config/accounts.local.yaml` (who is installed where) and `config/need-evidence.local.yaml` (why each account has its needs) are both gitignored.
+Account intelligence never leaves the machine and never enters git: `config/accounts.local.yaml` (who is installed where, and since when), `config/need-evidence.local.yaml` (why each account has its needs) and `config/install-history.local.yaml` (install-base changes proposed from news) are all gitignored.
 
 ---
 
@@ -254,6 +255,7 @@ Everything that runs on its own, what starts it, and whether it is live on this 
 | [Hermes scheduled jobs](#hermes-scheduled-jobs) | Cron, 3 agent jobs + 4 script jobs | Hermes | Live |
 | [Stack switch](#stack-switch) | Web UI request | App + Telegram + Hermes plugin | Live |
 | [Need-evidence extraction](#need-evidence) · `scripts/extract-need-evidence.ts` | You, by hand | Your shell, active stack | One-off, resumable |
+| [Install-history extraction](#install-base-history) · `scripts/extract-install-history.ts` | You, by hand | Your shell, active stack | Resumable per document |
 | [Chunk-date backfill](#dates-on-every-source) · `scripts/backfill-chunk-dates.ts` | You, by hand | Your shell, ChromaDB | One-off, idempotent |
 | [Gap auto-fill v1](#gap-auto-fill-v1) · `n8n/knowledge_gap_workflow.json` | Webhook | n8n (13 nodes) | Kept for reference, not imported |
 
@@ -974,7 +976,7 @@ flowchart LR
     V -- "COMPETES_IN<br/>{position, confidence,<br/>rationale, asOf}" --> S
     A -- "HAS_NEED" --> N
     N -- "ADDRESSED_BY" --> S
-    A -- "USES<br/>{segment}" --> V
+    A -- "USES<br/>{segment, since, until, source}" --> V
     EW -- "SUPPORTS<br/>{url, segments: [...]}" --> V
     EW -- "SUPPORTS<br/>{url, segments: [...]}" --> A
     ER -- "SUPPORTS<br/>{url: source#id, need}" --> A
@@ -990,7 +992,7 @@ flowchart LR
 | `Vendor` | Vendor briefs; every incumbent in the accounts file | `id`, `name` | An incumbent with no brief still gets a node: it is observed reality at the account, and it shows the research backlog. A competitor a brief merely names gets none |
 | `Segment` | Briefs and `config/needs.yaml` | `id`, `name` | `compute-ai`, `compute-standard`, `storage-block`, `storage-file`, `storage-object`, `data-platform`, `data-protection`, `hci`, `networking`, `client`, `services` |
 | `Product` | Briefs (`products:`) | `id`, `name`, `vendor` | A product is declared in exactly one brief, the segment it is sold as |
-| `Account` | `config/accounts.local.yaml` | `id`, `name`, `aliases` (comma-joined), `declaredSegments` (comma-joined, empty-list segments included), `triggers` (JSON string, omitted when none), `notes` | `declaredSegments` is what tells "nobody installed" (`[]`) from "not known" (omitted) |
+| `Account` | `config/accounts.local.yaml` | `id`, `name`, `aliases` (comma-joined), `declaredSegments` (comma-joined, empty-list segments included), `triggers` (JSON string, omitted when none), `historyConflicts` (JSON list, omitted when none), `notes` | `declaredSegments` is what tells "nobody installed" (`[]`) from "not known" (omitted) |
 | `Need` | Accounts file and `config/needs.yaml` | `id`, `name` | `ai-factory`, `ai-data-platform`, `end-user-computing`, `cyber-resilience`, `multi-cloud`, `sap`, `gxp-compliance`, `rnd-compute`, `data-sovereignty`, `manufacturing-ot`, `cost-optimisation`, `sustainability` |
 | `Evidence` (`kind: "watchlist"`) | `data/watchlist.db`, last 180 days | `id` (`watchlist:<itemId>`), `kind`, `title` (the URL when the item has none), `url`, `publishedAt` (`YYYY-MM-DD`), `signal`, `domains`, `source` | News about a graph vendor or account. Read as vendor news and account events |
 | `Evidence` (`kind: "reference"`) | `config/need-evidence.local.yaml`, approved entries only | `id` (`ne-<10 hex>`), `kind`, `claim`, `quote`, `source`, `order` | A reason why an account has a need. Never read as news |
@@ -1002,7 +1004,7 @@ flowchart LR
 | `COMPETES_IN` | Vendor → Segment | `position` (`leader` · `strong` · `present` · `absent`), `confidence` (`high` · `medium` · `low`), `rationale`, `asOf` | The vendor's curated standing there. Labels, not a market order |
 | `HAS_NEED` | Account → Need | | The account declared this need |
 | `ADDRESSED_BY` | Need → Segment | | The segments where a conversation about this need is worth having |
-| `USES` | Account → Vendor | **`segment`** | Incumbency, per segment: one account can run one vendor in file and another in block |
+| `USES` | Account → Vendor | **`segment`**, **`since`**, **`until`**, `source` | Incumbency and its history, per segment: one edge per stint (identity segment + since + until), past stints included; only edges with `until = ""` are current |
 | `SUPPORTS` | Evidence → Vendor or Account | **`url`**, plus `segments` (watchlist) or `need` (reference) | Watchlist: one edge per item and target; an item tagged with a vendor and an account gets two. Reference: `url` is `<source>#<entry id>` |
 
 **Domains to segments.** The watchlist speaks in 12 IT domains, the graph in 11 segments; `SEGMENT_DOMAINS` in `src/services/graph-evidence.ts` is the only place they meet. A watchlist item's `segments` are derived once, at rebuild, from its domains:
@@ -1122,6 +1124,7 @@ accounts:
 | `compute-ai: []` | No `USES`; segment in `declaredSegments` | `greenfield` | `greenfield` |
 | *(segment omitted)* | No `USES`; segment not declared | `unknown` | `unknown`, no ranking |
 | `storage-block:` (bare key) | Rebuild refused before the wipe | | |
+| `storage-block: [{vendor: hds, since: 2026-03}, {vendor: dell, since: 2019, until: 2026-03}]` | Two `USES` edges, Dell's with `until`; only HDS is current | HDS: `defend`; Dell (now a rival): `displace` | `defend`; `history` shows the change |
 
 A blank incumbent is better than a guessed one: guessing wrong flips an answer from defend to displace while sounding equally confident.
 
@@ -1401,6 +1404,72 @@ Validation at rebuild, each failing **before the wipe** and naming the entry: du
 **4. Read.** Approved entries become `Evidence {kind: "reference", claim, quote, source, order}` with `SUPPORTS {url: "<source>#<id>", need}` to the account. `competitive_position` returns them as `needEvidence` (up to 3 per need, in file order); the chat prints `  why <need>: <claim> (<file name>)` under the account line. News queries match only `coalesce(e.kind, "watchlist") = "watchlist"`, so reference entries never appear as events or vendor news, and a graph built before `kind` existed still reads its news. Reference entries never influence the ranking: they justify needs, not vendors.
 
 ---
+
+### Install-base history
+
+`config/accounts.local.yaml` used to hold only who is installed **now**, and every rebuild rewrote the graph from it: change Novartis storage-block from `[dell]` to `[hds]` and the graph forgot Dell ever held it. "Dell just lost block to HDS" and "HDS has been there ten years" are different sales situations, so the install base now keeps its history.
+
+```mermaid
+flowchart LR
+    AF["config/accounts.local.yaml<br/>dated incumbents<br/>(the truth for now)"] --> MERGE
+    WL[("watchlist.db items")] --> PRE
+    AR[("archive news<br/>news-YYYY-MM-DD")] --> PRE
+    PRE["Prefilter, no model:<br/>names an account<br/>AND a graph vendor"] --> M27["27B: one change?<br/>installed / replaced / removed<br/>+ verbatim quote"]
+    M27 --> CHK{"closed sets · quote ≥ 6 words<br/>and verbatim · date = item's own"}
+    CHK -- dropped --> X["counted, never proposed"]
+    CHK -- ok --> IH["config/install-history.local.yaml<br/>status: proposed"]
+    IH -- "you set approved" --> MERGE["Rebuild: applyHistory<br/>file wins · news adds the past"]
+    MERGE --> USES[("USES {segment, since, until, source}")]
+    MERGE --> CONF["contradictions →<br/>Account.historyConflicts → answer notes"]
+    USES --> ANS["competitive_position<br/>history per segment"]
+```
+
+#### Declaring history
+
+Each segment's incumbents accept plain names and dated entries, mixed freely. Dates may be `YYYY`, `YYYY-MM` or `YYYY-MM-DD`:
+
+```yaml
+incumbents:
+  storage-block:
+    - hds                                          # current, date unknown
+    - {vendor: hds, since: 2026-03}                 # current since March 2026
+    - {vendor: dell, since: 2019, until: 2026-03}   # held it until March 2026
+```
+
+- **Current** means an entry without `until`; only current entries feed incumbency, so defend/displace/greenfield, triggers and the ranking behave exactly as before.
+- A vendor may appear more than once (held it, lost it, won it back); each stint stays its own edge.
+- `[]` plus past entries is a declared-empty segment with history.
+- Refused before the wipe, naming account and segment: a malformed date, `since` after `until`, an `until` in the future (an announced end belongs in [triggers](#the-accounts-file)), an unknown key, an entry without `vendor`.
+
+#### News proposals
+
+```bash
+npx tsx scripts/extract-install-history.ts --dry-run   # proposals printed, nothing written
+npx tsx scripts/extract-install-history.ts             # writes config/install-history.local.yaml
+npx tsx scripts/extract-install-history.ts --status    # read-only: counts, next 10 to review
+```
+
+Candidates are watchlist items tagged with one of your accounts plus archive news, kept only if they name an account (or alias) **and** a graph vendor (the briefs' and your accounts file's ids, plus the watchlist names of the same entity). One 27B call per candidate; the run resumes per document and saves after each one. Approve entries by setting `status: approved`.
+
+On 2026-10-03, 1 of 7,330 items named both an account and a vendor: install-base news is rare in what the watchlist collects, so declared history is the main source today.
+
+#### How approved news merges
+
+| Approved entry | Effect |
+|---|---|
+| `installed Y` on D | Y current in your file without `since` → `since: D`; Y not current → a past stint from D, end unknown (`until: "?"`) |
+| `replaced X by Y` on D | X gets a past stint `until: D`; Y as `installed` |
+| `removed X` on D | X gets a past stint `until: D` |
+| News says X left, your file lists X as current | **Your file wins**; the answer carries a note: `approved news says x left <segment> on D; accounts.local.yaml still lists it as current` |
+
+An approved entry naming an unknown account or vendor fails the rebuild before the wipe.
+
+#### What the answer shows
+
+- Each account segment carries `history` (who held it, newest first, current stints first) with each stint's `source` (`declared` or `news:<url>`).
+- **Default:** changes from the last 18 months; `olderChanges` counts the rest. **Full:** every stint, with `history: "full"` (MCP parameter, `POST /api/graph/competitive-position` body), or in the chat when the question uses history wording ("history", "over time", "previously", "before that", "used to", "since when", "who had").
+- Chat lines under a segment: `changed: hds 2026-03–now (declared) · dell 2019–2026-03 (declared) · +1 older`, or `history: …` in full mode.
+- History is context, not a rule: regimes and ranking are unchanged. It is trimmable under the answer budget (beyond the newest row first, all of it last).
 
 ## Artifact export
 
@@ -1788,6 +1857,7 @@ Every file in `scripts/`, one line each. "Writes" means it changes live data; ev
 | `scripts/embedding-parity.ts` | Saves or compares embeddings across stacks | The file you name |
 | `scripts/export-graph.ts` | Dumps the whole Neo4j graph to JSON before anything destructive | The file you name; read-only on Neo4j |
 | `scripts/extract-need-evidence.ts` | The 27B proposes need evidence from the legacy documents; `--status` summarises review | `config/need-evidence.local.yaml` (not with `--dry-run` or `--status`) |
+| `scripts/extract-install-history.ts` | The 27B proposes install-base changes (installed / replaced / removed) from watchlist items and archive news that name an account and a graph vendor; `--status` summarises review | `config/install-history.local.yaml` (not with `--dry-run` or `--status`) |
 | `scripts/ingest-to-chromadb.ts` | One-time: ingests every `knowledge/*.md` into ChromaDB | ChromaDB |
 | `scripts/kb-canary.ts` | Asks the KB canaries against the running app; exit 1 on a failure | `kb_canary_runs` (not with `--no-store`) |
 | `scripts/rebuild-vendor-graph.ts` | Rebuilds the vendor graph from its five sources | Only with `--apply` (`--rebuild` wipes first) |
