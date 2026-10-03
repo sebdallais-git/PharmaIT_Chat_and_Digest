@@ -34,7 +34,7 @@
     "no_agent": true,
     "deliver": "local",
     "failure_deliver": "telegram",
-    "script_timeout_seconds": 7200
+    "script_timeout_seconds": 10800
   },
   {
     "name": "pharmaitchat-kb-canary",

@@ -716,7 +716,7 @@ At **02:30** a Hermes cron job runs one pass in `--no-agent` script mode: no LLM
 flowchart TD
     F["Feeds in priority order<br/>customers → peers → vendors → topics"] --> A["Adapters<br/>RSS/Atom · Google News · EDGAR<br/>(ir_page disabled)"]
     A --> D["Dedupe before the model<br/>canonical URL, content hash, title key<br/>duplicates kept as extra sources"]
-    D --> CAP{"250-item cap,<br/>45-minute budget"}
+    D --> CAP{"450-item cap,<br/>75-minute budget"}
     CAP -- "over" --> DEF["Deferred, counted<br/>picked up next night"]
     CAP -- "within" --> T["Tag with the local 27B, one at a time<br/>entities · domains · signal · importance<br/>closed vocabulary"]
     T --> S[("SQLite data/watchlist.db<br/>items, sources, feed watermarks, runs")]
@@ -749,7 +749,7 @@ Four more properties hold the run together:
 
 - **Tagging is sequential.** The local model serves one request at a time, so concurrency here would only queue behind itself.
 - **A feed never takes the run down.** An adapter, tagger or store error is caught per feed: the failure is recorded, the feed's watermark is *not* advanced (so the next run re-fetches what this one missed) and the run moves on.
-- **The run stops itself before anything else does.** A 250-item cap and a 45-minute wall-clock budget keep it inside Hermes' script timeout. Items past the cap are counted as deferred, not dropped, and the next run picks them up. A feed that has never been seen is backfilled 30 days, not from the beginning of time.
+- **The run stops itself before anything else does.** A 450-item cap and a 75-minute wall-clock budget (raised from 250 / 45 on 2026-10-03, when the customers grew to 60) keep it inside Hermes' three-hour script timeout. Items past the cap are counted as deferred, not dropped, and the next run picks them up. A feed that has never been seen is backfilled 30 days, not from the beginning of time.
 - **The graph mirrors the store.** After every pass that ran (failed feeds included), the CLI rebuilds the vendor graph through the store it already holds open, then closes the Neo4j driver so the Hermes job can exit. A `--only` pass is a debugging run and leaves the graph alone. A manual `POST /api/graph/rebuild` during the nightly run is not locked out across processes; Neo4j serialises the two write transactions and at worst one fails and reports.
 
 ### The first unattended run
@@ -2421,7 +2421,7 @@ What the graph work is tested for, all with fakes (no Neo4j, no sqlite file, no 
 | A nightly Telegram failure message (exit 1) | Every feed failed or the tagger failed. `npm run watchlist -- status` shows the last recorded run; the full per-feed output of every night is in `data/logs/watchlist-ingest-<date>.log` |
 | An entity produces nothing | Check its `feeds:` block in `config/watchlist.yaml`; peers on IT-scoped Google News feeds stay empty until they make IT news |
 | `verify-feeds` prints `skip … verified separately` | Expected for `edgar` (a CIK, not a URL) and `ir_page` (an HTML page, not a feed) |
-| The run tags far fewer items than were fetched | The 250-item cap. The remainder is counted as deferred and picked up by the next run; raise it with `--limit` for a one-off catch-up |
+| The run tags far fewer items than were fetched | The 450-item cap. The remainder is counted as deferred and picked up by the next run; raise it with `--limit` for a one-off catch-up |
 | A rebuild report says `N future-dated skipped` | A feed misdated items more than a day ahead; they are kept in `watchlist.db` and enter the graph once their date is reached |
 
 </details>
