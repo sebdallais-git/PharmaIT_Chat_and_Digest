@@ -123,7 +123,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
 - **Digests** (`digest-request.ts`, `digest-builder.ts`, `digest-agent.ts`, `api/digest.ts`, MCP
   `make_digest`, chat on digest wording): deterministic selection over `watchlist.db`, 4 short
   27B calls whose bullets must cite item numbers, rendered to a budget (Telegram 3,900 chars;
-  action items never cut). Framed by the active role.
+  action items never cut). Framed by the active role. Accounts spanning theaters (no role = all 60 customers)
+  are grouped Americas / EMEA / APAC, size rank first, one 27B call per theater; "digest EMEA" narrows to one.
 - Storage: ChromaDB (:8100), Neo4j (`neo4j-driver`), `better-sqlite3`. No Prisma/PostgreSQL.
 - **Host profile**: `config/host.yaml` holds every endpoint (address/port) and machine-sized limit
   (`resources`). TS reads it via `src/platform/host-config.ts` (`serviceUrl`, `loadHostConfig`,

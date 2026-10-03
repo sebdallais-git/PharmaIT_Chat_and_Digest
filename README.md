@@ -829,6 +829,7 @@ flowchart LR
     E --> R["Reply: a question,<br/>or the role's details"]
 ```
 
+- **A question is never an answer.** On 2026-10-02 "How should we approach novartis ?" typed while onboarding was waiting for a company was saved as the company, the role's accounts matched nothing, and the digests had no accounts to cover. A message that reads as a question (ends with "?", or starts with how / what / which / should / tell me …) now drops the open onboarding and is answered normally.
 - **The model never holds the state.** It turns a free-form message into a checked set of changes (portfolio values limited to the six lines); the engine decides what to ask or save. Answers to an onboarding question are parsed without the model, so they are instant.
 - **An ordinary question costs nothing extra.** Only messages that look like role talk ("I am … at …", "my accounts", "switch to …") reach the model, and one that turns out not to be about the role goes on to the normal answer.
 - **Measured live** (Splash, 2026-09-30): the Dell role came out of one sentence plus two answers; switching, editing and "what is my role?" each took 3–4 s; ordinary questions were never caught.
@@ -843,8 +844,8 @@ flowchart LR
 flowchart LR
     Q["'digest of last week'<br/>'storage at Novartis this month'"] --> P["Period and focus<br/>parsed without a model"]
     P --> S[("watchlist.db<br/>items in the period")]
-    S --> SEL["Deterministic selection<br/>sections, importance, caps<br/>accounts round-robin"]
-    SEL --> W["4 short 27B calls<br/>headline · accounts ·<br/>infrastructure · action items"]
+    S --> SEL["Deterministic selection<br/>sections, importance, caps<br/>accounts by theater, round-robin<br/>in size-rank order"]
+    SEL --> W["4–6 short 27B calls<br/>headline · accounts (one per theater) ·<br/>infrastructure · action items"]
     W --> V{"Every bullet cites<br/>real item numbers?"}
     V -- "no" --> DROP["Bullet dropped"]
     V -- "yes" --> R["Render within budget<br/>links, then lists give way;<br/>action items never cut"]
@@ -854,15 +855,27 @@ flowchart LR
 | Section | What goes in |
 |---|---|
 | Headline | 3–4 bullets on the period's most important items for your role |
-| Your accounts | One bullet per account, items taken round-robin so a busy account cannot crowd out the others |
+| Your accounts | One bullet per account, items taken round-robin so a busy account cannot crowd out the others. When the accounts span theaters (with no role: all 60 customers), three blocks, **Your accounts · Americas / EMEA / APAC**, up to 4 items and 3 bullets each, the biggest account by size rank first in every round |
 | Infrastructure scene | Storage, servers, networking and backup news: competitor moves, launches, supply and pricing signals |
 | Pharma industry · Cyber · AI, cloud & data · R&D and manufacturing IT | The top items as a plain list, with links |
 | Action items | One per portfolio line: account, next step, which of your company's product families to lead with |
 | Footer | Items in the period, accounts the watchlist does not follow, feeds failing 3+ nights running |
 
 - **Selection is code, prose is the model's.** Which items go in is decided over the item store; the model writes about the items it is handed, and a bullet that cites no real item number is dropped. A failed model call leaves that section as a plain item list.
-- **Period and focus come from your wording**: "this week" (7 days), "last week" (Monday to Sunday), "yesterday", "this month", "last month", "last 10 days", "since Monday"; a company or a domain word ("storage", "cyber", "manufacturing") narrows it; "my accounts" keeps only your accounts and their peers.
+- **Period and focus come from your wording**: "this week" (7 days), "last week" (Monday to Sunday), "yesterday", "this month", "last month", "last 10 days", "since Monday"; a company or a domain word ("storage", "cyber", "manufacturing") narrows it; "my accounts" keeps only your accounts and their peers; "Americas", "EMEA" or "APAC" keeps only the accounts headquartered there ("digest EMEA last week", "briefing APAC").
 - **Measured** (Splash, 2026-09-30, Dell GAM role): 35 items, 3,151 characters, 88 s over four calls; last week's digest from the script in 50 s. The first run gave all eight account slots to Roche (25 items against Novartis' 3 and Sandoz' 2) and cut the action items at the Telegram limit; both are fixed and tested.
+- **Theaters, not one long list** (2026-10-03): with 60 customers and no role, the old 8-slot accounts section went to whichever accounts came first in round-robin. Grouped, each theater gets its own short 27B call (300 tokens, 3 bullets weekly, 2 in the briefing) and its own heading. Under the Telegram budget, links and lists give way first, then theaters drop to 2 bullets and then 1, never 0. Accounts in one theater only (a Roche / Novartis / Sandoz role) keep the single "Your accounts" block. On live data with a stand-in model, last week's digest came to 3,851 characters and yesterday's briefing to 3,754.
+
+```mermaid
+flowchart TB
+    A["Accounts<br/>role's, or all 60 customers"] --> T{"Span two or<br/>more theaters?"}
+    T -- "no" --> ONE["One 'Your accounts' block<br/>8 items, 5 bullets"]
+    T -- "yes" --> AM["Americas<br/>4 items · 3 bullets"]
+    T -- "yes" --> EM["EMEA<br/>4 items · 3 bullets"]
+    T -- "yes" --> AP["APAC<br/>4 items · 3 bullets"]
+    AM & EM & AP --> B["Over budget? links, lists,<br/>then 3 → 2 → 1 bullet per theater"]
+```
+
 - **Action items are prompts, not facts**: they name product families from the model's own knowledge, which can be out of date.
 
 **Weekday briefing** (Tuesday to Friday, 07:30): yesterday's news about your accounts, with the account bullets and action items only. It is sent only when at least one real action item survives: importance-1 account items (the tagger's "barely relevant", where mis-tagged stories sit) are left out, and bullets that say "no action" or "unrelated" are dropped. Tested live on 2026-09-30, yesterday's only "Roche" item was a mis-tagged financial-analyst story, and the first version turned it into six "No action" lines; now that day is silent.
