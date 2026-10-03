@@ -9,12 +9,15 @@ import { assertIndexUsable, expectedIndexMeta } from "./index-guard.js";
 import type { IndexMeta } from "./index-guard.js";
 import { parseFile, isSupportedFile } from "./file-parser.js";
 import { toBatches } from "../utils/batches.js";
+import type { ChunkDate } from "./chunk-date.js";
 
 interface KnowledgeChunk {
   id: string;
   source: string;
   content: string;
   embedding: Float32Array;
+  /** When the content was true or published (chunk-date.ts); absent on chunks stored before dates. */
+  date?: ChunkDate;
 }
 
 interface StoredChunk {
@@ -22,6 +25,7 @@ interface StoredChunk {
   source: string;
   content: string;
   embedding: string; // base64 Float32
+  date?: ChunkDate;
 }
 
 interface IndexFile {
@@ -47,6 +51,7 @@ export interface IndexSummary {
 export interface TextItem {
   text: string;
   source: string;
+  date?: ChunkDate;
 }
 
 export interface KnowledgeFile {
@@ -152,6 +157,7 @@ export function parseIndexFile(raw: unknown): ParsedIndex {
       source: c.source,
       content: c.content,
       embedding: decodeEmbedding(c.embedding),
+      ...(c.date !== undefined ? { date: c.date } : {}),
     })),
   };
 }
@@ -166,6 +172,7 @@ export function serializeIndex(meta: IndexMeta, items: KnowledgeChunk[], complet
       source: c.source,
       content: c.content,
       embedding: encodeEmbedding(c.embedding),
+      ...(c.date !== undefined ? { date: c.date } : {}),
     })),
   };
   return JSON.stringify(file);
@@ -213,7 +220,7 @@ export async function ingestFile(filePath: string, sourceName: string): Promise<
 // Ingest several texts, embedding their chunks in batches
 export async function ingestTexts(items: TextItem[]): Promise<number> {
   const pending = items.flatMap((item) =>
-    chunkText(item.text).map((content) => ({ source: item.source, content }))
+    chunkText(item.text).map((content) => ({ source: item.source, content, date: item.date }))
   );
   const client = getLlmClient();
 
@@ -225,6 +232,7 @@ export async function ingestTexts(items: TextItem[]): Promise<number> {
         source: p.source,
         content: p.content,
         embedding: Float32Array.from(embeddings[i]),
+        ...(p.date !== undefined ? { date: p.date } : {}),
       });
     });
   }
@@ -233,8 +241,8 @@ export async function ingestTexts(items: TextItem[]): Promise<number> {
 }
 
 // Ingest raw text into the knowledge base
-export async function ingestText(text: string, sourceName: string): Promise<number> {
-  return ingestTexts([{ text, source: sourceName }]);
+export async function ingestText(text: string, sourceName: string, date?: ChunkDate): Promise<number> {
+  return ingestTexts([{ text, source: sourceName, date }]);
 }
 
 // Start an empty index for the active stack. Only a reindex calls this: it is the one place metadata is stamped.
@@ -286,6 +294,28 @@ export async function loadIndex(path: string = indexPath()): Promise<void> {
   indexMeta = parsed.meta;
   indexComplete = parsed.complete;
   console.log(`Index loaded: ${chunks.length} chunks (${path})`);
+}
+
+/**
+ * Give chunks stored before dates existed the date their source resolves to.
+ * Stamped dates are kept. Returns how many chunks were filled.
+ */
+export function fillChunkDates(items: KnowledgeChunk[], resolve: (source: string) => ChunkDate | null): number {
+  let filled = 0;
+  for (const chunk of items) {
+    if (chunk.date !== undefined) continue;
+    const date = resolve(chunk.source);
+    if (date !== null) {
+      chunk.date = date;
+      filled++;
+    }
+  }
+  return filled;
+}
+
+/** fillChunkDates on the loaded index: run at startup, persisted by the next save. */
+export function fillLoadedChunkDates(resolve: (source: string) => ChunkDate | null): number {
+  return fillChunkDates(chunks, resolve);
 }
 
 // Read the index file's metadata and size without decoding embeddings

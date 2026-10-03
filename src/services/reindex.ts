@@ -1,5 +1,7 @@
 // Rebuilds the active stack's in-memory index and ChromaDB collection from knowledge/ and data/raw_documents/
 
+import { chunkDateOf, rawDocumentDate, type ChunkDate } from "./chunk-date.js";
+import { liveKnowledgeFileDate } from "./date-sources-live.js";
 import { getActiveStack } from "../config/llm-stacks.js";
 import type { StackConfig } from "../config/llm-stacks.js";
 import { checkIndexMeta, expectedIndexMeta, setIndexStatus } from "./index-guard.js";
@@ -73,6 +75,8 @@ export interface ReindexDeps {
   recreateChromaCollection: () => Promise<void>;
   listKnowledgeFiles: () => Promise<KnowledgeFile[]>;
   parseFile: (path: string) => Promise<string>;
+  /** The file's date (git commit, else mtime): every chunk carries one (chunk-date.ts). */
+  knowledgeFileDate: (file: KnowledgeFile) => Promise<ChunkDate>;
   ingestTexts: (items: TextItem[]) => Promise<number>;
   addToChromaDB: (texts: string[], metadatas: Record<string, unknown>[]) => Promise<number>;
   listRawDocuments: () => Promise<RawDocument[]>;
@@ -91,6 +95,7 @@ const defaultDeps: ReindexDeps = {
   recreateChromaCollection,
   listKnowledgeFiles,
   parseFile,
+  knowledgeFileDate: liveKnowledgeFileDate,
   ingestTexts,
   addToChromaDB,
   listRawDocuments: () => listRawDocuments(),
@@ -174,8 +179,9 @@ export async function reindexActiveStack(
     for (const file of await deps.listKnowledgeFiles()) {
       try {
         const text = await deps.parseFile(file.path);
-        memoryChunks += await deps.ingestTexts([{ text, source: file.name }]);
-        chromaChunks += await deps.addToChromaDB([text], [{ source: file.name }]);
+        const date = await deps.knowledgeFileDate(file);
+        memoryChunks += await deps.ingestTexts([{ text, source: file.name, date }]);
+        chromaChunks += await deps.addToChromaDB([text], [{ source: file.name, ...date }]);
         knowledgeFiles++;
         log(`[Reindex] file ${file.name}`);
       } catch (err) {
@@ -194,10 +200,12 @@ export async function reindexActiveStack(
       try {
         // If the in-memory ingest succeeds but ChromaDB fails, the batch stays in the in-memory
         // index and is only missing from ChromaDB; it is still reported as skipped, not rolled back.
-        memoryChunks += await deps.ingestTexts(batch.map((doc) => ({ text: doc.content, source: doc.source })));
+        memoryChunks += await deps.ingestTexts(
+          batch.map((doc) => ({ text: doc.content, source: doc.source, date: rawDocumentDate(doc) })),
+        );
         chromaChunks += await deps.addToChromaDB(
           batch.map((doc) => doc.content),
-          batch.map((doc) => ({ source: doc.source, ...doc.metadata }))
+          batch.map((doc) => ({ source: doc.source, ...doc.metadata, ...rawDocumentDate(doc) }))
         );
         processed += batch.length;
         rawDocuments += batch.length;
@@ -218,7 +226,9 @@ export async function reindexActiveStack(
     // unrecoverable, so a failure here is worth surfacing after the bulk is in.
     const items = await deps.listWatchlistItems();
     for (const batch of toBatches(items, RAW_DOCUMENT_BATCH_SIZE)) {
-      memoryChunks += await deps.ingestTexts(batch.map((item) => ({ text: item.text, source: sourceOf(item) })));
+      memoryChunks += await deps.ingestTexts(
+        batch.map((item) => ({ text: item.text, source: sourceOf(item), date: chunkDateOf(item.metadata) ?? undefined })),
+      );
       chromaChunks += await deps.addToChromaDB(
         batch.map((item) => item.text),
         batch.map((item) => ({ ...item.metadata, source_tier: "feed" })),

@@ -9,7 +9,8 @@ import knowledgeRouter from "./api/knowledge.js";
 import agentRouter from "./api/agent.js";
 import feedbackRouter from "./api/feedback.js";
 import dashboardRouter from "./api/dashboard.js";
-import { loadIndex, ingestKnowledgeDir, saveIndex, getIndexMeta, isIndexComplete } from "./services/knowledge-store.js";
+import { loadIndex, ingestKnowledgeDir, saveIndex, getIndexMeta, isIndexComplete, fillLoadedChunkDates } from "./services/knowledge-store.js";
+import { liveDateResolver } from "./services/date-sources-live.js";
 import { isChromaDBAvailable, getChromaStatus, getChromaCollectionInfo } from "./services/chromadb-store.js";
 import { getActiveStack } from "./config/llm-stacks.js";
 import { getLlmClient } from "./services/llm-client.js";
@@ -144,6 +145,17 @@ async function start(): Promise<void> {
       }
     } catch (err) {
       console.error("Knowledge file ingestion failed:", err instanceof Error ? err.message : err);
+    }
+    try {
+      // Chunks stored before dates existed (or ingested just above) get their
+      // date once; the save keeps it (chunk-date.ts).
+      const dated = fillLoadedChunkDates(await liveDateResolver());
+      if (dated > 0) {
+        await saveIndex();
+        console.log(`${dated} index chunks dated`);
+      }
+    } catch (err) {
+      console.error("Dating index chunks failed:", err instanceof Error ? err.message : err);
     }
   } else {
     console.error(`Search index check failed: ${indexCheck.reason}`);

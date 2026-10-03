@@ -1,5 +1,6 @@
 // Routes API pour le chat
 
+import { chunkDateOf, knowledgeContextBlock, todayLine } from "../services/chunk-date.js";
 import { Router } from "express";
 import type { Request, Response } from "express";
 import multer from "multer";
@@ -113,7 +114,8 @@ const NAMES_OFF_PROMPT = `
 - When discussing cyber incidents, you may reference companies only in general terms without naming specific victims unless the user explicitly asks.`;
 
 function getSystemPrompt(): string {
-  return BASE_SYSTEM_PROMPT + (nameCompanies ? NAMES_ON_PROMPT : NAMES_OFF_PROMPT);
+  // Today's date first: "Q2" or "last year" means nothing without it.
+  return todayLine(new Date()) + "\n\n" + BASE_SYSTEM_PROMPT + (nameCompanies ? NAMES_ON_PROMPT : NAMES_OFF_PROMPT);
 }
 
 const GAP_DISCLAIMER = "\n\n---\n*I'm not fully confident in this answer. I'm researching this topic now and should know more soon.*";
@@ -250,10 +252,13 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     try {
       const chromaResults = await searchChromaDB(message, 5, queryEmbedding);
       if (chromaResults.length > 0) {
-        contextBlock = "\n\nRelevant context from the knowledge base:\n" +
-          chromaResults
-            .map((r: ChromaQueryResult) => `[Source: ${String(r.metadata.source ?? "unknown")}]\n${r.document.slice(0, 1500)}`)
-            .join("\n\n---\n\n");
+        contextBlock = knowledgeContextBlock(
+          chromaResults.map((r: ChromaQueryResult) => ({
+            source: String(r.metadata.source ?? "unknown"),
+            date: chunkDateOf(r.metadata),
+            text: r.document,
+          })),
+        );
         chunkIds = chromaResults.map((r: ChromaQueryResult) => r.id);
         hadRagContext = true;
         const sourceNames = chromaResults.map((r: ChromaQueryResult) => String(r.metadata.source ?? "unknown"));
@@ -350,10 +355,9 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
   // Use in-memory results as fallback only if ChromaDB missed
   if (!chromaHit && inmemoryResults.length > 0) {
-    contextBlock = "\n\nRelevant context from the knowledge base:\n" +
-      inmemoryResults
-        .map((c) => `[Source: ${c.source}]\n${c.content.slice(0, 1500)}`)
-        .join("\n\n---\n\n");
+    contextBlock = knowledgeContextBlock(
+      inmemoryResults.map((c) => ({ source: c.source, date: c.date ?? null, text: c.content })),
+    );
     chunkIds = inmemoryResults.map((c) => c.source);
     hadRagContext = true;
     hadInmemoryFallback = true;
