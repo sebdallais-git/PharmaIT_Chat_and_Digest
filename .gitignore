@@ -28,3 +28,4 @@ python/omlx-venv/
 config/accounts.local.yaml
 config/need-evidence.local.yaml
 config/install-history.local.yaml
+config/email.local.yaml

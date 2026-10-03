@@ -486,7 +486,8 @@ describe("hermes/scripts/pharmaitchat-daily-briefing.sh", () => {
     const { result, log } = briefingBox("**Briefing · yesterday**\n- Roche: ...", 0);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("**Briefing · yesterday**\n- Roche: ...\n");
-    expect(log).toContain("stack=splash args=tsx scripts/digest.ts --request briefing of yesterday --briefing");
+    // --email: the full briefing also goes by email when config/email.local.yaml exists
+    expect(log).toContain("stack=splash args=tsx scripts/digest.ts --request briefing of yesterday --briefing --email");
   });
 
   // Empty stdout is silent: a day with nothing about the accounts sends nothing
@@ -530,7 +531,7 @@ describe("hermes/scripts/pharmaitchat-weekly-digest.sh", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("**Digest · the week of 21 Sept–27 Sept**\n- item\n");
     expect(log).toContain("stack=splash");
-    expect(log).toContain('args=tsx scripts/digest.ts --request digest of last week');
+    expect(log).toContain("args=tsx scripts/digest.ts --request digest of last week --email");
     expect(log).toContain("**Digest · the week of 21 Sept–27 Sept**");
   });
 

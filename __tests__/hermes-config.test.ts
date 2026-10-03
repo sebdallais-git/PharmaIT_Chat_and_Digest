@@ -234,7 +234,7 @@ describe("hermes/cron/jobs.json", () => {
     });
     const wrapper = readFileSync(join(hermesDir, "scripts", "pharmaitchat-weekly-digest.sh"), "utf-8");
     expect(wrapper).toContain("__PROJECT_DIR__");
-    expect(wrapper).toContain('scripts/digest.ts --request "digest of last week"');
+    expect(wrapper).toContain('scripts/digest.ts --request "digest of last week" --email');
     expect(wrapper).toContain("data/run/active-stack");
   });
 
@@ -251,7 +251,7 @@ describe("hermes/cron/jobs.json", () => {
       failure_deliver: "telegram",
     });
     const wrapper = readFileSync(join(hermesDir, "scripts", "pharmaitchat-daily-briefing.sh"), "utf-8");
-    expect(wrapper).toContain('scripts/digest.ts --request "briefing of yesterday" --briefing');
+    expect(wrapper).toContain('scripts/digest.ts --request "briefing of yesterday" --briefing --email');
   });
 
   it("ships the watchlist ingest's wrapper script next to jobs.json", () => {

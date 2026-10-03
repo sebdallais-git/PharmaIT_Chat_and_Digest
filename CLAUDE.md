@@ -36,7 +36,7 @@ npx tsx scripts/extract-need-evidence.ts [--only knowledge/<f>] [--dry-run] | --
                                                # 27B proposes need evidence; approve in config/need-evidence.local.yaml
 npx tsx scripts/extract-install-history.ts [--dry-run] | --status    # 27B proposes install-base changes; approve in config/install-history.local.yaml
 npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
-npx tsx scripts/digest.ts [--request "…"] [--briefing]   # digest agent in-process; Hermes sends the weekly digest Mon 07:30,
+npx tsx scripts/digest.ts [--request "…"] [--briefing] [--email|--email-only]   # digest agent in-process; Hermes sends the weekly digest Mon 07:30,
                                                # the account briefing Tue–Fri 07:30 (silent when nothing is actionable)
 ```
 
@@ -125,6 +125,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   27B calls whose bullets must cite item numbers, rendered to a budget (Telegram 3,900 chars;
   action items never cut). Framed by the active role. Accounts spanning theaters (no role = all 60 customers)
   are grouped Americas / EMEA / APAC, size rank first, one 27B call per theater; "digest EMEA" narrows to one.
+  The Hermes jobs pass `--email`: the uncut digest is also emailed as HTML (`digest-email.ts`, nodemailer) when the
+  gitignored `config/email.local.yaml` exists; SMTP password in `data/run/smtp-password` (600). Email failure never blocks Telegram.
 - Storage: ChromaDB (:8100), Neo4j (`neo4j-driver`), `better-sqlite3`. No Prisma/PostgreSQL.
 - **Host profile**: `config/host.yaml` holds every endpoint (address/port) and machine-sized limit
   (`resources`). TS reads it via `src/platform/host-config.ts` (`serviceUrl`, `loadHostConfig`,
