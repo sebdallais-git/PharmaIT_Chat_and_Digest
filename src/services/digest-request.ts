@@ -2,7 +2,7 @@
 // "storage news at Novartis last month") into a period and an optional focus.
 // Deterministic: no model call decides what a digest covers.
 
-import type { Domain, Entity } from "./watchlist-config.js";
+import type { Domain, Entity, Theater } from "./watchlist-config.js";
 
 export interface DigestRequest {
   from: Date;
@@ -13,6 +13,8 @@ export interface DigestRequest {
   focusDomains: Domain[];
   // "my accounts": only the active role's accounts (and their peers)
   accountsOnly: boolean;
+  // "digest EMEA": only the accounts headquartered in that theater
+  theater: Theater | null;
 }
 
 const DIGEST_PATTERN =
@@ -95,6 +97,12 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const THEATER_WORDS: [Theater, RegExp][] = [
+  ["Americas", /\bamericas\b/i],
+  ["EMEA", /\bemea\b/i],
+  ["APAC", /\bapac\b/i],
+];
+
 export function parseDigestRequest(text: string, now: Date, entities: Iterable<Entity>): DigestRequest {
   const focusEntities: string[] = [];
   for (const entity of entities) {
@@ -109,5 +117,6 @@ export function parseDigestRequest(text: string, now: Date, entities: Iterable<E
     focusEntities: entityFocus,
     focusDomains,
     accountsOnly: /\bmy accounts?\b/i.test(text),
+    theater: THEATER_WORDS.find(([, pattern]) => pattern.test(text))?.[0] ?? null,
   };
 }

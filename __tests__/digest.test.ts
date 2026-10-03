@@ -467,3 +467,131 @@ describe("empty bullets and quiet briefings", () => {
     expect(calls).toBe(0);
   });
 });
+
+// Since 2026-10-03 the watchlist follows the top 60 pharma / medtech customers,
+// each with a headquarters theater and a size rank. With no role the digest
+// covers all of them, so "Your accounts" is grouped by theater; within a
+// theater, accounts take turns in size-rank order.
+describe("accounts grouped by theater", () => {
+  const ranked = (id: string, theater: "Americas" | "EMEA" | "APAC", rank: number) =>
+    entity(id, "customer", { theater, size: { rank, year: 2025, basis: "FY2024 healthcare revenue" } });
+  const world: Watchlist = {
+    entities: new Map(
+      [
+        ranked("roche", "EMEA", 2),
+        ranked("novartis", "EMEA", 7),
+        ranked("sandoz", "EMEA", 39),
+        ranked("jnj", "Americas", 1),
+        ranked("pfizer", "Americas", 4),
+        ranked("takeda", "APAC", 17),
+        entity("netapp", "vendor", { name: "NetApp" }),
+      ].map((e) => [e.id, e]),
+    ),
+    topics: [],
+    priority: [],
+    notes: [],
+  };
+  const about = (id: string, n: number, importance = 3) =>
+    Array.from({ length: n }, (_, i) => item({ title: `${id} news ${i}`, entities: [id], domains: ["ai"], importance }));
+  const weekly = parseDigestRequest("digest this week", now, []);
+
+  it("reads a theater named in the request", () => {
+    expect(parseDigestRequest("digest EMEA last week", now, []).theater).toBe("EMEA");
+    expect(parseDigestRequest("briefing apac", now, []).theater).toBe("APAC");
+    expect(parseDigestRequest("digest this week", now, []).theater).toBeNull();
+  });
+
+  it("groups accounts Americas, EMEA, APAC, size rank first within each, capped per theater", () => {
+    // Watchlist order is not rank order: Sandoz (39) is listed before nothing, Roche (2) first
+    const items = [...about("sandoz", 3), ...about("novartis", 3), ...about("roche", 3), ...about("pfizer", 2), ...about("jnj", 1), ...about("takeda", 6)];
+    const selection = selectDigestItems(items, weekly, world, null);
+
+    expect(selection.accountGroups.map((g) => g.theater)).toEqual(["Americas", "EMEA", "APAC"]);
+    const titles = selection.accountGroups.map((g) => g.entries.map((e) => e.item.title));
+    expect(titles[0]).toEqual(["jnj news 0", "pfizer news 0", "pfizer news 1"]);
+    expect(titles[1]).toEqual(["roche news 0", "novartis news 0", "sandoz news 0", "roche news 1"]);
+    expect(titles[2]).toHaveLength(4);
+    // The flat section is the groups in order, numbered contiguously
+    expect(selection.sections.accounts.map((e) => e.n)).toEqual(Array.from({ length: 11 }, (_, i) => i + 1));
+  });
+
+  it("does not group when the accounts sit in one theater", () => {
+    const role: Role = { ...dellGam, accounts: ["Roche", "Novartis", "Sandoz"] };
+    const selection = selectDigestItems([...about("roche", 5), ...about("novartis", 5)], weekly, world, role);
+    expect(selection.accountGroups).toHaveLength(1);
+    expect(selection.accountGroups[0].theater).toBeNull();
+    expect(selection.accountGroups[0].entries).toHaveLength(8);
+  });
+
+  it("narrows the accounts to the theater the request names", () => {
+    const selection = selectDigestItems([...about("roche", 2), ...about("jnj", 2)], parseDigestRequest("digest EMEA", now, []), world, null);
+    expect(selection.accountIds).toEqual(["roche", "novartis", "sandoz"]);
+    expect(selection.sections.accounts.map((e) => e.item.title)).toEqual(["roche news 0", "roche news 1"]);
+  });
+
+  it("writes each theater in its own short call and renders it under its own heading", async () => {
+    const prompts: string[] = [];
+    const complete: CompleteFn = async (prompt) => {
+      prompts.push(prompt);
+      const n = Number(prompt.match(/\[(\d+)\]/)?.[1] ?? 1);
+      return `- bullet a [${n}]\n- bullet b [${n}]\n- bullet c [${n}]\n- bullet d [${n}]`;
+    };
+    const result = await buildDigest(
+      weekly,
+      { itemsInPeriod: () => [...about("jnj", 2), ...about("roche", 2), ...about("takeda", 2)], failingFeeds: () => [], watchlist: world, role: null, complete, now: () => now },
+      20_000,
+    );
+    // headline, three theaters, actions
+    expect(prompts).toHaveLength(5);
+    const md = result.markdown;
+    const headings = ["**Your accounts · Americas**", "**Your accounts · EMEA**", "**Your accounts · APAC**"];
+    for (const h of headings) expect(md).toContain(h);
+    expect(md.indexOf(headings[0])).toBeLessThan(md.indexOf(headings[1]));
+    expect(md.indexOf(headings[1])).toBeLessThan(md.indexOf(headings[2]));
+    expect(md).not.toContain("**Your accounts**\n");
+    // At most 3 bullets per theater in the weekly digest
+    const emea = md.slice(md.indexOf(headings[1]), md.indexOf(headings[2]));
+    expect(emea.match(/^- /gm)).toHaveLength(3);
+  });
+
+  it("keeps at least one bullet per theater and every action item under a tight budget", () => {
+    const selection = selectDigestItems([...about("jnj", 4), ...about("roche", 4), ...about("takeda", 4)], weekly, world, null);
+    const long = (n: number) => `${"word ".repeat(30)}[${n}]`;
+    const [am, em, ap] = selection.accountGroups.map((g) => g.entries[0].n);
+    const prose: DigestProse = {
+      headline: [long(am), long(em)],
+      accounts: [],
+      byTheater: { Americas: [long(am), long(am), long(am)], EMEA: [long(em), long(em), long(em)], APAC: [long(ap), long(ap), long(ap)] },
+      infrastructure: [],
+      actions: Array.from({ length: 6 }, (_, i) => `**Line ${i}** · ${long(am)}`),
+    };
+    const opts = { period: "the last 7 days", role: null, now };
+    // The roomy render is well over the budget, so the tight one had to give way
+    expect(renderDigest(selection, prose, { failingFeeds: [] }, { ...opts, budget: 20_000 }).length).toBeGreaterThan(2500);
+    const md = renderDigest(selection, prose, { failingFeeds: [] }, { ...opts, budget: 1800 });
+    expect(md.length).toBeLessThanOrEqual(1800);
+    for (const t of ["Americas", "EMEA", "APAC"]) expect(md).toContain(`**Your accounts · ${t}**`);
+    for (let i = 0; i < 6; i++) expect(md).toContain(`**Line ${i}**`);
+  });
+
+  it("briefing: two bullets per theater at most, and a theater with only importance-1 news is left out", async () => {
+    const prompts: string[] = [];
+    const complete: CompleteFn = async (prompt) => {
+      prompts.push(prompt);
+      const n = Number(prompt.match(/\[(\d+)\]/)?.[1] ?? 1);
+      return `- bullet a [${n}]\n- bullet b [${n}]\n- bullet c [${n}]`;
+    };
+    const result = await buildDigest(
+      parseDigestRequest("yesterday", now, []),
+      { itemsInPeriod: () => [...about("jnj", 3), ...about("roche", 3), ...about("takeda", 3, 1)], failingFeeds: () => [], watchlist: world, role: null, complete, now: () => now },
+      3900,
+      { briefing: true },
+    );
+    // Americas, EMEA, actions
+    expect(prompts).toHaveLength(3);
+    const md = result.markdown;
+    expect(md).not.toContain("APAC");
+    const am = md.slice(md.indexOf("**Your accounts · Americas**"), md.indexOf("**Your accounts · EMEA**"));
+    expect(am.match(/^- /gm)).toHaveLength(2);
+  });
+});
