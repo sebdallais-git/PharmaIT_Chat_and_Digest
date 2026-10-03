@@ -114,7 +114,8 @@ export function storeEvidence(store: Pick<WatchlistStore, "itemsInPeriod">): Evi
 export function watchlistEvidence(path: string): EvidenceSource {
   return (entityIds, sinceIso) => {
     if (!existsSync(path)) return null;
-    const store = openWatchlistStore(path);
+    // Read-only: the rebuild must never migrate or lock the live database
+    const store = openWatchlistStore(path, { readonly: true });
     try {
       return storeEvidence(store)(entityIds, sinceIso);
     } finally {

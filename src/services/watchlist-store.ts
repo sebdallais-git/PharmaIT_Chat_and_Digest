@@ -178,16 +178,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function openWatchlistStore(path: string = join(process.cwd(), "data", "watchlist.db")): WatchlistStore {
-  if (path !== ":memory:") {
-    mkdirSync(dirname(path), { recursive: true });
-  }
-
-  const db = new Database(path);
+function migrate(db: Database.Database): void {
   db.pragma("journal_mode = WAL");
-  // SQLite disables foreign key enforcement per connection by default; the
-  // join tables' ON DELETE CASCADE (R6) is a no-op unless this is set here.
-  db.pragma("foreign_keys = ON");
 
   // Task 8 fix (b): the `runs` table and `items.title_key` column were added
   // straight into CREATE TABLE IF NOT EXISTS with no migration path -- fine
@@ -315,6 +307,39 @@ export function openWatchlistStore(path: string = join(process.cwd(), "data", "w
       anomalies INTEGER
     );
   `);
+}
+
+export interface OpenStoreOptions {
+  // Read without creating, migrating or setting WAL: for readers of the live
+  // database (the graph rebuild's evidence), which must never change it
+  readonly?: boolean;
+}
+
+// The schema version migrate() leaves a database on
+const SCHEMA_VERSION = 3;
+
+export function openWatchlistStore(
+  path: string = join(process.cwd(), "data", "watchlist.db"),
+  options: OpenStoreOptions = {},
+): WatchlistStore {
+  let db: Database.Database;
+  if (options.readonly) {
+    db = new Database(path, { readonly: true, fileMustExist: true });
+    const version = db.pragma("user_version", { simple: true }) as number;
+    if (version < SCHEMA_VERSION) {
+      db.close();
+      throw new Error(`${path} is on schema ${version} (current ${SCHEMA_VERSION}): run the watchlist ingest once to migrate it`);
+    }
+  } else {
+    if (path !== ":memory:") {
+      mkdirSync(dirname(path), { recursive: true });
+    }
+    db = new Database(path);
+    migrate(db);
+  }
+  // SQLite disables foreign key enforcement per connection by default; the
+  // join tables' ON DELETE CASCADE (R6) is a no-op unless this is set here.
+  db.pragma("foreign_keys = ON");
 
   // ---- prepared statements -------------------------------------------------
 

@@ -71,11 +71,15 @@ export const ACCOUNT_EVIDENCE_CYPHER = `
   ORDER BY publishedAt DESC, url
 `;
 
+export const EVIDENCE_PER_VENDOR = 3;
+
+// Bounded in the query: the chat reads this inside a 2.5 s graph budget
 export const VENDOR_EVIDENCE_CYPHER = `
   MATCH (e:Evidence)-[s:SUPPORTS]->(v:Vendor {id: $vendor})
   WHERE coalesce(e.kind, "watchlist") = "watchlist" AND any(segment IN s.segments WHERE segment IN $segments)
   RETURN e.title AS title, e.url AS url, e.publishedAt AS publishedAt, e.signal AS signal
   ORDER BY publishedAt DESC, url
+  LIMIT ${EVIDENCE_PER_VENDOR}
 `;
 
 /** Approved reasons why an account has a need (need-evidence.ts), in the file's order. */
@@ -86,7 +90,6 @@ export const NEED_EVIDENCE_CYPHER = `
   ORDER BY e.order
 `;
 
-export const EVIDENCE_PER_VENDOR = 3;
 export const EVENTS_PER_SEGMENT = 3;
 export const GENERAL_PER_ACCOUNT = 3;
 export const NEED_EVIDENCE_PER_NEED = 3;
@@ -556,6 +559,7 @@ export async function competitivePositionFrom(
   const evidenceVendors =
     r.query.vendor !== null ? [r.query.vendor] : [...new Set(Object.keys(standings).map((k) => k.split("/")[0]))].sort();
   const evidence: Record<string, EvidenceItem[]> = {};
+  const reads: Array<Promise<void>> = [];
   for (const vendor of evidenceVendors) {
     const segments = [
       ...new Set(Object.keys(standings).filter((k) => k.split("/")[0] === vendor).map((k) => k.split("/")[1])),
@@ -567,9 +571,15 @@ export async function competitivePositionFrom(
       notes.push(`no segment-specific news for ${vendor}: it has no cited segment`);
       continue;
     }
-    const rows = await deps.runCypher(VENDOR_EVIDENCE_CYPHER, { vendor, segments });
-    evidence[vendor] = rows.map(evidenceItem).sort(newestFirst).slice(0, EVIDENCE_PER_VENDOR);
+    evidence[vendor] = [];
+    // One session per read, so the vendors are read side by side, not in turn
+    reads.push(
+      deps.runCypher(VENDOR_EVIDENCE_CYPHER, { vendor, segments }).then((rows) => {
+        evidence[vendor] = rows.map(evidenceItem).sort(newestFirst).slice(0, EVIDENCE_PER_VENDOR);
+      }),
+    );
   }
+  await Promise.all(reads);
 
   const answer: CompetitiveAnswer = {
     query: r.query,

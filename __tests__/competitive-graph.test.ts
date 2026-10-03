@@ -9,6 +9,7 @@ import {
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
   VENDOR_EVIDENCE_CYPHER,
+  EVIDENCE_PER_VENDOR,
   VENDORS_CYPHER,
   competitivePosition,
   fitBudget,
@@ -206,6 +207,11 @@ describe("competitivePosition", () => {
       { vendor: "dell", segments: ["storage-block"] },
     ]);
     expect(result.answer.evidence.dell.map((e) => e.title)).toEqual(["News 4", "News 3", "News 2"]);
+  });
+
+  // Review of #65: the read had no LIMIT, inside the chat's 2.5 s graph budget
+  it("bounds the vendor news read in the query itself", () => {
+    expect(VENDOR_EVIDENCE_CYPHER).toMatch(new RegExp(`ORDER BY publishedAt DESC, url\\s+LIMIT ${EVIDENCE_PER_VENDOR}\\s*$`));
   });
 
   it("returns no news and a note for a vendor with no cited segment", async () => {
