@@ -34,6 +34,7 @@ npx tsx scripts/replay-page-relevance.ts        # gap workflow page pre-check vs
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
 npx tsx scripts/extract-need-evidence.ts [--only knowledge/<f>] [--dry-run] | --status
                                                # 27B proposes need evidence; approve in config/need-evidence.local.yaml
+npx tsx scripts/extract-install-history.ts [--dry-run] | --status    # 27B proposes install-base changes; approve in config/install-history.local.yaml
 npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
 npx tsx scripts/digest.ts [--request "…"] [--briefing]   # digest agent in-process; Hermes sends the weekly digest Mon 07:30,
                                                # the account briefing Tue–Fri 07:30 (silent when nothing is actionable)
@@ -88,6 +89,11 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   Approved need evidence (`need-evidence.ts`, proposed by `scripts/extract-need-evidence.ts` with the 27B into the
   gitignored `config/need-evidence.local.yaml`, approved by editing `status`) is the rebuild's fifth source:
   `Evidence {kind: "reference"}`, shown as `needEvidence`; news queries read only `kind: "watchlist"`.
+  Install-base history: incumbents in `accounts.local.yaml` may be dated (`{vendor, since, until}`; only entries without
+  `until` are current); `scripts/extract-install-history.ts` proposes changes from news into the gitignored
+  `config/install-history.local.yaml` (approve by `status`); the rebuild merges them into `USES {segment, since, until,
+  source}` (the accounts file wins; contradictions become notes). The answer shows `history` per segment: last 18
+  months by default, every stint with `history: "full"` (chat: history wording).
   The web chat's graph block uses the same answer, rendered to ~6k chars (`chat-graph-context.ts`), when the message
   names one briefed vendor or one account; otherwise, or on any failure or after 2.5 s, the old keyword lookup.
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)
