@@ -14,13 +14,68 @@ import {
   type Segment,
 } from "./graph-schema.js";
 
+/**
+ * One vendor's time in one segment. since/until are YYYY, YYYY-MM or
+ * YYYY-MM-DD, or "" when unknown; until "" means current; until "?" means a
+ * past stint whose end is unknown (only news produces it, install-history.ts).
+ */
+export interface Stint {
+  vendor: string;
+  since: string;
+  until: string;
+  /** "declared" (the accounts file) or "news:<source>" (an approved proposal). */
+  source: string;
+}
+
+const DATE_RE = /^\d{4}(-\d{2}(-\d{2})?)?$/;
+
+/** Earliest or latest day a partial date can mean: 2026 -> 2026-01-01 / 2026-12-31. */
+export function boundOf(date: string, end: "low" | "high"): string {
+  const [y, m, d] = date.split("-");
+  const month = m ?? (end === "low" ? "01" : "12");
+  const day = d ?? (end === "low" ? "01" : String(new Date(Date.UTC(Number(y), Number(month), 0)).getUTCDate()).padStart(2, "0"));
+  return `${y}-${month}-${day}`;
+}
+
+function parseStint(entry: unknown, where: string, now: Date): Stint {
+  if (typeof entry === "string") return { vendor: entry, since: "", until: "", source: "declared" };
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new Error(`${where}: an entry is a vendor name or {vendor, since, until}`);
+  }
+  const raw = entry as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (!["vendor", "since", "until"].includes(key)) throw new Error(`${where}: unknown key "${key}"`);
+  }
+  if (typeof raw.vendor !== "string" || raw.vendor.trim() === "") throw new Error(`${where}: an entry needs a vendor`);
+  const date = (key: "since" | "until"): string => {
+    if (raw[key] === undefined || raw[key] === null) return "";
+    const value = String(raw[key]);
+    if (!DATE_RE.test(value)) throw new Error(`${where}: ${key} "${value}" must be YYYY, YYYY-MM or YYYY-MM-DD`);
+    return value;
+  };
+  const vendor = raw.vendor.trim();
+  const since = date("since");
+  const until = date("until");
+  if (since !== "" && until !== "" && boundOf(since, "low") > boundOf(until, "high")) {
+    throw new Error(`${where}: ${vendor} since ${since} is after until ${until}`);
+  }
+  if (until !== "" && boundOf(until, "low") > now.toISOString().slice(0, 10)) {
+    throw new Error(`${where}: ${vendor} until ${until} is in the future — an announced end date belongs in triggers`);
+  }
+  return { vendor, since, until, source: "declared" };
+}
+
 export interface Account {
   id: string;
   name: string;
   aliases: string[];
   needs: Need[];
-  /** Vendors installed per segment. Several per segment is normal. */
+  /** Vendors installed now, per segment (stints without until). Several per segment is normal. */
   incumbents: Partial<Record<Segment, string[]>>;
+  /** Every stint per segment, current ones included, in file order. */
+  history: Partial<Record<Segment, Stint[]>>;
+  /** Approved news that contradicts the file (install-history.ts); stored on the Account node. */
+  conflicts?: string[];
   /**
    * Install-base events that open a segment held by a rival (end of support,
    * refresh due, a renewal date). Facts, not a pipeline: no stages or amounts.
@@ -37,7 +92,7 @@ function assertIn<T extends string>(allowed: readonly T[], value: string, field:
 }
 
 /** Parse the accounts file. Throws on any segment or need outside a closed set. */
-export function parseAccounts(yaml: string): Account[] {
+export function parseAccounts(yaml: string, now: Date = new Date()): Account[] {
   const doc = parse(yaml) as { accounts?: Record<string, Record<string, unknown>> } | null;
   const accounts = doc?.accounts ?? {};
 
@@ -45,6 +100,7 @@ export function parseAccounts(yaml: string): Account[] {
     const needs = (Array.isArray(raw.needs) ? raw.needs : []).map((n) => assertIn(NEEDS, String(n), "need"));
 
     const incumbents: Partial<Record<Segment, string[]>> = {};
+    const history: Partial<Record<Segment, Stint[]>> = {};
     for (const [segment, vendors] of Object.entries((raw.incumbents ?? {}) as Record<string, unknown>)) {
       const key = assertIn(SEGMENTS, segment, "segment");
       // A declared segment is a claim about the install base, so only a list
@@ -55,7 +111,9 @@ export function parseAccounts(yaml: string): Account[] {
           `${id}: incumbents.${key} must be a list of vendors — [] if nobody is installed, or omit the segment if unknown`,
         );
       }
-      incumbents[key] = vendors.map(String);
+      const stints = vendors.map((entry) => parseStint(entry, `${id}: incumbents.${key}`, now));
+      history[key] = stints;
+      incumbents[key] = [...new Set(stints.filter((s) => s.until === "").map((s) => s.vendor))];
     }
 
     const triggers: Partial<Record<Segment, string>> = {};
@@ -90,6 +148,7 @@ export function parseAccounts(yaml: string): Account[] {
       aliases: (Array.isArray(raw.aliases) ? raw.aliases : []).map(String),
       needs,
       incumbents,
+      history,
       triggers,
       notes: typeof raw.notes === "string" ? raw.notes.trim() : "",
     };
@@ -109,7 +168,8 @@ export function parseAccounts(yaml: string): Account[] {
  */
 export function accountToGraphFacts(account: Account): GraphFacts {
   const vendors = new Set<string>();
-  for (const list of Object.values(account.incumbents)) for (const vendor of list ?? []) vendors.add(vendor);
+  const stints = Object.entries(account.history) as Array<[Segment, Stint[] | undefined]>;
+  for (const [, list] of stints) for (const s of list ?? []) vendors.add(s.vendor);
 
   const nodes: GraphNode[] = [
     {
@@ -131,6 +191,9 @@ export function accountToGraphFacts(account: Account): GraphFacts {
               ),
             }
           : {}),
+        ...(account.conflicts !== undefined && account.conflicts.length > 0
+          ? { historyConflicts: JSON.stringify(account.conflicts) }
+          : {}),
         notes: account.notes,
       },
     },
@@ -145,14 +208,14 @@ export function accountToGraphFacts(account: Account): GraphFacts {
       to: need,
       properties: {},
     })),
-    ...Object.entries(account.incumbents).flatMap(([segment, list]) =>
-      (list ?? []).map((vendor): GraphRelationship => ({
+    ...stints.flatMap(([segment, list]) =>
+      (list ?? []).map((s): GraphRelationship => ({
         type: "USES",
         from: account.id,
-        to: vendor,
-        // Incumbency is per segment, never per account: an account can run one
-        // vendor in file and another in block, facing different rivals in each.
-        properties: { segment },
+        to: s.vendor,
+        // Incumbency is per segment, never per account; past stints are kept
+        // so the graph remembers who held the segment before.
+        properties: { segment, since: s.since, until: s.until, source: s.source },
       })),
     ),
   ];

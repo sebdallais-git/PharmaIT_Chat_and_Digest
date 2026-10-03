@@ -70,7 +70,11 @@ accounts:
     aliases: [Sandoz]
     needs: [manufacturing-ot, gxp-compliance, cost-optimisation]
     incumbents:
-      storage-block: [dell]
+      # Dated entries record history: only entries without `until` are current.
+      # Dates may be YYYY, YYYY-MM or YYYY-MM-DD.
+      storage-block:
+        - {vendor: hds, since: 2026-03}
+        - {vendor: dell, since: 2019, until: 2026-03}
       compute-ai: []   # known: no AI compute installed yet
     notes: >
       Stein and Basel. Heavier OT/MES footprint than Roche.
