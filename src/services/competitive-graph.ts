@@ -5,6 +5,7 @@
 // Neo4j; src/services/competitive-graph-live.ts binds the real ones.
 import {
   MODE_GUIDANCE,
+  REGIME_GUIDANCE,
   resolveCompetitivePosition,
   type AccountView,
   type CompetitiveQuery,
@@ -15,6 +16,7 @@ import {
   type SnapshotAccount,
   type Standing,
 } from "./competitive-position.js";
+import type { Regime } from "./segment-ranking.js";
 import type { BriefExcerpts, Claim } from "./vendor-brief-excerpts.js";
 
 export type RunCypher = (query: string, params?: Record<string, unknown>) => Promise<Array<Record<string, unknown>>>;
@@ -38,7 +40,8 @@ export const ACCOUNTS_CYPHER = `
   OPTIONAL MATCH (a)-[:HAS_NEED]->(n:Need)
   WITH a, collect(DISTINCT n.id) AS needs
   OPTIONAL MATCH (a)-[u:USES]->(v:Vendor)
-  RETURN a.id AS id, a.name AS name, a.aliases AS aliases, a.declaredSegments AS declaredSegments, needs,
+  RETURN a.id AS id, a.name AS name, a.aliases AS aliases, a.declaredSegments AS declaredSegments,
+         a.triggers AS triggers, needs,
          collect(CASE WHEN v IS NULL THEN null ELSE {segment: u.segment, vendor: v.id} END) AS uses
   ORDER BY id
 `;
@@ -106,6 +109,8 @@ export interface CompetitiveAnswer {
   query: CompetitiveResolution["query"];
   /** What each incumbency mode in this answer means; only the modes that occur. */
   modes: Partial<Record<IncumbencyMode, string>>;
+  /** What each ranking regime in this answer means; only the regimes that occur. */
+  regimes: Partial<Record<Regime, string>>;
   market: CompetitiveResolution["market"];
   accounts: AnswerAccount[];
   standings: Record<string, AnswerStanding>;
@@ -144,6 +149,28 @@ function commaList(value: unknown): string[] {
     .split(",")
     .map((a) => a.trim())
     .filter((a) => a.length > 0);
+}
+
+// graph-accounts.ts stores triggers as JSON (Neo4j properties cannot be maps).
+// A graph built before triggers existed has none; a bad value is reported and
+// ignored, never thrown: one account's typo must not take every answer down.
+function triggers(value: unknown, account: string, notes: string[]): Record<string, string> {
+  if (value === undefined || value === null) return {};
+  try {
+    const parsed: unknown = typeof value === "string" ? JSON.parse(value) : null;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every((v) => typeof v === "string")
+    ) {
+      return { ...(parsed as Record<string, string>) };
+    }
+  } catch {
+    // Reported below.
+  }
+  notes.push(`account ${account}: unreadable triggers, ignored until the next rebuild`);
+  return {};
 }
 
 function evidenceItem(row: Record<string, unknown>): EvidenceItem {
@@ -186,6 +213,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
     runCypher(VENDORS_CYPHER),
   ]);
 
+  const notes: string[] = [];
   return {
     accounts: accountRows.map((r) => ({
       id: str(r.id, "id"),
@@ -196,6 +224,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
       declared: commaList(r.declaredSegments),
       needs: strList(r.needs, "needs"),
       uses: uses(r.uses),
+      triggers: triggers(r.triggers, str(r.id, "id"), notes),
     })),
     needSegments: Object.fromEntries(needRows.map((r) => [str(r.need, "need"), strList(r.segments, "segments")])),
     positions: positionRows.map((r) => ({
@@ -208,6 +237,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
     })),
     vendors: vendorRows.map((r) => str(r.id, "id")),
     vendorAliases,
+    notes,
   };
 }
 
@@ -378,6 +408,10 @@ export async function competitivePositionFrom(
   for (const account of r.accounts) {
     for (const segment of account.segments) for (const v of segment.vendors) modes[v.mode] = MODE_GUIDANCE[v.mode];
   }
+  const regimes: Partial<Record<Regime, string>> = {};
+  for (const account of r.accounts) {
+    for (const segment of account.segments) regimes[segment.regime] = REGIME_GUIDANCE[segment.regime];
+  }
 
   const events = await readAccountEvidence(
     deps.runCypher,
@@ -423,6 +457,7 @@ export async function competitivePositionFrom(
   const answer: CompetitiveAnswer = {
     query: r.query,
     modes,
+    regimes,
     market: r.market,
     accounts,
     standings,

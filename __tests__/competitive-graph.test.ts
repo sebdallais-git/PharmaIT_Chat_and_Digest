@@ -15,6 +15,7 @@ import {
   type CompetitiveDeps,
   type RunCypher,
 } from "../src/services/competitive-graph.js";
+import { REGIME_GUIDANCE } from "../src/services/competitive-position.js";
 import { SEGMENTS } from "../src/services/graph-schema.js";
 import type { BriefExcerpt } from "../src/services/vendor-brief-excerpts.js";
 
@@ -86,6 +87,7 @@ describe("readGraphSnapshot", () => {
           declared: ["storage-block"],
           needs: ["cyber-resilience"],
           uses: [{ segment: "storage-block", vendor: "dell" }],
+          triggers: {},
         },
       ],
       needSegments: { "cyber-resilience": ["data-protection", "storage-block"] },
@@ -94,6 +96,7 @@ describe("readGraphSnapshot", () => {
       ],
       vendors: ["dell", "hpe"],
       vendorAliases: { x: "dell" },
+      notes: [],
     });
   });
 
@@ -104,6 +107,23 @@ describe("readGraphSnapshot", () => {
     delete legacy.declaredSegments;
     const snap = await readGraphSnapshot(fakeCypher({ ...ROWS, accounts: [legacy] }), {});
     expect(snap.accounts[0].declared).toEqual([]);
+  });
+
+  it("reads an account's triggers, quotes and newlines intact", async () => {
+    const text = 'NetApp "ONTAP 9": renewal\nsecond line';
+    const rows = { ...ROWS, accounts: [{ ...ROWS.accounts[0], triggers: JSON.stringify({ "storage-block": text }) }] };
+    const snap = await readGraphSnapshot(fakeCypher(rows), {});
+    expect(snap.accounts[0].triggers).toEqual({ "storage-block": text });
+    expect(snap.notes).toEqual([]);
+  });
+
+  it("reads unreadable triggers as none, with a note, and never throws", async () => {
+    for (const bad of ["{not json", JSON.stringify(["storage-block"]), JSON.stringify({ "storage-block": 3 })]) {
+      const rows = { ...ROWS, accounts: [{ ...ROWS.accounts[0], triggers: bad }] };
+      const snap = await readGraphSnapshot(fakeCypher(rows), {});
+      expect(snap.accounts[0].triggers).toEqual({});
+      expect(snap.notes).toEqual(["account roche: unreadable triggers, ignored until the next rebuild"]);
+    }
   });
 
   it("refuses a malformed row rather than printing 'undefined' into an answer", async () => {
@@ -219,6 +239,12 @@ describe("competitivePosition", () => {
     expect(result.answer.modes.defend).toContain("the segment's events");
   });
 
+  it("explains the regimes its segments use", async () => {
+    const result = await competitivePosition(deps(), { account: "roche" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.answer.regimes).toEqual({ unknown: REGIME_GUIDANCE.unknown, defend: REGIME_GUIDANCE.defend });
+  });
+
   it("passes the resolver's error through", async () => {
     expect(await competitivePosition(deps(), {})).toEqual({
       ok: false,
@@ -279,6 +305,8 @@ describe("competitivePosition — size budget", () => {
     expect(JSON.stringify(result.answer).length).toBeLessThanOrEqual(MAX_ANSWER_CHARS);
     expect(result.answer.notes.some((n) => n.startsWith("trimmed to fit the answer budget"))).toBe(true);
     expect(result.answer.notes.some((n) => n.startsWith("the answer is still over budget"))).toBe(false);
+    // Rankings are structure: present on every segment, never trimmed.
+    expect(result.answer.accounts.every((a) => a.segments.every((s) => s.ranking !== undefined && s.ranked >= 0))).toBe(true);
   });
 
   it("drops account events beyond one per segment before it drops claims", async () => {
@@ -304,7 +332,9 @@ describe("competitivePosition — size budget", () => {
   });
 
   it("drops claim details before it drops claims", async () => {
-    const result = await competitivePosition(bigDeps(), { vendor: "dell" });
+    // One account: rankings on all 33 segments of a vendor-only question take
+    // ~6k, so that answer needs more than the first step; this one needs it alone.
+    const result = await competitivePosition(bigDeps(), { vendor: "dell", account: "roche" });
     if (!result.ok) throw new Error(result.error);
     const standing = result.answer.standings["dell/storage-block"];
     expect(standing.strong.length).toBeGreaterThan(0);
@@ -367,6 +397,7 @@ describe("fitBudget", () => {
     return {
       query: { vendor: null, account: null, segment: null, ...query },
       modes: {},
+      regimes: {},
       market: [],
       accounts: [],
       standings: { "dell/storage-block": standing(), "dell/storage-file": standing() },

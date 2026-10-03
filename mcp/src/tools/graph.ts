@@ -20,7 +20,13 @@ export function registerGraphTools(server: McpServer, client: PharmaITChatClient
         "position per segment with its rationale, confidence, short strong/weak claims from curated briefs, sources and " +
         "recent vendor news. Each account segment also carries `events` (the account's newest news there: triggering " +
         "events, lifecycle moves) and each account `general` (account-wide news). " +
-        "Positions are labels, not a ranking: never present vendors as ranked. " +
+        "Each segment also carries `ranking`: win likelihood there (the top ranks in whole tie groups, up to 3 " +
+        "vendors, plus the asked vendor; `ranked` = how many were ranked; null when who is installed is unknown), " +
+        "with `regime` and any declared `trigger`. A repeated rank number is a tie; `hidden` counts tied vendors " +
+        "not listed at a rank, and `unranked` names the asked vendor when no brief places it there (never ranked). " +
+        "Rank vendors " +
+        "only as `ranking` gives them, per account and segment, with its reasons; never rank from positions alone, and " +
+        "never across accounts. " +
         "Give at least one of vendor, account or segment.",
       inputSchema: {
         vendor: z.string().min(1).optional().describe("Vendor, e.g. 'dell', 'HPE' or 'Pure Storage'"),

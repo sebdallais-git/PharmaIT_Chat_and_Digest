@@ -10,6 +10,7 @@ import {
   fitBudget,
   readGraphSnapshot,
   type CompetitiveAnswer,
+  type AnswerSegment,
   type CompetitiveDeps,
   type EvidenceItem,
 } from "./competitive-graph.js";
@@ -109,6 +110,23 @@ export function renderCompetitiveContext(answer: CompetitiveAnswer, budget = CHA
   return text;
 }
 
+function rankingLine(s: AnswerSegment): string {
+  if (s.ranking === null) return "    ranking: none, find out who is installed";
+  const ranking = s.ranking;
+  const hidden = s.hidden ?? [];
+  // How many share a rank: the listed ones plus those hidden at it. "2=" marks a
+  // shared rank, or a shown vendor reads as uniquely placed when its peers are hidden.
+  const tied = (rank: number): number =>
+    ranking.filter((r) => r.rank === rank).length + (hidden.find((h) => h.rank === rank)?.count ?? 0);
+  const shown = ranking.map((r) => {
+    const n = tied(r.rank);
+    return `${r.rank}${n > 1 ? "=" : ""} ${r.vendor} (${[...r.reasons, ...(n > 1 ? [`tied with ${n - 1}`] : [])].join(", ")})`;
+  });
+  for (const h of hidden) shown.push(`+${h.count} more tied at ${h.rank}`);
+  if (s.unranked !== undefined) shown.push(`${s.unranked} (no brief, not ranked)`);
+  return `    ranking (${s.regime}): ${shown.join(" · ") || "nobody ranked"}`;
+}
+
 function renderLines(a: CompetitiveAnswer): string {
   const lines = [header(a.query)];
   const modes = Object.entries(a.modes);
@@ -122,6 +140,8 @@ function renderLines(a: CompetitiveAnswer): string {
     for (const s of account.segments) {
       const via = s.via.length > 0 ? ` (via ${s.via.join(", ")})` : "";
       lines.push(`  ${s.segment}${via}, installed: ${s.incumbents.join(", ") || "nobody"}`);
+      if (s.trigger !== null) lines.push(`    trigger: ${s.trigger}`);
+      lines.push(rankingLine(s));
       lines.push(...s.events.map(eventLine));
       for (const v of s.vendors) lines.push(`    ${v.vendor}: ${v.mode}, position ${v.position ?? "unknown"}`);
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import {
+  REGIME_GUIDANCE,
   resolveCompetitivePosition,
   type CompetitiveResolution,
   type GraphSnapshot,
@@ -156,12 +157,14 @@ describe("resolveCompetitivePosition — the Dell question", () => {
   });
 
   it("says a missing brief means unknown, not absent", () => {
-    expect(answer.notes).toContain("no curated brief for dell in compute-ai: its position there is unknown, not absent");
+    expect(answer.notes.find((n) => n.startsWith("no curated brief for dell in compute-ai"))).toMatch(
+      /: its position there is unknown, not absent$/,
+    );
   });
 });
 
 describe("resolveCompetitivePosition — other shapes", () => {
-  it("never ranks: vendors in a segment are alphabetical whatever their position", () => {
+  it("never ranks by ordering: vendors and market stay alphabetical; only ranking orders, with reasons", () => {
     const snap = snapshot({
       positions: [
         { vendor: "hpe", segment: "storage-block", position: "leader", confidence: "high", rationale: "r", asOf: "" },
@@ -171,6 +174,9 @@ describe("resolveCompetitivePosition — other shapes", () => {
     const answer = ok(resolveCompetitivePosition(snap, { account: "roche", segment: "storage-block" }));
     expect(answer.accounts[0].segments[0].vendors.map((v) => v.vendor)).toEqual(["dell", "hpe"]);
     expect(answer.market.map((m) => m.vendor)).toEqual(["dell", "hpe"]);
+    const ranking = answer.accounts[0].segments[0].ranking;
+    expect(ranking?.map((r) => r.vendor)).toEqual(["dell", "hpe"]);
+    expect(ranking?.every((r) => r.reasons.length === 2)).toBe(true);
   });
 
   it("lists every briefed vendor and every incumbent when no vendor is given", () => {
@@ -197,7 +203,7 @@ describe("resolveCompetitivePosition — other shapes", () => {
       ],
     });
     const answer = ok(resolveCompetitivePosition(snap, { vendor: "dell" }));
-    expect(answer.accounts[0].segments).toEqual([
+    expect(answer.accounts[0].segments).toMatchObject([
       { segment: "storage-block", via: [], incumbents: ["dell"], vendors: [{ vendor: "dell", mode: "defend", position: "leader" }] },
     ]);
   });
@@ -221,5 +227,92 @@ describe("resolveCompetitivePosition — other shapes", () => {
     const answer = ok(resolveCompetitivePosition(snapshot(), { vendor: "netapp" }));
     expect(answer.market).toEqual([]);
     expect(answer.notes).toContain("no curated brief places netapp in any segment: its position is unknown, not absent");
+  });
+});
+
+describe("resolveCompetitivePosition — win-likelihood ranking", () => {
+  const segmentOf = (answer: CompetitiveResolution, segment: string) =>
+    answer.accounts[0].segments.find((s) => s.segment === segment);
+  const brief = (ranking: Array<{ rank: number; vendor: string }> | null | undefined) =>
+    ranking?.map((r) => `${r.rank} ${r.vendor}`);
+
+  it("keeps the incumbent first in a segment without a trigger", () => {
+    const answer = ok(resolveCompetitivePosition(snapshot(), { account: "roche", segment: "storage-block" }));
+    const seg = segmentOf(answer, "storage-block");
+    expect(seg?.regime).toBe("defend");
+    expect(seg?.trigger).toBeNull();
+    expect(brief(seg?.ranking)).toEqual(["1 dell", "2 hpe"]);
+    expect(seg?.ranked).toBe(2);
+  });
+
+  it("opens the segment when a trigger is declared: position decides", () => {
+    const base = snapshot();
+    const snap = snapshot({
+      accounts: [{ ...base.accounts[0], triggers: { "storage-block": "PowerMax end of support 2027-03" } }],
+      positions: [
+        { vendor: "dell", segment: "storage-block", position: "present", confidence: "low", rationale: "r", asOf: "" },
+        { vendor: "hpe", segment: "storage-block", position: "leader", confidence: "high", rationale: "r", asOf: "" },
+      ],
+    });
+    const seg = segmentOf(ok(resolveCompetitivePosition(snap, { account: "roche", segment: "storage-block" })), "storage-block");
+    expect(seg?.regime).toBe("open");
+    expect(seg?.trigger).toBe("PowerMax end of support 2027-03");
+    expect(brief(seg?.ranking)).toEqual(["1 hpe", "2 dell"]);
+  });
+
+  it("does not rank a segment whose install base is unknown, and ranks a declared-empty one", () => {
+    const answer = ok(resolveCompetitivePosition(snapshot(), { account: "roche" }));
+    expect(segmentOf(answer, "data-protection")).toMatchObject({ regime: "unknown", ranking: null, ranked: 0 });
+    expect(segmentOf(answer, "compute-standard")).toMatchObject({ regime: "greenfield", ranking: [], ranked: 0 });
+  });
+
+  it("ranks the rivals too when only a vendor is asked about", () => {
+    const answer = ok(resolveCompetitivePosition(snapshot(), { vendor: "hpe", account: "roche", segment: "storage-block" }));
+    const seg = segmentOf(answer, "storage-block");
+    expect(seg?.vendors.map((v) => v.vendor)).toEqual(["hpe"]);
+    expect(brief(seg?.ranking)).toEqual(["1 dell", "2 hpe"]);
+  });
+
+  it("shows the asked vendor without a brief as unranked, never ranked", () => {
+    // netapp has no brief anywhere; storage-block is held by dell.
+    const answer = ok(resolveCompetitivePosition(snapshot(), { vendor: "netapp", account: "roche", segment: "storage-block" }));
+    const seg = segmentOf(answer, "storage-block");
+    expect(brief(seg?.ranking)).toEqual(["1 dell", "2 hpe"]);
+    expect(seg?.unranked).toBe("netapp");
+    expect(seg?.hidden).toBeUndefined();
+  });
+
+  it("says once per vendor which segments have no brief, not once per segment", () => {
+    // Every ranking entry already says "no brief"; one note per pair repeated it
+    // ~20 times on a full graph, out of a budget rankings cannot be trimmed from.
+    const answer = ok(resolveCompetitivePosition(snapshot(), { account: "roche" }));
+    const netapp = answer.notes.filter((n) => n.startsWith("no curated brief for netapp"));
+    expect(netapp).toEqual(["no curated brief for netapp in storage-file: its position there is unknown, not absent"]);
+    const hpe = answer.notes.filter((n) => n.startsWith("no curated brief for hpe"));
+    expect(hpe).toEqual(["no curated brief for hpe in compute-ai: its position there is unknown, not absent"]);
+    const dell = ok(resolveCompetitivePosition(snapshot(), { vendor: "dell", account: "roche" })).notes.filter((n) =>
+      n.startsWith("no curated brief for dell"),
+    );
+    expect(dell).toEqual([
+      "no curated brief for dell in compute-ai, compute-standard, data-protection: its position there is unknown, not absent",
+    ]);
+  });
+
+  it("ranks a legacy graph's installed segment as defend, not unknown", () => {
+    // Built before declaredSegments existed: incumbents are USES edges only.
+    const base = snapshot();
+    const snap = snapshot({ accounts: [{ ...base.accounts[0], declared: [] }] });
+    const seg = segmentOf(ok(resolveCompetitivePosition(snap, { account: "roche", segment: "storage-block" })), "storage-block");
+    expect(seg?.regime).toBe("defend");
+  });
+
+  it("passes snapshot notes on to the answer", () => {
+    const snap = snapshot({ notes: ["account roche: unreadable triggers, ignored until the next rebuild"] });
+    const answer = ok(resolveCompetitivePosition(snap, { account: "roche" }));
+    expect(answer.notes).toContain("account roche: unreadable triggers, ignored until the next rebuild");
+  });
+
+  it("has guidance for every regime", () => {
+    expect(Object.keys(REGIME_GUIDANCE).sort()).toEqual(["defend", "greenfield", "open", "unknown"]);
   });
 });

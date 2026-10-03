@@ -83,6 +83,7 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
   return {
     query: { vendor: "dell", account: "roche", segment: null },
     modes: { defend: "the vendor is installed: defend and expand", greenfield: "declared: nobody is installed" },
+    regimes: {},
     market: [],
     accounts: [
       {
@@ -97,8 +98,12 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
             incumbents: ["dell"],
             vendors: [{ vendor: "dell", mode: "defend", position: "leader" }],
             events: [],
+            regime: "defend",
+            trigger: null,
+            ranking: [{ vendor: "dell", rank: 1, reasons: ["incumbent", "leader/high"] }],
+            ranked: 1,
           },
-          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }], events: [] },
+          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }], events: [], regime: "greenfield", trigger: null, ranking: [], ranked: 0 },
         ],
       },
     ],
@@ -147,7 +152,9 @@ describe("renderCompetitiveContext", () => {
     const text = renderCompetitiveContext(base);
     expect(text).toContain("  general:\n    ↳ 2026-09-02 [untagged] Roche reorganises IT");
     expect(text).toContain(
-      "  storage-block (via cyber-resilience), installed: dell\n    ↳ 2026-09-14 [it_move] Roche consolidates EU data centres",
+      "  storage-block (via cyber-resilience), installed: dell\n" +
+        "    ranking (defend): 1 dell (incumbent, leader/high)\n" +
+        "    ↳ 2026-09-14 [it_move] Roche consolidates EU data centres",
     );
   });
 
@@ -189,6 +196,34 @@ describe("renderCompetitiveContext", () => {
     expect(text.length).toBeLessThanOrEqual(CHAT_CONTEXT_CHARS);
     expect((text.match(/↳/g) ?? []).length).toBe(1);
     expect(text).not.toContain("strong: ");
+  });
+
+  it("prints the trigger and the ranking under each segment's installs", () => {
+    const base = answer();
+    const block = base.accounts[0].segments[0];
+    block.regime = "open";
+    block.trigger = "PowerMax end of support 2027-03";
+    block.ranking = [
+      { vendor: "hpe", rank: 1, reasons: ["rival", "leader/high"] },
+      { vendor: "dell", rank: 2, reasons: ["incumbent", "present/low"] },
+    ];
+    block.ranked = 4;
+    block.hidden = [{ rank: 2, count: 2 }];
+    block.unranked = "netapp";
+    base.accounts[0].segments[1].regime = "unknown";
+    base.accounts[0].segments[1].ranking = null;
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain(
+      "  storage-block (via cyber-resilience), installed: dell\n" +
+        "    trigger: PowerMax end of support 2027-03\n" +
+        "    ranking (open): 1 hpe (rival, leader/high) · 2= dell (incumbent, present/low, tied with 2) · +2 more tied at 2 · netapp (no brief, not ranked)",
+    );
+    expect(text).toContain("  storage-object, installed: nobody\n    ranking: none, find out who is installed");
+  });
+
+  it("says nobody is ranked when a declared segment has no candidates", () => {
+    const base = answer();
+    expect(renderCompetitiveContext(base)).toContain("  storage-object, installed: nobody\n    ranking (greenfield): nobody ranked");
   });
 
   it("stays within the chat budget, saying it was cut", () => {
