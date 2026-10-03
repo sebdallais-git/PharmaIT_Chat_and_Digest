@@ -121,6 +121,13 @@ export function checkHistoryAgainstAccounts(
 }
 
 /** Approved entries for this account, oldest first, applied to its stints. */
+// Declared dates may be YYYY or YYYY-MM; news dates are days. A day falls on a
+// declared date when the declared one is its prefix ("2026-03" holds "2026-03-12").
+const known = (d: string) => d !== "" && d !== "?";
+const sameDate = (a: string, b: string) => known(a) && known(b) && (a.startsWith(b) || b.startsWith(a));
+const notBefore = (day: string, bound: string) => day.slice(0, bound.length) >= bound;
+const notAfter = (day: string, bound: string) => day.slice(0, bound.length) <= bound;
+
 export function applyHistory(account: Account, entries: HistoryEntry[]): Account {
   const history: Account["history"] = {};
   for (const [segment, list] of Object.entries(account.history)) history[segment as Segment] = (list ?? []).map((s) => ({ ...s }));
@@ -145,7 +152,7 @@ export function applyHistory(account: Account, entries: HistoryEntry[]): Account
       }
       const open = stints.find((s) => s.vendor === vendor && s.until === "?");
       if (open !== undefined) open.until = e.date;
-      else if (!stints.some((s) => s.vendor === vendor && s.until === e.date)) {
+      else if (!stints.some((s) => s.vendor === vendor && sameDate(s.until, e.date))) {
         stints.push({ vendor, since: "", until: e.date, source });
       }
     };
@@ -157,7 +164,10 @@ export function applyHistory(account: Account, entries: HistoryEntry[]): Account
         return;
       }
       // Not current in the file: a past stint whose end the news does not say.
-      if (!stints.some((s) => s.vendor === vendor && s.since === e.date)) {
+      // Nor when a dated past stint of the same vendor already covers that day
+      const covered = (s: Stint) =>
+        sameDate(s.since, e.date) || (known(s.since) && known(s.until) && notBefore(e.date, s.since) && notAfter(e.date, s.until));
+      if (!stints.some((s) => s.vendor === vendor && covered(s))) {
         stints.push({ vendor, since: e.date, until: "?", source } satisfies Stint);
       }
     };
