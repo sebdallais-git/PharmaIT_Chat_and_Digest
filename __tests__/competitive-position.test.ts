@@ -316,3 +316,63 @@ describe("resolveCompetitivePosition — win-likelihood ranking", () => {
     expect(Object.keys(REGIME_GUIDANCE).sort()).toEqual(["defend", "greenfield", "open", "unknown"]);
   });
 });
+
+describe("resolveCompetitivePosition — install history", () => {
+  const NOW = new Date("2026-10-03T00:00:00Z");
+  const base = snapshot();
+  const withUses = (uses: GraphSnapshot["accounts"][number]["uses"], extra: Partial<GraphSnapshot["accounts"][number]> = {}) =>
+    snapshot({ accounts: [{ ...base.accounts[0], uses, ...extra }] });
+  const seg = (snap: GraphSnapshot, query: Parameters<typeof resolveCompetitivePosition>[1] = { account: "roche", segment: "storage-block" }) =>
+    ok(resolveCompetitivePosition(snap, query, NOW)).accounts[0].segments[0];
+
+  it("counts only stints without until as incumbents", () => {
+    const s = seg(withUses([
+      { segment: "storage-block", vendor: "hds", since: "2026-03", until: "", source: "declared" },
+      { segment: "storage-block", vendor: "dell", since: "2019", until: "2026-03", source: "declared" },
+    ]));
+    expect(s.incumbents).toEqual(["hds"]);
+  });
+
+  it("shows changes from the last 18 months newest first, and counts the older ones", () => {
+    const s = seg(withUses([
+      { segment: "storage-block", vendor: "hds", since: "2026-03", until: "", source: "declared" },
+      { segment: "storage-block", vendor: "dell", since: "2019", until: "2026-03", source: "declared" },
+      { segment: "storage-block", vendor: "ibm", since: "2010", until: "2019", source: "news:https://n.test" },
+    ]));
+    expect(s.history?.map((h) => h.vendor)).toEqual(["hds", "dell"]);
+    expect(s.olderChanges).toBe(1);
+  });
+
+  it("lists every stint, undated current ones included, in full mode", () => {
+    const s = seg(
+      withUses([
+        { segment: "storage-block", vendor: "netapp", since: "", until: "", source: "declared" },
+        { segment: "storage-block", vendor: "ibm", since: "2010", until: "2019", source: "news:https://n.test" },
+      ]),
+      { account: "roche", segment: "storage-block", history: "full" },
+    );
+    expect(s.history?.map((h) => h.vendor)).toEqual(["netapp", "ibm"]);
+    expect(s.olderChanges).toBeUndefined();
+  });
+
+  it("answers a graph without dates as today: all current, no history", () => {
+    const s = seg(withUses([{ segment: "storage-block", vendor: "dell" }]));
+    expect(s.incumbents).toEqual(["dell"]);
+    expect(s.history).toBeUndefined();
+  });
+
+  it("keeps two stints of one vendor as two history rows", () => {
+    const s = seg(withUses([
+      { segment: "storage-block", vendor: "dell", since: "2025-09", until: "", source: "declared" },
+      { segment: "storage-block", vendor: "dell", since: "2015", until: "2025-06", source: "declared" },
+    ]), { account: "roche", segment: "storage-block", history: "full" });
+    expect(s.history).toHaveLength(2);
+  });
+
+  it("turns stored conflicts into notes", () => {
+    const snap = withUses(base.accounts[0].uses, { historyConflicts: ["approved news says dell left storage-block on 2026-03-12; accounts.local.yaml still lists it as current"] });
+    expect(ok(resolveCompetitivePosition(snap, { account: "roche" }, NOW)).notes).toContain(
+      "approved news says dell left storage-block on 2026-03-12; accounts.local.yaml still lists it as current",
+    );
+  });
+});

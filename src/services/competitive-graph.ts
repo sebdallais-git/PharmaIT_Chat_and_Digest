@@ -41,8 +41,9 @@ export const ACCOUNTS_CYPHER = `
   WITH a, collect(DISTINCT n.id) AS needs
   OPTIONAL MATCH (a)-[u:USES]->(v:Vendor)
   RETURN a.id AS id, a.name AS name, a.aliases AS aliases, a.declaredSegments AS declaredSegments,
-         a.triggers AS triggers, needs,
-         collect(CASE WHEN v IS NULL THEN null ELSE {segment: u.segment, vendor: v.id} END) AS uses
+         a.triggers AS triggers, a.historyConflicts AS historyConflicts, needs,
+         collect(CASE WHEN v IS NULL THEN null ELSE {segment: u.segment, vendor: v.id, since: u.since, until: u.until,
+                                                      source: u.source} END) AS uses
   ORDER BY id
 `;
 
@@ -156,7 +157,14 @@ function uses(value: unknown): SnapshotAccount["uses"] {
   if (!Array.isArray(value)) throw new Error('competitive-graph: row is missing required field "uses"');
   return value.map((entry, i) => {
     const row = (entry ?? {}) as Record<string, unknown>;
-    return { segment: str(row.segment, `uses[${i}].segment`), vendor: str(row.vendor, `uses[${i}].vendor`) };
+    return {
+      segment: str(row.segment, `uses[${i}].segment`),
+      vendor: str(row.vendor, `uses[${i}].vendor`),
+      // Absent on graphs built before history: read as current and declared.
+      since: typeof row.since === "string" ? row.since : "",
+      until: typeof row.until === "string" ? row.until : "",
+      source: typeof row.source === "string" && row.source !== "" ? row.source : "declared",
+    };
   });
 }
 
@@ -188,6 +196,16 @@ function triggers(value: unknown, account: string, notes: string[]): Record<stri
   }
   notes.push(`account ${account}: unreadable triggers, ignored until the next rebuild`);
   return {};
+}
+
+function jsonStrings(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function evidenceItem(row: Record<string, unknown>): EvidenceItem {
@@ -258,6 +276,7 @@ export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Rec
       needs: strList(r.needs, "needs"),
       uses: uses(r.uses),
       triggers: triggers(r.triggers, str(r.id, "id"), notes),
+      historyConflicts: jsonStrings(r.historyConflicts),
     })),
     needSegments: Object.fromEntries(needRows.map((r) => [str(r.need, "need"), strList(r.segments, "segments")])),
     positions: positionRows.map((r) => ({
@@ -427,8 +446,9 @@ export async function competitivePositionFrom(
   deps: Pick<CompetitiveDeps, "runCypher" | "briefs">,
   snapshot: GraphSnapshot,
   query: CompetitiveQuery,
+  now: Date = new Date(),
 ): Promise<CompetitiveResult> {
-  const resolved = resolveCompetitivePosition(snapshot, query);
+  const resolved = resolveCompetitivePosition(snapshot, query, now);
   if (!resolved.ok) return resolved;
   const r = resolved.value;
 

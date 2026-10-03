@@ -82,7 +82,7 @@ describe("matchCompetitiveQuery", () => {
 
 function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
   return {
-    query: { vendor: "dell", account: "roche", segment: null },
+    query: { vendor: "dell", account: "roche", segment: null, history: "recent" },
     modes: { defend: "the vendor is installed: defend and expand", greenfield: "declared: nobody is installed" },
     regimes: {},
     market: [],

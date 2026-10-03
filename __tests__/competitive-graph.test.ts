@@ -90,8 +90,9 @@ describe("readGraphSnapshot", () => {
           aliases: ["Genentech", "Chugai"],
           declared: ["storage-block"],
           needs: ["cyber-resilience"],
-          uses: [{ segment: "storage-block", vendor: "dell" }],
+          uses: [{ segment: "storage-block", vendor: "dell", since: "", until: "", source: "declared" }],
           triggers: {},
+          historyConflicts: [],
         },
       ],
       needSegments: { "cyber-resilience": ["data-protection", "storage-block"] },
@@ -128,6 +129,22 @@ describe("readGraphSnapshot", () => {
       expect(snap.accounts[0].triggers).toEqual({});
       expect(snap.notes).toEqual(["account roche: unreadable triggers, ignored until the next rebuild"]);
     }
+  });
+
+  it("reads dated uses and stored conflicts", async () => {
+    const rows = {
+      ...ROWS,
+      accounts: [
+        {
+          ...ROWS.accounts[0],
+          uses: [{ segment: "storage-block", vendor: "dell", since: "2019", until: "2026-03", source: "declared" }],
+          historyConflicts: JSON.stringify(["x"]),
+        },
+      ],
+    };
+    const snap = await readGraphSnapshot(fakeCypher(rows), {});
+    expect(snap.accounts[0].uses).toEqual([{ segment: "storage-block", vendor: "dell", since: "2019", until: "2026-03", source: "declared" }]);
+    expect(snap.accounts[0].historyConflicts).toEqual(["x"]);
   });
 
   it("refuses a malformed row rather than printing 'undefined' into an answer", async () => {
@@ -449,7 +466,7 @@ describe("fitBudget", () => {
       sources: ["https://example.test/a", "https://example.test/b", "https://example.test/c", "https://example.test/d"],
     });
     return {
-      query: { vendor: null, account: null, segment: null, ...query },
+      query: { vendor: null, account: null, segment: null, history: "recent" as const, ...query },
       modes: {},
       regimes: {},
       market: [],
