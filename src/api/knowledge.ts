@@ -129,7 +129,8 @@ router.post(
       // Raw document first, so the text is included in the next rebuild even if indexing fails now
       await saveRawDocument(file.originalname, text, { type: "upload" });
       assertIndexUsable();
-      added = await ingestText(text, file.originalname);
+      // A new upload is dated by the day it arrived, as a rebuild dates it (file mtime, until committed).
+      added = await ingestText(text, file.originalname, { date: new Date().toISOString().slice(0, 10), date_kind: "document" });
       await saveIndex();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Ingestion failed";
@@ -237,7 +238,7 @@ router.post("/add", async (req: Request, res: Response): Promise<void> => {
 
       const added = await addToChromaDB(
         [cleaned],
-        [{ source: url }]
+        [{ source: url, date: new Date().toISOString().slice(0, 10), date_kind: "retrieved" }]
       );
 
       console.log(`[Knowledge] Added ${added} chunks from URL: ${url}`);
@@ -254,7 +255,7 @@ router.post("/add", async (req: Request, res: Response): Promise<void> => {
 
       const added = await addToChromaDB(
         [text],
-        [{ source: sourceName }]
+        [{ source: sourceName, date: new Date().toISOString().slice(0, 10), date_kind: "retrieved" }]
       );
 
       console.log(`[Knowledge] Added ${added} chunks from text (source: ${sourceName})`);

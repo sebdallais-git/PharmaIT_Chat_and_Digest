@@ -25,6 +25,7 @@
 // chromadb-store, which is what lets the whole orchestrator be tested without
 // a network, a model or a live collection.
 
+import { watchlistDate } from "./chunk-date.js";
 import type { Entity, Feed, Watchlist } from "./watchlist-config.js";
 import { canonicalUrl, contentHash, type RawItem } from "./watchlist-sources.js";
 import type { IrPageResult } from "./watchlist-edgar.js";
@@ -641,6 +642,7 @@ export function createIngestRun(deps: IngestDeps): (options?: IngestOptions) => 
                     domain: tagging.domains.join(","),
                     signal: tagging.signal ?? "",
                     published_at: item.publishedAt,
+                    ...watchlistDate(item.publishedAt),
                     source_kind: item.sourceKind,
                     importance: tagging.importance ?? 0,
                     watchlist_item_id: itemId,

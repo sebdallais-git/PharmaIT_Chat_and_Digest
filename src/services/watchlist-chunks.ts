@@ -1,6 +1,7 @@
 // Rebuilds the embedded form of a stored watchlist item. The text and metadata
 // here must match what watchlist-ingest.ts embeds at collection time, or a
 // rebuilt chunk would not be the chunk it replaces.
+import { watchlistDate } from "./chunk-date.js";
 import { openWatchlistStore, type StoredItem } from "./watchlist-store.js";
 import type { WatchlistChunk } from "./reindex.js";
 
@@ -14,6 +15,7 @@ export function toWatchlistChunk(item: StoredItem): WatchlistChunk {
       domain: item.domains.join(","),
       signal: item.signal ?? "",
       published_at: item.publishedAt,
+      ...watchlistDate(item.publishedAt),
       source_kind: item.sourceKind,
       importance: item.importance ?? 0,
       watchlist_item_id: item.id,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
+import { rawDocumentDate } from "../src/services/chunk-date.js";
 import { ingestTextDocument } from "../src/services/ingest-text.js";
 import type { IngestTextDeps } from "../src/services/ingest-text.js";
 
@@ -33,6 +34,7 @@ function fakeDeps(overrides: Partial<IngestTextDeps> = {}): { deps: IngestTextDe
       chroma.push({ texts, metadatas });
       return 3;
     },
+    now: () => new Date("2026-10-03T10:00:00.000Z"),
     ...overrides,
   };
   return { deps, calls, chroma };
@@ -43,7 +45,10 @@ describe("ingestTextDocument", () => {
     const { deps, chroma } = fakeDeps();
     await ingestTextDocument("Werum is the global MES partner.", "n8n-gap|https://example.test/a", deps);
     expect(chroma).toEqual([
-      { texts: ["Werum is the global MES partner."], metadatas: [{ source: "n8n-gap|https://example.test/a", type: "text" }] },
+      {
+        texts: ["Werum is the global MES partner."],
+        metadatas: [{ source: "n8n-gap|https://example.test/a", type: "text", date: "2026-10-03", date_kind: "retrieved" }],
+      },
     ]);
   });
 
@@ -58,7 +63,9 @@ describe("ingestTextDocument", () => {
     });
     await ingestTextDocument("text", "src", deps);
     const [{ metadatas }] = chroma as { metadatas: Record<string, unknown>[] }[];
-    expect(metadatas[0]).toEqual({ source: "src", ...saved[0] });
+    // The rebuild dates a raw document by its saved_at (rawDocumentDate): saved today, dated today.
+    const rebuilt = { source: "src", ...saved[0], ...rawDocumentDate({ source: "src", metadata: saved[0], saved_at: "2026-10-03T10:00:00.000Z" }) };
+    expect(metadatas[0]).toEqual(rebuilt);
   });
 
   it("saves the raw document first, so a rebuild includes it whatever fails next", async () => {
@@ -100,5 +107,26 @@ describe("POST /api/knowledge/ingest-text", () => {
     const route = readFileSync("src/api/knowledge.ts", "utf8");
     const handler = route.slice(route.indexOf('router.post("/ingest-text"'), route.indexOf('router.post("/', route.indexOf('router.post("/ingest-text"') + 1));
     expect(handler).toMatch(/ingestTextDocument\(/);
+  });
+});
+
+describe("ingestTextDocument — dates", () => {
+  it("dates the page by when it was fetched, in both stores and the raw document", async () => {
+    const memory: unknown[] = [];
+    const raw: unknown[] = [];
+    const { deps, chroma } = fakeDeps({
+      saveRawDocument: async (source, _text, metadata) => {
+        raw.push(metadata);
+      },
+      ingestText: async (_text, _source, date) => {
+        memory.push(date);
+        return 1;
+      },
+    });
+    await ingestTextDocument("text", "n8n-gap|https://example.test/a", deps);
+    const retrieved = { date: "2026-10-03", date_kind: "retrieved" };
+    expect(memory).toEqual([retrieved]);
+    expect((chroma[0] as { metadatas: Array<Record<string, unknown>> }).metadatas[0]).toMatchObject(retrieved);
+    expect(raw).toEqual([{ type: "text" }]);
   });
 });

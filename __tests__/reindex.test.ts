@@ -97,6 +97,7 @@ function fakeDeps(overrides: Partial<ReindexDeps> = {}): { deps: ReindexDeps; ca
       { name: "b.md", path: "/k/b.md" },
     ],
     parseFile: async (path) => `text of ${path}`,
+    knowledgeFileDate: async () => ({ date: "2026-03-10", date_kind: "document" }),
     ingestTexts: async (items) => items.length,
     addToChromaDB: async (texts) => texts.length,
     listRawDocuments: async () => rawDocs(130),
@@ -254,5 +255,43 @@ describe("watchlist items in a rebuild", () => {
     });
 
     expect((await reindexActiveStack(quiet, deps)).watchlistItems).toBe(0);
+  });
+});
+
+describe("reindexActiveStack — dates", () => {
+  it("stamps every chunk with its date in both stores: knowledge files, raw documents and watchlist items", async () => {
+    const memory: Array<{ source: string; date?: unknown }> = [];
+    const chroma: Array<Record<string, unknown>> = [];
+    const { deps } = fakeDeps({
+      listKnowledgeFiles: async () => [{ name: "a.md", path: "/k/a.md" }],
+      listRawDocuments: async () => [
+        { source: "news-2025-10-16", content: "c", metadata: { type: "news" }, saved_at: "2026-09-18T00:00:00Z" },
+        { source: "n8n-gap|https://x.test", content: "c", metadata: { type: "text" }, saved_at: "2026-09-20T00:00:00Z" },
+      ],
+      listWatchlistItems: async () => [
+        { text: "w", metadata: { source: "https://w.test", published_at: "2026-09-28T08:00:00Z", date: "2026-09-28", date_kind: "published" } },
+      ],
+      ingestTexts: async (items) => {
+        memory.push(...items.map((i) => ({ source: i.source, date: i.date })));
+        return items.length;
+      },
+      addToChromaDB: async (texts, metadatas) => {
+        chroma.push(...metadatas);
+        return texts.length;
+      },
+    });
+    await reindexActiveStack(quiet, deps);
+    expect(memory).toEqual([
+      { source: "a.md", date: { date: "2026-03-10", date_kind: "document" } },
+      { source: "news-2025-10-16", date: { date: "2025-10-16", date_kind: "published" } },
+      { source: "n8n-gap|https://x.test", date: { date: "2026-09-20", date_kind: "retrieved" } },
+      { source: "https://w.test", date: { date: "2026-09-28", date_kind: "published" } },
+    ]);
+    expect(chroma.map((m) => [m.source, m.date, m.date_kind])).toEqual([
+      ["a.md", "2026-03-10", "document"],
+      ["news-2025-10-16", "2025-10-16", "published"],
+      ["n8n-gap|https://x.test", "2026-09-20", "retrieved"],
+      ["https://w.test", "2026-09-28", "published"],
+    ]);
   });
 });

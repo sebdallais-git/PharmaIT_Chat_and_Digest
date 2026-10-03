@@ -241,8 +241,8 @@ export async function ingestTexts(items: TextItem[]): Promise<number> {
 }
 
 // Ingest raw text into the knowledge base
-export async function ingestText(text: string, sourceName: string): Promise<number> {
-  return ingestTexts([{ text, source: sourceName }]);
+export async function ingestText(text: string, sourceName: string, date?: ChunkDate): Promise<number> {
+  return ingestTexts([{ text, source: sourceName, date }]);
 }
 
 // Start an empty index for the active stack. Only a reindex calls this: it is the one place metadata is stamped.
