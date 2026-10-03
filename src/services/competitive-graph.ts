@@ -311,6 +311,22 @@ export interface TrimStep {
   applies?(answer: CompetitiveAnswer): boolean;
 }
 
+const NEED_EVIDENCE_QUOTES: TrimStep = {
+  drops: "need-evidence quotes",
+  applies: (a) => a.accounts.some((acc) => Object.values(acc.needEvidence).some((list) => list.some((e) => e.quote !== ""))),
+  apply: (a) => {
+    for (const acc of a.accounts) for (const list of Object.values(acc.needEvidence)) for (const e of list) e.quote = "";
+  },
+};
+
+const DROP_NEED_EVIDENCE: TrimStep = {
+  drops: "need evidence",
+  applies: (a) => a.accounts.some((acc) => Object.keys(acc.needEvidence).length > 0),
+  apply: (a) => {
+    for (const acc of a.accounts) acc.needEvidence = {};
+  },
+};
+
 const DROP_ALL_EVENTS: TrimStep = {
   drops: "account events",
   applies: (a) => a.accounts.some((acc) => acc.general.length > 0 || acc.segments.some((seg) => seg.events.length > 0)),
@@ -333,28 +349,16 @@ export const TRIM_STEPS: TrimStep[] = [
     apply: (a) => {
       for (const s of Object.values(a.standings)) for (const c of [...s.strong, ...s.weak]) c.detail = "";
     },
-  },  {
-    drops: "need-evidence quotes",
-    applies: (a) => a.accounts.some((acc) => Object.values(acc.needEvidence).some((list) => list.some((e) => e.quote !== ""))),
-    apply: (a) => {
-      for (const acc of a.accounts) for (const list of Object.values(acc.needEvidence)) for (const e of list) e.quote = "";
-    },
-  },  {
+  },
+  {
     drops: "history beyond the newest change per segment",
     applies: (a) => a.accounts.some((acc) => acc.segments.some((s) => (s.history?.length ?? 0) > 1)),
     apply: (a) => {
       for (const acc of a.accounts) for (const s of acc.segments) if (s.history !== undefined) s.history = s.history.slice(0, 1);
     },
   },
-
-  {
-    drops: "need evidence",
-    applies: (a) => a.accounts.some((acc) => Object.keys(acc.needEvidence).length > 0),
-    apply: (a) => {
-      for (const acc of a.accounts) acc.needEvidence = {};
-    },
-  },
-
+  NEED_EVIDENCE_QUOTES,
+  DROP_NEED_EVIDENCE,
   {
     drops: "account events beyond 1 per segment and account",
     applies: (a) => a.accounts.some((acc) => acc.general.length > 1 || acc.segments.some((seg) => seg.events.length > 1)),
@@ -415,10 +419,18 @@ export const TRIM_STEPS: TrimStep[] = [
 ];
 
 /**
- * For text renderings (the chat), where an event is one short line and claims
- * and rationale are the bulk: extra events still go early, every event last.
+ * For text renderings (the chat), where an event or a "why" line is one short
+ * line and claims and rationale are the bulk: extra events still go early;
+ * every event, then every need-evidence line, last.
  */
-export const TEXT_TRIM_STEPS: TrimStep[] = [...TRIM_STEPS.filter((step) => step !== DROP_ALL_EVENTS), DROP_ALL_EVENTS];
+export const TEXT_TRIM_STEPS: TrimStep[] = [
+  // The chat never shows need-evidence quotes: trimming them saves nothing
+  // and would name a cut the reader never saw. A "why" line is short and the
+  // most useful line about an account, so it goes last, with the events.
+  ...TRIM_STEPS.filter((step) => step !== DROP_ALL_EVENTS && step !== NEED_EVIDENCE_QUOTES && step !== DROP_NEED_EVIDENCE),
+  DROP_ALL_EVENTS,
+  DROP_NEED_EVIDENCE,
+];
 
 /**
  * Shrink an over-budget answer step by step until it fits, then say what was

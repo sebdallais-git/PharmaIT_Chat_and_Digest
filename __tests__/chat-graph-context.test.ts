@@ -390,3 +390,24 @@ describe("install history wording — review fixes", () => {
     expect(wantsFullHistory("What did Roche use before that?")).toBe(true);
   });
 });
+
+describe("need evidence under the chat budget", () => {
+  it("keeps the why lines over claims, and never names quotes the chat does not show", () => {
+    const base = answer();
+    const claims = Array.from({ length: 4 }, (_, i) => ({ claim: `${"c".repeat(150)} ${i}.`, detail: "" }));
+    base.standings = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [
+        `dell/seg-${i}`,
+        { ...base.standings["dell/storage-block"], rationale: "r".repeat(300), strong: claims, weak: claims },
+      ]),
+    );
+    base.accounts[0].needEvidence = {
+      "cyber-resilience": [{ claim: "Winnti compromised Roche systems in 2019", quote: "q".repeat(300), source: "knowledge/x.md" }],
+    };
+    const text = renderCompetitiveContext(base);
+    expect(text.length).toBeLessThanOrEqual(CHAT_CONTEXT_CHARS);
+    expect(text).toContain("  why cyber-resilience: Winnti compromised Roche systems in 2019 (x.md)");
+    expect(text).not.toContain("strong: ");
+    expect(text).not.toContain("need-evidence quotes");
+  });
+});
