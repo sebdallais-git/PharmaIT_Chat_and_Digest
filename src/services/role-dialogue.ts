@@ -47,6 +47,11 @@ export interface RoleDeps {
 
 const INTENTS = ["switch", "update", "show", "none"] as const;
 
+// A question typed while onboarding is waiting for an answer is a question,
+// not the answer: on 2026-10-02 "How should we approach novartis ?" became the
+// company of a saved role.
+const QUESTION = /\?\s*$|^\s*(how|what|why|which|who|when|where|should|could|can|would|is|are|do|does|tell me|show me|give me)\b/i;
+
 const NEW_ROLE_STATEMENT = /\b(i am now|i'm now|switch (to|role)|act as|(i am|i'm) (the |a |an )?[\w\s/&-]{0,40}\b(at|for|from) \w)/i;
 
 export function roleIntentPrompt(text: string, known: Role[]): string {
@@ -245,7 +250,14 @@ export async function handleRoleMessage(message: string, deps: RoleDeps): Promis
   if (state.draft) {
     // A message that plainly names a role ("I'm now HLS principal at Everpure")
     // starts over instead of being stored as the pending answer
-    if (!NEW_ROLE_STATEMENT.test(message)) return answerDraft(deps.store, state, state.draft, message, now);
+    if (!NEW_ROLE_STATEMENT.test(message)) {
+      if (QUESTION.test(message)) {
+        // Drop the onboarding and let the chat answer the question normally
+        deps.store.write({ ...state, draft: null });
+        return null;
+      }
+      return answerDraft(deps.store, state, state.draft, message, now);
+    }
     intent = await deps.extract(message, state.roles);
     if (!intent || intent.intent !== "switch") return answerDraft(deps.store, state, state.draft, message, now);
     state = { ...state, draft: null };

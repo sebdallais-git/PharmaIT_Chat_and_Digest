@@ -188,6 +188,22 @@ describe("handleRoleMessage", () => {
     expect(store.read().draft).toMatchObject({ title: "Global Account Manager", asking: "accounts" });
   });
 
+  // Live on 2026-10-02: "How should we approach novartis ?" typed mid-onboarding
+  // was saved as the company, and the digests lost every account
+  it.each(["How should we approach novartis ?", "what is Dell doing best for Roche", "Tell me about Lonza's storage"])(
+    "drops an open onboarding for a question and lets the chat answer it: %s",
+    async (question) => {
+      const { store } = tempStore();
+      store.write({ version: 1, active: null, roles: [], draft: { title: "HLS Principal", company: "", accounts: [], portfolio: [], focus: null, asking: "company" } });
+      const { extract, calls } = extractor(null);
+
+      expect(await handleRoleMessage(question, { store, extract, now })).toBeNull();
+
+      expect(calls).toEqual([]);
+      expect(store.read()).toMatchObject({ draft: null, roles: [], active: null });
+    },
+  );
+
   it("drops the onboarding on cancel", async () => {
     const { store } = tempStore();
     store.write({ version: 1, active: null, roles: [], draft: { title: "Principal", company: "Everpure", accounts: [], portfolio: [], focus: null, asking: "accounts" } });
