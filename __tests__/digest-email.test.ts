@@ -11,6 +11,7 @@ import {
   markdownToText,
   parseEmailConfig,
   type EmailConfig,
+  type SmtpOptions,
 } from "../src/services/digest-email.js";
 
 // The digest by email, next to Telegram: the full digest (no 3,900-character
@@ -156,8 +157,8 @@ describe("loadEmailSettings", () => {
 // the Hermes job posts the Telegram message only when the script exits
 describe("smtpSender", () => {
   it("uses short timeouts, TLS on 465 and STARTTLS required otherwise", () => {
-    const seen: Array<Record<string, unknown>> = [];
-    const create = (options: Record<string, unknown>) => {
+    const seen: SmtpOptions[] = [];
+    const create = (options: SmtpOptions) => {
       seen.push(options);
       return { sendMail: async () => ({}) };
     };
