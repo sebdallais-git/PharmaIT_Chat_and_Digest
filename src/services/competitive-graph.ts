@@ -266,7 +266,15 @@ export function fitBudget(answer: CompetitiveAnswer, budget = MAX_ANSWER_CHARS):
 }
 
 export async function competitivePosition(deps: CompetitiveDeps, query: CompetitiveQuery): Promise<CompetitiveResult> {
-  const snapshot = await readGraphSnapshot(deps.runCypher, deps.vendorAliases());
+  return competitivePositionFrom(deps, await readGraphSnapshot(deps.runCypher, deps.vendorAliases()), query);
+}
+
+/** The same answer from a snapshot already read, so a caller that inspected it does not read the graph twice. */
+export function competitivePositionFrom(
+  deps: Pick<CompetitiveDeps, "recentItems" | "briefs">,
+  snapshot: GraphSnapshot,
+  query: CompetitiveQuery,
+): CompetitiveResult {
   const resolved = resolveCompetitivePosition(snapshot, query);
   if (!resolved.ok) return resolved;
   const r = resolved.value;

@@ -5,14 +5,10 @@
 // the live ones lazily (nothing connects at import time).
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { join } from "node:path";
 import { competitivePosition, type CompetitiveDeps } from "../services/competitive-graph.js";
-import { normaliseName } from "../services/competitive-position.js";
-import { liveReader } from "../services/export-wiring.js";
+import { liveCompetitiveDeps } from "../services/competitive-graph-live.js";
 import { getDriver, getNeo4jStats, isNeo4jAvailable } from "../services/graph-store.js";
-import { loadBriefExcerpts } from "../services/vendor-brief-excerpts.js";
 import { neo4jWriteTransaction, rebuildVendorGraph, type RebuildResult } from "../services/vendor-graph-rebuild.js";
-import { loadWatchlist } from "../services/watchlist-config.js";
 
 export interface GraphRouterDeps {
   isAvailable(): Promise<boolean>;
@@ -108,35 +104,12 @@ export function createGraphRouter(deps: GraphRouterDeps): Router {
   return router;
 }
 
-/** Normalised alias and name -> entity id, from config/watchlist.yaml (e.g. "pure-storage" -> "everpure"). */
-function watchlistAliases(): Record<string, string> {
-  try {
-    const aliases: Record<string, string> = {};
-    for (const entity of loadWatchlist().entities.values()) {
-      for (const name of [entity.name, ...entity.aliases]) aliases[normaliseName(name)] = entity.id;
-    }
-    return aliases;
-  } catch (err) {
-    // An invalid watchlist must not take the query down: ids still resolve without aliases.
-    console.error("[Graph] watchlist aliases unavailable:", errorMessage(err));
-    return {};
-  }
-}
-
 export function liveGraphRouterDeps(): GraphRouterDeps {
   return {
     isAvailable: isNeo4jAvailable,
     stats: getNeo4jStats,
     rebuild: () => rebuildVendorGraph({ root: process.cwd() }, neo4jWriteTransaction(getDriver())),
-    competitive: () => {
-      const reader = liveReader();
-      return {
-        runCypher: (query, params) => reader.runCypher(query, params),
-        recentItems: (entity, domains, limit) => reader.itemsFor(entity, limit, domains),
-        briefs: () => loadBriefExcerpts(join(process.cwd(), "knowledge", "vendors")),
-        vendorAliases: watchlistAliases,
-      };
-    },
+    competitive: liveCompetitiveDeps,
   };
 }
 
