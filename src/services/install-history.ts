@@ -5,7 +5,8 @@
 // The accounts file is the truth for now; approved news only adds the past.
 // A contradiction never overrides the file: it becomes a conflict note.
 import { createHash } from "node:crypto";
-import { parse, stringify } from "yaml";
+import { stringify } from "yaml";
+import { appendProposals, proposalsDocument } from "./proposals-file.js";
 import type { Account, Stint } from "./graph-accounts.js";
 import { SEGMENTS, type Segment } from "./graph-schema.js";
 import { normaliseSpace } from "./need-evidence.js";
@@ -50,17 +51,10 @@ export function historyEntryId(account: string, segment: string, vendor: string,
 const text = (v: unknown): string => (typeof v === "string" ? v : v === undefined || v === null ? "" : String(v));
 
 export function parseInstallHistory(yaml: string): InstallHistoryFile {
-  const doc = (parse(yaml) ?? {}) as { sources?: unknown; entries?: unknown };
-  const sources: Record<string, string> = {};
-  if (doc.sources !== null && typeof doc.sources === "object" && !Array.isArray(doc.sources)) {
-    for (const [k, v] of Object.entries(doc.sources as Record<string, unknown>)) sources[k] = text(v);
-  }
-  const seen = new Set<string>();
-  const entries = (Array.isArray(doc.entries) ? doc.entries : []).map((raw): HistoryEntry => {
-    const r = (raw ?? {}) as Record<string, unknown>;
+  // Shape, ids and duplicates: a malformed file fails instead of reading as empty
+  const { sources, entries: raw } = proposalsDocument(yaml);
+  const entries = raw.map((r): HistoryEntry => {
     const id = text(r.id);
-    if (seen.has(id)) throw new Error(`duplicate id ${id}`);
-    seen.add(id);
     const status = text(r.status);
     if (!(STATUSES as readonly string[]).includes(status)) throw new Error(`${id}: status must be proposed, approved or rejected`);
     const change = text(r.change);
@@ -94,6 +88,17 @@ export function renderInstallHistory(file: InstallHistoryFile): string {
   return HEADER + stringify({ sources: file.sources, entries: file.entries }, { lineWidth: 0 });
 }
 
+/**
+ * The run folded into the file's text as it is on disk now: new entries are
+ * appended and sources updated; existing entries, comments and extra fields stay.
+ */
+export function mergeInstallHistoryText(onDisk: string, fromRun: InstallHistoryFile): string {
+  const current = parseInstallHistory(onDisk);
+  const known = new Set(current.entries.map((e) => e.id));
+  const merged = mergeInstallHistory(current, fromRun);
+  return appendProposals(onDisk, HEADER, merged.sources, merged.entries.filter((e) => !known.has(e.id)));
+}
+
 /** A run's result folded into the file as it is on disk now: the user's entries win. */
 export function mergeInstallHistory(onDisk: InstallHistoryFile, fromRun: InstallHistoryFile): InstallHistoryFile {
   const known = new Set(onDisk.entries.map((e) => e.id));
@@ -120,6 +125,13 @@ export function checkHistoryAgainstAccounts(
   }
 }
 
+// Declared dates may be YYYY or YYYY-MM; news dates are days. A day falls on a
+// declared date when the declared one is its prefix ("2026-03" holds "2026-03-12").
+const known = (d: string) => d !== "" && d !== "?";
+const sameDate = (a: string, b: string) => known(a) && known(b) && (a.startsWith(b) || b.startsWith(a));
+const notBefore = (day: string, bound: string) => day.slice(0, bound.length) >= bound;
+const notAfter = (day: string, bound: string) => day.slice(0, bound.length) <= bound;
+
 /** Approved entries for this account, oldest first, applied to its stints. */
 export function applyHistory(account: Account, entries: HistoryEntry[]): Account {
   const history: Account["history"] = {};
@@ -145,7 +157,7 @@ export function applyHistory(account: Account, entries: HistoryEntry[]): Account
       }
       const open = stints.find((s) => s.vendor === vendor && s.until === "?");
       if (open !== undefined) open.until = e.date;
-      else if (!stints.some((s) => s.vendor === vendor && s.until === e.date)) {
+      else if (!stints.some((s) => s.vendor === vendor && sameDate(s.until, e.date))) {
         stints.push({ vendor, since: "", until: e.date, source });
       }
     };
@@ -157,7 +169,10 @@ export function applyHistory(account: Account, entries: HistoryEntry[]): Account
         return;
       }
       // Not current in the file: a past stint whose end the news does not say.
-      if (!stints.some((s) => s.vendor === vendor && s.since === e.date)) {
+      // Nor when a dated past stint of the same vendor already covers that day
+      const covered = (s: Stint) =>
+        sameDate(s.since, e.date) || (known(s.since) && known(s.until) && notBefore(e.date, s.since) && notAfter(e.date, s.until));
+      if (!stints.some((s) => s.vendor === vendor && covered(s))) {
         stints.push({ vendor, since: e.date, until: "?", source } satisfies Stint);
       }
     };

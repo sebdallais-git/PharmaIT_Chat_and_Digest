@@ -12,6 +12,8 @@ import {
   type EvidenceSourceItem,
 } from "../src/services/graph-evidence.js";
 import type { Domain } from "../src/services/watchlist-config.js";
+import Database from "better-sqlite3";
+import { openWatchlistStore } from "../src/services/watchlist-store.js";
 
 const NOW = new Date("2026-10-02T03:00:00.000Z");
 
@@ -138,5 +140,28 @@ describe("evidence sources", () => {
     const path = join(mkdtempSync(join(tmpdir(), "evidence-")), "watchlist.db");
     expect(watchlistEvidence(path)(["dell"], "2026-04-05T00:00:00.000Z")).toBeNull();
     expect(existsSync(path)).toBe(false);
+  });
+
+  // Review of #65: the rebuild read evidence through a read-write open, which
+  // runs migrations and the WAL pragma on the live database
+  it("reads a current watchlist.db read-only", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "evidence-")), "watchlist.db");
+    openWatchlistStore(path).close();
+    expect(watchlistEvidence(path)(["dell"], "2026-04-05T00:00:00.000Z")).toEqual([]);
+  });
+
+  it("never migrates an older watchlist.db: it says to run the ingest first", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "evidence-")), "watchlist.db");
+    openWatchlistStore(path).close();
+    const raw = new Database(path);
+    raw.exec("ALTER TABLE items DROP COLUMN body");
+    raw.pragma("user_version = 2");
+    raw.close();
+
+    expect(() => watchlistEvidence(path)(["dell"], "2026-04-05T00:00:00.000Z")).toThrow(/schema 2 .*run the watchlist ingest/);
+
+    const after = new Database(path, { readonly: true });
+    expect(after.pragma("user_version", { simple: true })).toBe(2);
+    after.close();
   });
 });

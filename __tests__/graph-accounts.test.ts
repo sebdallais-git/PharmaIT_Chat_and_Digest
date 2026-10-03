@@ -107,6 +107,13 @@ ${triggers}`);
     expect(account.triggers).toEqual({ "storage-block": "everpure arrays reach end of support 2027-03" });
   });
 
+  // Review of #66: a block-scalar trigger kept its line breaks and broke the
+  // indentation of the chat's graph block
+  it("folds a trigger written over several lines into one line", () => {
+    const account = parseAccounts(withTriggers("      storage-block: |\n        everpure arrays reach\n        end of support 2027-03\n"))[0];
+    expect(account.triggers).toEqual({ "storage-block": "everpure arrays reach end of support 2027-03" });
+  });
+
   it("reads no triggers when the key is absent", () => {
     expect(parseAccounts(roche)[0].triggers).toEqual({});
   });
@@ -205,6 +212,21 @@ ${entries}`);
     expect(() => parseAccounts(dated("        - {since: 2020}\n"), NOW)).toThrow(`${at}: an entry needs a vendor`);
   });
 
+  // Review of #70: the check used the UTC day, so between 00:00 and 02:00 in
+  // Zurich (CEST) today's date was refused as "in the future"
+  it("accepts today's date as until in local time, not UTC", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "Europe/Zurich";
+    try {
+      const justAfterMidnight = new Date("2026-10-02T22:30:00.000Z"); // 00:30 on 3 Oct in Zurich
+      const account = parseAccounts(dated("        - {vendor: dell, until: 2026-10-03}\n"), justAfterMidnight)[0];
+      expect(account.history["storage-block"]?.[0].until).toBe("2026-10-03");
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+  });
+
   it("still requires a current incumbent for a trigger", () => {
     const yamlText = yaml(`  novartis:
     name: Novartis
@@ -265,7 +287,7 @@ describe("accountToGraphFacts", () => {
     ]);
   });
 
-  it("stores triggers on the account as JSON, quotes and newlines intact, and nothing when there are none", () => {
+  it("stores triggers on the account as JSON, quotes intact and line breaks folded, and nothing when there are none", () => {
     const account = parseAccounts(
       yaml(`  roche:
     name: Roche
@@ -280,7 +302,7 @@ describe("accountToGraphFacts", () => {
     )[0];
     const node = accountToGraphFacts(account).nodes.find((n) => n.label === "Account");
     expect(node?.properties.triggers).toBe(
-      JSON.stringify({ "storage-block": "end of support", "storage-file": 'NetApp "ONTAP 9": renewal 2027-01\nsecond line' }),
+      JSON.stringify({ "storage-block": "end of support", "storage-file": 'NetApp "ONTAP 9": renewal 2027-01 second line' }),
     );
     expect(accountToGraphFacts({ ...account, triggers: {} }).nodes[0].properties).not.toHaveProperty("triggers");
   });

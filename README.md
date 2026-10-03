@@ -1489,6 +1489,9 @@ entries:
     extracted: 2026-10-02
 ```
 
+- **Your notes stay.** A run appends its new entries to the file as it is and refreshes `sources`; comments and extra fields on existing entries survive (both proposals files, since 2026-10-03). Comments inside `sources` do not.
+- **A malformed file stops the run** with one line naming the file (`config/need-evidence.local.yaml: entries must be a list`, `entry 4 has no id`), instead of reading as empty. The same goes for `--only` without a file or naming no document; a bare name is read as `knowledge/<name>`.
+
 Ids are stable: `ne-` plus the first 10 hex characters of a SHA-256 over account, need and the whitespace-normalised quote. A re-run that meets the same quote keeps the existing entry and its status; new quotes are appended as `proposed`.
 
 **3. Rebuild** (dry run first, then apply):

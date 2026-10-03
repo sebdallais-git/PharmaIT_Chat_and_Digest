@@ -9,6 +9,7 @@ import {
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
   VENDOR_EVIDENCE_CYPHER,
+  EVIDENCE_PER_VENDOR,
   VENDORS_CYPHER,
   competitivePosition,
   fitBudget,
@@ -206,6 +207,11 @@ describe("competitivePosition", () => {
       { vendor: "dell", segments: ["storage-block"] },
     ]);
     expect(result.answer.evidence.dell.map((e) => e.title)).toEqual(["News 4", "News 3", "News 2"]);
+  });
+
+  // Review of #65: the read had no LIMIT, inside the chat's 2.5 s graph budget
+  it("bounds the vendor news read in the query itself", () => {
+    expect(VENDOR_EVIDENCE_CYPHER).toMatch(new RegExp(`ORDER BY publishedAt DESC, url\\s+LIMIT ${EVIDENCE_PER_VENDOR}\\s*$`));
   });
 
   it("returns no news and a note for a vendor with no cited segment", async () => {
@@ -423,6 +429,31 @@ describe("competitivePosition — size budget", () => {
     expect(block?.history).toHaveLength(1);
     expect(answer.standings["dell/storage-block"].strong.length).toBeGreaterThan(0);
     expect(answer.notes.some((n) => n.includes("history beyond the newest change per segment"))).toBe(true);
+  });
+
+  // Review of #70: the step kept the current stint (sorted first) rather than the
+  // newest change, and left olderChanges counting only the window
+  it("keeps the newest change when trimming history, and counts what it dropped as older", async () => {
+    const rows: Rows = {
+      ...ROWS,
+      accounts: [
+        {
+          ...ROWS.accounts[0],
+          uses: [
+            { segment: "storage-block", vendor: "hpe", since: "2019", until: "", source: "declared" },
+            { segment: "storage-block", vendor: "dell", since: "2020", until: "2026-03", source: "declared" },
+            ...[1, 2].map((n) => ({ segment: "storage-block", vendor: `v${n}${"x".repeat(200)}`, since: "2015", until: "2018", source: "declared" })),
+          ],
+        },
+      ],
+    };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche", history: "full" });
+    if (!result.ok) throw new Error(result.error);
+    const answer = result.answer;
+    fitBudget(answer, JSON.stringify(answer).length - 10);
+    const block = answer.accounts[0].segments.find((s) => s.segment === "storage-block");
+    expect(block?.history?.map((h) => h.vendor)).toEqual(["dell"]);
+    expect(block?.olderChanges).toBe(3);
   });
 
   it("drops claim details before it drops claims", async () => {

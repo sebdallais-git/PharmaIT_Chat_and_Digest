@@ -5,6 +5,7 @@ import {
   checkHistoryAgainstAccounts,
   historyEntryId,
   mergeInstallHistory,
+  mergeInstallHistoryText,
   parseInstallHistory,
   renderInstallHistory,
   type HistoryEntry,
@@ -96,6 +97,16 @@ describe("applyHistory", () => {
     ]);
   });
 
+  // Review of #70: a declared "dell 2019–2026-03" got a second "dell ?–2026-03-12"
+  // row because the news date is more precise than the declared one
+  it("does not duplicate a declared past stint the news dates more precisely", () => {
+    const merged = applyHistory(account({ "storage-block": [declared("hds", "2026-03"), declared("dell", "2019", "2026-03")] }), [
+      entry({ id: "ih-1", change: "replaced", replaced_vendor: "dell" }),
+      entry({ id: "ih-2", vendor: "dell", date: "2021-06-01" }),
+    ]);
+    expect(merged.history["storage-block"]).toEqual([declared("hds", "2026-03"), declared("dell", "2019", "2026-03")]);
+  });
+
   it("never overrides the file: news saying a current vendor left becomes a conflict", () => {
     const merged = applyHistory(account({ "storage-block": [declared("dell")] }), [
       entry({ id: "ih-1", change: "removed", vendor: "dell" }),
@@ -124,5 +135,15 @@ describe("review fixes — vendors", () => {
       checkHistoryAgainstAccounts(file([entry({ id: "ih-2", change: "replaced", replaced_vendor: "emc" })]), [account({})], known),
     ).toThrow('ih-2 names unknown vendor "emc"');
     expect(() => checkHistoryAgainstAccounts(file([entry({ id: "ih-3" })]), [account({})], known)).not.toThrow();
+  });
+});
+
+// Review of #70: every run re-rendered the file and dropped the user's comments
+describe("mergeInstallHistoryText", () => {
+  it("appends the run's new entries and keeps the user's comments on the existing ones", () => {
+    const onDisk = renderInstallHistory(file([entry({ id: "ih-1" })])).replace("status: approved", "status: approved # seen in the QBR deck");
+    const out = mergeInstallHistoryText(onDisk, file([entry({ id: "ih-1", status: "proposed" }), entry({ id: "ih-2", status: "proposed", date: "2026-04-01" })]));
+    expect(out).toContain("status: approved # seen in the QBR deck");
+    expect(parseInstallHistory(out).entries.map((e) => [e.id, e.status])).toEqual([["ih-1", "approved"], ["ih-2", "proposed"]]);
   });
 });

@@ -24,6 +24,7 @@ import {
   validateOnlyIds,
   WatchlistCliError,
   type RunIngestDeps,
+  closeAll,
 } from "../scripts/watchlist.js";
 
 // ---- fixtures ---------------------------------------------------------------
@@ -634,5 +635,24 @@ describe("runStatus", () => {
     expect(exitCode).not.toBe(0);
     expect(logs.some((line) => line.includes("--days"))).toBe(true);
     store.close();
+  });
+});
+
+// Review of #65: a throwing store.close() skipped closeNeo4j(), and an open
+// driver keeps Node alive, so the nightly job would hang until its timeout
+describe("closeAll", () => {
+  it("runs every closer even when one throws, then rethrows the first error", async () => {
+    const closed: string[] = [];
+    await expect(
+      closeAll([
+        () => {
+          throw new Error("store close failed");
+        },
+        async () => {
+          closed.push("neo4j");
+        },
+      ]),
+    ).rejects.toThrow("store close failed");
+    expect(closed).toEqual(["neo4j"]);
   });
 });
