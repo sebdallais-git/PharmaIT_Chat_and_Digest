@@ -3,3 +3,7 @@
 # vendor-*.md are skipped by name; list the others here, one file name per line.
 The AI Pharma Challenge - Executive Edition - Everpure.pdf
 The AI Pharma Challenge - The Data Readiness Strategy for AI at Scale - everpure.pdf
+# Dell-authored account papers: they describe Dell's programmes at the account,
+# not why the account has a need (excluded 2026-10-03 after review).
+roche cyber resilience v2.docx
+novartis cyber resilience v2.docx
