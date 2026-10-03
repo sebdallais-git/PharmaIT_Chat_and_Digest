@@ -7,6 +7,7 @@ import {
   digestSubject,
   loadEmailSettings,
   markdownToHtml,
+  smtpSender,
   markdownToText,
   parseEmailConfig,
   type EmailConfig,
@@ -57,6 +58,14 @@ describe("markdownToHtml", () => {
     expect(html).toContain('<a href="https://news.test/a?x=1&amp;y=2">[1]</a>');
     expect(html).toContain('<a href="https://news.test/c">Ransomware at a CDMO</a>');
     expect(html).not.toContain("<both>");
+  });
+
+  // Review: "[Webinar] …" titles lost their link, and ** inside a URL became <strong> in the href
+  it("links a title with brackets in it, and leaves ** inside a URL alone", () => {
+    // The first line is always the title: a bullet goes on the second
+    expect(markdownToHtml("**Digest**\n- [[Webinar] Roche on AI](https://news.test/w) · Source")).toContain('<li><a href="https://news.test/w">[Webinar] Roche on AI</a> · Source</li>');
+    expect(markdownToHtml("**Digest**\n- **Bold** [y](https://a.test/**b**c)")).toContain('<li><strong>Bold</strong> <a href="https://a.test/**b**c">y</a></li>');
+    expect(markdownToText("- [[Webinar] Roche on AI](https://news.test/w)")).toBe("- [Webinar] Roche on AI (https://news.test/w)");
   });
 
   it("never links anything but http(s)", () => {
@@ -140,5 +149,26 @@ describe("loadEmailSettings", () => {
     const open = tempRoot();
     write(open, config, "secret", 0o644);
     expect(() => loadEmailSettings(open)).toThrow("data/run/smtp-password is readable by others: chmod 600 it");
+  });
+});
+
+// Review: nodemailer waits up to 10 minutes on a stalled server by default, and
+// the Hermes job posts the Telegram message only when the script exits
+describe("smtpSender", () => {
+  it("uses short timeouts, TLS on 465 and STARTTLS required otherwise", () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const create = (options: Record<string, unknown>) => {
+      seen.push(options);
+      return { sendMail: async () => ({}) };
+    };
+    smtpSender(CONFIG, "secret", create);
+    smtpSender({ ...CONFIG, smtpPort: 465 }, "secret", create);
+    expect(seen[0]).toMatchObject({ host: "smtp.example.test", port: 587, secure: false, requireTLS: true, auth: { user: "me@example.test", pass: "secret" } });
+    expect(seen[1]).toMatchObject({ port: 465, secure: true, requireTLS: false });
+    for (const options of seen) {
+      expect(options.connectionTimeout).toBeLessThanOrEqual(15_000);
+      expect(options.greetingTimeout).toBeLessThanOrEqual(15_000);
+      expect(options.socketTimeout).toBeLessThanOrEqual(30_000);
+    }
   });
 });

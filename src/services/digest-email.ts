@@ -47,12 +47,19 @@ function escapeHtml(text: string): string {
 
 const isWebUrl = (url: string) => /^https?:\/\//i.test(url);
 
-// On escaped text: links (item references [[n]](url) first), then bold
+// [label](url), the label allowed one level of brackets: news titles like
+// "[Webinar] Roche on AI" are common
+const LINK = /\[((?:[^[\]]|\[[^[\]]*\])+)\]\(([^)\s]+)\)/g;
+
+// On escaped text: links become placeholders first, so the bold pass never
+// rewrites inside an href, then bold, then the links go back in
 function inlineHtml(escaped: string): string {
+  const links: string[] = [];
+  const hold = (html: string) => `\u0000${links.push(html) - 1}\u0000`;
   return escaped
-    .replace(/\[\[(\d+)\]\]\(([^)\s]+)\)/g, (_m, n: string, url: string) => (isWebUrl(url) ? `<a href="${url}">[${n}]</a>` : `[${n}]`))
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (isWebUrl(url) ? `<a href="${url}">${label}</a>` : label))
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    .replace(LINK, (_m, label: string, url: string) => (isWebUrl(url) ? hold(`<a href="${url}">${label}</a>`) : label))
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\u0000(\d+)\u0000/g, (_m, i: string) => links[Number(i)]);
 }
 
 const stripBold = (text: string) => text.replace(/\*\*/g, "");
@@ -99,7 +106,7 @@ export function markdownToText(markdown: string): string {
       stripBold(
         raw
           .replace(/\[\[(\d+)\]\]\(([^)\s]+)\)/g, " [$1] $2 ")
-          .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 ($2)"),
+          .replace(LINK, "$1 ($2)"),
       )
         .replace(/^_(.+)_$/, "$1")
         .replace(/ {2,}/g, " ")
@@ -156,14 +163,34 @@ export function loadEmailSettings(root: string): { config: EmailConfig; password
   return { config, password };
 }
 
-/** The live sender (SMTP over STARTTLS on 587, TLS on 465). */
-export function smtpSender(config: EmailConfig, password: string): SendMail {
-  const transport = nodemailer.createTransport({
+export interface SmtpOptions {
+  host: string;
+  port: number;
+  secure: boolean;
+  requireTLS: boolean;
+  auth: { user: string; pass: string };
+  connectionTimeout: number;
+  greetingTimeout: number;
+  socketTimeout: number;
+}
+
+export type CreateTransport = (options: SmtpOptions) => { sendMail(message: MailMessage): Promise<unknown> };
+
+/**
+ * The live sender (SMTP over STARTTLS on 587, TLS on 465). Short timeouts: the
+ * Hermes job posts the Telegram message only when the script exits, and
+ * nodemailer's defaults would wait up to 10 minutes on a stalled server.
+ */
+export function smtpSender(config: EmailConfig, password: string, create: CreateTransport = (o) => nodemailer.createTransport(o)): SendMail {
+  const transport = create({
     host: config.smtpHost,
     port: config.smtpPort,
     secure: config.smtpPort === 465,
     requireTLS: config.smtpPort !== 465,
     auth: { user: config.user, pass: password },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
   });
   return async (message) => {
     await transport.sendMail(message);
