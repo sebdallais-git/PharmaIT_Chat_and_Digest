@@ -1,6 +1,7 @@
-// Rebuilds the vendor-intelligence graph from its four deterministic sources:
+// Rebuilds the vendor-intelligence graph from its five sources:
 // knowledge/vendors/*.md, config/needs.yaml, config/accounts.local.yaml and
-// the watchlist items about the graph's vendors and accounts (watchlist.db).
+// the watchlist items about the graph's vendors and accounts (watchlist.db),
+// plus the user's approved need evidence (config/need-evidence.local.yaml).
 // Shared by scripts/rebuild-vendor-graph.ts and POST /api/graph/rebuild.
 //
 // No model is involved, so a rebuild works on every stack -- the Python builder
@@ -10,10 +11,11 @@
 import type { Driver } from "neo4j-driver";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { accountToGraphFacts, needsMapToGraphFacts, parseAccounts, parseNeedsMap } from "./graph-accounts.js";
+import { accountToGraphFacts, needsMapToGraphFacts, parseAccounts, parseNeedsMap, type Account } from "./graph-accounts.js";
 import { evidenceSince, evidenceToGraphFacts, type EvidenceSource, type EvidenceSourceItem } from "./graph-evidence.js";
 import { briefToGraphFacts, parseVendorBrief, type GraphFacts } from "./graph-schema.js";
 import { writeGraphFacts, type GraphWriter } from "./graph-writer.js";
+import { checkAgainstAccounts, needEvidenceToGraphFacts, parseNeedEvidence } from "./need-evidence.js";
 
 export interface RebuildSources {
   root: string;
@@ -92,9 +94,10 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
     }),
   );
 
+  let accounts: Account[] = [];
   batch.push(
     ...optionalSource("accounts.local.yaml", join(sources.root, "config", "accounts.local.yaml"), readFile, lines, (text) =>
-      parseAccounts(text).map((account) => {
+      (accounts = parseAccounts(text)).map((account) => {
         const facts = accountToGraphFacts(account);
         lines.push(
           `${`${account.id}.account`.padEnd(28)} ${account.needs.length} needs, ` +
@@ -102,6 +105,24 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
         );
         return facts;
       }),
+    ),
+  );
+
+  batch.push(
+    ...optionalSource(
+      "need-evidence.local.yaml",
+      join(sources.root, "config", "need-evidence.local.yaml"),
+      readFile,
+      lines,
+      (text) => {
+        // Approved entries only; a decision that no longer matches the accounts
+        // file fails here, before the wipe, rather than being dropped.
+        const file = parseNeedEvidence(text);
+        checkAgainstAccounts(file, accounts);
+        const { facts, line } = needEvidenceToGraphFacts(file);
+        lines.push(line);
+        return [facts];
+      },
     ),
   );
 

@@ -8,6 +8,7 @@ import {
 } from "../src/services/chat-graph-context.js";
 import {
   ACCOUNT_EVIDENCE_CYPHER,
+  NEED_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
@@ -91,6 +92,7 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
         name: "Roche",
         needs: ["cyber-resilience"],
         general: [],
+        needEvidence: {},
         segments: [
           {
             segment: "storage-block",
@@ -226,6 +228,18 @@ describe("renderCompetitiveContext", () => {
     expect(renderCompetitiveContext(base)).toContain("  storage-object, installed: nobody\n    ranking (greenfield): nobody ranked");
   });
 
+  it("gives each justified need a why line under the account, without the quote", () => {
+    const base = answer();
+    base.accounts[0].needEvidence = {
+      "cyber-resilience": [{ claim: "Ransomware halted a peer for weeks", quote: "Long quote.", source: "knowledge/cyber-pharma-major-attacks.md" }],
+    };
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain(
+      "Roche (roche), needs: cyber-resilience\n  why cyber-resilience: Ransomware halted a peer for weeks (cyber-pharma-major-attacks.md)",
+    );
+    expect(text).not.toContain("Long quote.");
+  });
+
   it("stays within the chat budget, saying it was cut", () => {
     const many = Object.fromEntries(
       Array.from({ length: 80 }, (_, i) => [
@@ -273,7 +287,7 @@ function fakeCypher(calls: string[] = []): RunCypher {
     if (query === NEED_SEGMENTS_CYPHER) return ROWS.needs;
     if (query === POSITIONS_CYPHER) return ROWS.positions;
     if (query === VENDORS_CYPHER) return ROWS.vendors;
-    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER) return [];
+    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER || query === NEED_EVIDENCE_CYPHER) return [];
     throw new Error(`unexpected query: ${query}`);
   };
 }

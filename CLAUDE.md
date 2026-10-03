@@ -32,6 +32,8 @@ npx tsx scripts/replay-detection.ts [--backfill [--limit N] [--all] | --question
                                                # same for detection: regenerates past answers (27B-labelled, resumable)
 npx tsx scripts/replay-page-relevance.ts        # gap workflow page pre-check vs the 27B's keep/discard in n8n history
 npx tsx scripts/remove-source.ts <source>      # dry run; --apply deletes it from raw docs, in-memory index and ChromaDB
+npx tsx scripts/extract-need-evidence.ts [--only knowledge/<f>] [--dry-run] | --status
+                                               # 27B proposes need evidence; approve in config/need-evidence.local.yaml
 npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
 npx tsx scripts/digest.ts [--request "…"] [--briefing]   # digest agent in-process; Hermes sends the weekly digest Mon 07:30,
                                                # the account briefing Tue–Fri 07:30 (silent when nothing is actionable)
@@ -83,6 +85,9 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   carry `events`, accounts `general` (newest Evidence), and a win-likelihood `ranking`
   (`segment-ranking.ts`: whole rank groups up to 3 + the asked vendor; regimes defend/open/greenfield/unknown; `open`
   needs an install-base trigger declared in `accounts.local.yaml`).
+  Approved need evidence (`need-evidence.ts`, proposed by `scripts/extract-need-evidence.ts` with the 27B into the
+  gitignored `config/need-evidence.local.yaml`, approved by editing `status`) is the rebuild's fifth source:
+  `Evidence {kind: "reference"}`, shown as `needEvidence`; news queries read only `kind: "watchlist"`.
   The web chat's graph block uses the same answer, rendered to ~6k chars (`chat-graph-context.ts`), when the message
   names one briefed vendor or one account; otherwise, or on any failure or after 2.5 s, the old keyword lookup.
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)

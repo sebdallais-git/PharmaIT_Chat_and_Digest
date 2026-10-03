@@ -83,6 +83,8 @@ export function evidenceToGraphFacts(items: EvidenceSourceItem[], graphIds: Read
       label: "Evidence",
       id,
       properties: {
+        // Tells news apart from reference evidence (need-evidence.ts) on the same label.
+        kind: "watchlist",
         // The RSS parser yields "" for an untitled item, and the answer refuses an
         // empty title: one such row would fail every answer about its account.
         title: item.title.trim() || item.urlCanonical,
