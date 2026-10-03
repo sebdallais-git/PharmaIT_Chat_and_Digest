@@ -10,7 +10,7 @@ import type { Entity, TopicQuery, Watchlist } from "../src/services/watchlist-co
 import type { IrPageResult } from "../src/services/watchlist-edgar.js";
 import type { Tagging } from "../src/services/watchlist-tagger.js";
 import { openWatchlistStore, type WatchlistStore } from "../src/services/watchlist-store.js";
-import { DEFAULT_INGEST_LIMIT, type IngestAdapters } from "../src/services/watchlist-ingest.js";
+import { DEFAULT_INGEST_BUDGET_MS, DEFAULT_INGEST_LIMIT, type IngestAdapters } from "../src/services/watchlist-ingest.js";
 import type { RebuildResult } from "../src/services/vendor-graph-rebuild.js";
 import {
   DEFAULT_STATUS_WINDOW_DAYS,
@@ -397,6 +397,13 @@ describe("runIngest", () => {
 
     expect(sinceSeen).toEqual(["2026-09-10T00:00:00.000Z"]);
     harness.store.close();
+  });
+
+  it("sizes the nightly run for 60 customers: 450 items in a 75-minute budget", () => {
+    // 2026-10-03: the 250 cap deferred 165-317 items on ordinary nights with 3
+    // customers; tagging runs at ~10 items a minute, so 450 fit in ~45 minutes.
+    expect(DEFAULT_INGEST_LIMIT).toBe(450);
+    expect(DEFAULT_INGEST_BUDGET_MS).toBe(75 * 60 * 1000);
   });
 
   it("defaults the ingest limit to DEFAULT_INGEST_LIMIT when --limit is not given", () => {

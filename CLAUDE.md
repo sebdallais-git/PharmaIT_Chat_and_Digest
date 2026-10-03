@@ -108,7 +108,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   only definition of entities/feeds/topics). Pipeline: adapters (RSS/Atom, Google News, EDGAR)
   → dedupe **before** the model → sequential tagging → SQLite `data/watchlist.db` + ChromaDB.
   Entity ids and the 12 IT domains (incl. `networking` and `euc` since 2026-09-30) are a closed vocabulary; invented values are dropped. Per-feed
-  errors don't advance the watermark; 250-item cap and 45-min budget, overflow is deferred.
+  errors don't advance the watermark; 450-item cap and 75-min budget (raised 2026-10-03 for 60 customers), overflow is deferred.
 - **Surfaces**: `/api/*` routes, `/v1` OpenAI-compatible gateway onto the active stack
   (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 20 tools),
   `hermes/` (Telegram agent config, cron jobs, plugin), `public/` + `dashboard/` (plain

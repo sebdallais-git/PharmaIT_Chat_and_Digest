@@ -41,20 +41,19 @@ export const EDGAR_MIN_INTERVAL_MS = 100;
 
 // Default items tagged+stored per run. Everything past it is counted in
 // skippedByCap, never silently dropped.
-export const DEFAULT_INGEST_LIMIT = 250;
+export const DEFAULT_INGEST_LIMIT = 450;
 
 // C1: a wall-clock budget for the whole run, checked before each new item's
-// tagging. Measured tagging cost is 15-23 s/item, so the 250-item cap alone
-// is 64-104 minutes of model time -- comfortably past Hermes' no-agent
-// script timeout (cron.script_timeout_seconds, 3600 s by default), which
-// SIGTERMs then SIGKILLs the whole process group. A killed process never
-// reaches the `finally` below, so finishRun never fires, the `runs` row
-// stays unfinished and the job alerts every night. Stopping ourselves first
-// turns "killed mid-run" into "a normal run that deferred the tail": the
-// deferred items are counted, the watermarks stay behind them, and the next
-// run picks them up. 45 minutes leaves the external timeout far above our
-// own deadline plus the fetching either side of it.
-export const DEFAULT_INGEST_BUDGET_MS = 45 * 60 * 1000;
+// tagging. A run killed by Hermes' no-agent script timeout (jobs.json
+// script_timeout_seconds) never reaches the `finally` below, so finishRun
+// never fires, the `runs` row stays unfinished and the job alerts every
+// night. Stopping ourselves first turns "killed mid-run" into "a normal run
+// that deferred the tail": the deferred items are counted, the watermarks
+// stay behind them, and the next run picks them up.
+// Sized 2026-10-03 for 60 customers: tagging measured ~6 s/item (250 items in
+// ~25 min), so the 450-item cap is ~45 min; 75 minutes leaves Hermes' 3-hour
+// timeout (10800 s, at least twice this budget) far above, fetching included.
+export const DEFAULT_INGEST_BUDGET_MS = 75 * 60 * 1000;
 
 // I1: the spec's first-run backfill. `options.since ?? state.lastSeenAt` is
 // null for a feed that has never been seen, which asks every adapter for its
