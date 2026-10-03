@@ -95,3 +95,11 @@ export function todayLine(now: Date): string {
     "say when a fact may be outdated."
   );
 }
+
+/** The knowledge-base part of the chat prompt: every chunk introduced by its source and date. */
+export function knowledgeContextBlock(items: Array<{ source: string; date: ChunkDate | null; text: string }>): string {
+  return (
+    "\n\nRelevant context from the knowledge base:\n" +
+    items.map((i) => `${formatSourceLabel(i.source, i.date)}\n${i.text.slice(0, 1500)}`).join("\n\n---\n\n")
+  );
+}

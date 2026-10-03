@@ -3,6 +3,7 @@ import {
   chunkDateOf,
   createDateResolver,
   formatSourceLabel,
+  knowledgeContextBlock,
   knowledgeFileDate,
   rawDocumentDate,
   todayLine,
@@ -79,5 +80,18 @@ describe("what the model sees", () => {
     const line = todayLine(new Date("2026-10-03T09:00:00Z"));
     expect(line).toContain("Today is 2026-10-03.");
     expect(line).toContain("Q2");
+  });
+});
+
+describe("knowledgeContextBlock", () => {
+  it("introduces each retrieved chunk with its source and date, truncating long text", () => {
+    const block = knowledgeContextBlock([
+      { source: "news-2026-01-17", date: { date: "2026-01-17", date_kind: "published" }, text: "Roche Q2 results." },
+      { source: "old.md", date: null, text: "x".repeat(2000) },
+    ]);
+    expect(block).toContain("Relevant context from the knowledge base:");
+    expect(block).toContain("[Source: news-2026-01-17 | 2026-01-17, published]\nRoche Q2 results.");
+    expect(block).toContain(`[Source: old.md | date unknown]\n${"x".repeat(1500)}`);
+    expect(block).not.toContain("x".repeat(1501));
   });
 });
