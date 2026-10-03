@@ -1,8 +1,8 @@
 // Reads the vendor-intelligence graph for competitive_position, and turns the
 // resolver's answer into the compact JSON the tool returns.
 //
-// Everything live is injected (Cypher runner, watchlist items, brief files), so
-// no test reaches Neo4j or sqlite; src/api/graph.ts binds the real ones.
+// Everything live is injected (Cypher runner, brief files), so no test reaches
+// Neo4j; src/services/competitive-graph-live.ts binds the real ones.
 import {
   MODE_GUIDANCE,
   resolveCompetitivePosition,
@@ -11,12 +11,11 @@ import {
   type CompetitiveResolution,
   type GraphSnapshot,
   type IncumbencyMode,
+  type SegmentView,
   type SnapshotAccount,
   type Standing,
 } from "./competitive-position.js";
-import type { Segment } from "./graph-schema.js";
 import type { BriefExcerpts, Claim } from "./vendor-brief-excerpts.js";
-import type { Domain } from "./watchlist-config.js";
 
 export type RunCypher = (query: string, params?: Record<string, unknown>) => Promise<Array<Record<string, unknown>>>;
 
@@ -24,12 +23,12 @@ export interface EvidenceItem {
   title: string;
   url: string;
   publishedAt: string;
+  /** The watchlist signal (it_move, corporate, cyber, financial); null when the tagger gave none. */
+  signal: string | null;
 }
 
 export interface CompetitiveDeps {
   runCypher: RunCypher;
-  /** Always called with at least one domain: news is evidence only within a cited segment's domains. */
-  recentItems(entity: string, domains: Domain[], limit: number): EvidenceItem[];
   briefs(): BriefExcerpts;
   vendorAliases(): Record<string, string>;
 }
@@ -59,26 +58,24 @@ export const POSITIONS_CYPHER = `
 
 export const VENDORS_CYPHER = `MATCH (v:Vendor) RETURN v.id AS id ORDER BY id`;
 
-/**
- * The watchlist domains whose items count as evidence for a segment. The
- * watchlist tags items with 12 IT domains, the graph speaks in segments; this
- * is the only place the two vocabularies meet.
- */
-export const SEGMENT_DOMAINS: Record<Segment, Domain[]> = {
-  "compute-ai": ["ai", "infrastructure"],
-  "compute-standard": ["infrastructure"],
-  "storage-block": ["storage"],
-  "storage-file": ["storage"],
-  "storage-object": ["storage"],
-  "data-platform": ["data"],
-  "data-protection": ["backup", "cyber"],
-  hci: ["infrastructure"],
-  networking: ["networking"],
-  client: ["euc"],
-  services: [],
-};
+export const ACCOUNT_EVIDENCE_CYPHER = `
+  MATCH (e:Evidence)-[s:SUPPORTS]->(a:Account)
+  WHERE a.id IN $accounts
+  RETURN a.id AS account, s.segments AS segments, e.title AS title, e.url AS url,
+         e.publishedAt AS publishedAt, e.signal AS signal
+  ORDER BY publishedAt DESC, url
+`;
+
+export const VENDOR_EVIDENCE_CYPHER = `
+  MATCH (e:Evidence)-[s:SUPPORTS]->(v:Vendor {id: $vendor})
+  WHERE any(segment IN s.segments WHERE segment IN $segments)
+  RETURN e.title AS title, e.url AS url, e.publishedAt AS publishedAt, e.signal AS signal
+  ORDER BY publishedAt DESC, url
+`;
 
 export const EVIDENCE_PER_VENDOR = 3;
+export const EVENTS_PER_SEGMENT = 3;
+export const GENERAL_PER_ACCOUNT = 3;
 /** ~6k tokens: room in a 64K context for the question, the answer and the model's own reasoning. */
 export const MAX_ANSWER_CHARS = 24_000;
 export const TRIMMED_RATIONALE_CHARS = 200;
@@ -94,12 +91,23 @@ export interface AnswerStanding extends Omit<Standing, "rationale"> {
   sources: string[];
 }
 
+export interface AnswerSegment extends SegmentView {
+  /** Newest account news in this segment's domains: triggering events, lifecycle moves. */
+  events: EvidenceItem[];
+}
+
+export interface AnswerAccount extends Omit<AccountView, "segments"> {
+  segments: AnswerSegment[];
+  /** Newest account news that maps to no segment (reorganisations, results, sites). */
+  general: EvidenceItem[];
+}
+
 export interface CompetitiveAnswer {
   query: CompetitiveResolution["query"];
   /** What each incumbency mode in this answer means; only the modes that occur. */
   modes: Partial<Record<IncumbencyMode, string>>;
   market: CompetitiveResolution["market"];
-  accounts: AccountView[];
+  accounts: AnswerAccount[];
   standings: Record<string, AnswerStanding>;
   evidence: Record<string, EvidenceItem[]>;
   notes: string[];
@@ -136,6 +144,38 @@ function commaList(value: unknown): string[] {
     .split(",")
     .map((a) => a.trim())
     .filter((a) => a.length > 0);
+}
+
+function evidenceItem(row: Record<string, unknown>): EvidenceItem {
+  return {
+    title: str(row.title, "title"),
+    url: str(row.url, "url"),
+    publishedAt: str(row.publishedAt, "publishedAt"),
+    // Neo4j stores no null property, so an untagged item comes back without one.
+    signal: typeof row.signal === "string" && row.signal.length > 0 ? row.signal : null,
+  };
+}
+
+function newestFirst(a: EvidenceItem, b: EvidenceItem): number {
+  return b.publishedAt.localeCompare(a.publishedAt) || a.url.localeCompare(b.url);
+}
+
+interface AccountEvidence {
+  segments: string[];
+  item: EvidenceItem;
+}
+
+async function readAccountEvidence(runCypher: RunCypher, accounts: string[]): Promise<Map<string, AccountEvidence[]>> {
+  const byAccount = new Map<string, AccountEvidence[]>();
+  if (accounts.length === 0) return byAccount;
+  for (const row of await runCypher(ACCOUNT_EVIDENCE_CYPHER, { accounts })) {
+    const account = str(row.account, "account");
+    const list = byAccount.get(account) ?? [];
+    list.push({ segments: Array.isArray(row.segments) ? row.segments.map(String) : [], item: evidenceItem(row) });
+    byAccount.set(account, list);
+  }
+  for (const list of byAccount.values()) list.sort((a, b) => newestFirst(a.item, b.item));
+  return byAccount;
 }
 
 export async function readGraphSnapshot(runCypher: RunCypher, vendorAliases: Record<string, string>): Promise<GraphSnapshot> {
@@ -181,28 +221,52 @@ function narrowingAdvice(query: CompetitiveAnswer["query"]): string | null {
   return missing.length > 0 ? missing.join(" or ") : null;
 }
 
-interface TrimStep {
+export interface TrimStep {
   /** What the step leaves out, for the note. */
   drops: string;
-  apply(standings: AnswerStanding[]): void;
+  apply(answer: CompetitiveAnswer): void;
+  /** False when the step has nothing to drop: it is skipped and not named in the note. */
+  applies?(answer: CompetitiveAnswer): boolean;
 }
 
+const DROP_ALL_EVENTS: TrimStep = {
+  drops: "account events",
+  applies: (a) => a.accounts.some((acc) => acc.general.length > 0 || acc.segments.some((seg) => seg.events.length > 0)),
+  apply: (a) => {
+    for (const account of a.accounts) {
+      account.general = [];
+      for (const segment of account.segments) segment.events = [];
+    }
+  },
+};
+
 /**
- * In the order applied: cheapest information first. Structure (accounts,
- * modes, positions, confidence, dates) is never dropped -- it is what the
- * question is about.
+ * In the order applied: cheapest information first; repetitive account events
+ * go before claims. Structure (accounts, modes, positions, confidence, dates)
+ * is never dropped -- it is what the question is about.
  */
-const TRIM_STEPS: TrimStep[] = [
+export const TRIM_STEPS: TrimStep[] = [
   {
     drops: "claim details",
-    apply: (standings) => {
-      for (const s of standings) for (const c of [...s.strong, ...s.weak]) c.detail = "";
+    apply: (a) => {
+      for (const s of Object.values(a.standings)) for (const c of [...s.strong, ...s.weak]) c.detail = "";
     },
   },
   {
+    drops: "account events beyond 1 per segment and account",
+    applies: (a) => a.accounts.some((acc) => acc.general.length > 1 || acc.segments.some((seg) => seg.events.length > 1)),
+    apply: (a) => {
+      for (const account of a.accounts) {
+        account.general = account.general.slice(0, 1);
+        for (const segment of account.segments) segment.events = segment.events.slice(0, 1);
+      }
+    },
+  },
+  DROP_ALL_EVENTS,
+  {
     drops: "claims",
-    apply: (standings) => {
-      for (const s of standings) {
+    apply: (a) => {
+      for (const s of Object.values(a.standings)) {
         s.strong = [];
         s.weak = [];
       }
@@ -210,8 +274,8 @@ const TRIM_STEPS: TrimStep[] = [
   },
   {
     drops: `rationale beyond ${TRIMMED_RATIONALE_CHARS} characters`,
-    apply: (standings) => {
-      for (const s of standings) {
+    apply: (a) => {
+      for (const s of Object.values(a.standings)) {
         if (s.rationale !== undefined && s.rationale.length > TRIMMED_RATIONALE_CHARS) {
           s.rationale = `${s.rationale.slice(0, TRIMMED_RATIONALE_CHARS).trimEnd()}…`;
         }
@@ -220,8 +284,8 @@ const TRIM_STEPS: TrimStep[] = [
   },
   {
     drops: `rationale, and sources beyond ${TRIMMED_SOURCES} per standing`,
-    apply: (standings) => {
-      for (const s of standings) {
+    apply: (a) => {
+      for (const s of Object.values(a.standings)) {
         delete s.rationale;
         s.sources = s.sources.slice(0, TRIMMED_SOURCES);
       }
@@ -229,20 +293,31 @@ const TRIM_STEPS: TrimStep[] = [
   },
   {
     drops: "sources",
-    apply: (standings) => {
-      for (const s of standings) s.sources = [];
+    apply: (a) => {
+      for (const s of Object.values(a.standings)) s.sources = [];
     },
   },
 ];
+
+/**
+ * For text renderings (the chat), where an event is one short line and claims
+ * and rationale are the bulk: extra events still go early, every event last.
+ */
+export const TEXT_TRIM_STEPS: TrimStep[] = [...TRIM_STEPS.filter((step) => step !== DROP_ALL_EVENTS), DROP_ALL_EVENTS];
 
 /**
  * Shrink an over-budget answer step by step until it fits, then say what was
  * left out and how to ask for it. Exported with a budget parameter so the trim
  * order can be tested without building answers of exactly the right size.
  */
-export function fitBudget(answer: CompetitiveAnswer, budget = MAX_ANSWER_CHARS): void {
-  if (size(answer) <= budget) return;
-  const standings = Object.values(answer.standings);
+export function fitBudget(
+  answer: CompetitiveAnswer,
+  budget = MAX_ANSWER_CHARS,
+  // The tool returns JSON; the chat measures its rendered text instead.
+  measure: (answer: CompetitiveAnswer) => number = size,
+  steps: TrimStep[] = TRIM_STEPS,
+): void {
+  if (measure(answer) <= budget) return;
   const advice = narrowingAdvice(answer.query);
   const dropped: string[] = [];
   // Measured with the note in place, so adding it cannot push the answer back over.
@@ -252,11 +327,12 @@ export function fitBudget(answer: CompetitiveAnswer, budget = MAX_ANSWER_CHARS):
   answer.notes.push("");
   const noteAt = answer.notes.length - 1;
 
-  for (const step of TRIM_STEPS) {
-    step.apply(standings);
+  for (const step of steps) {
+    if (step.applies !== undefined && !step.applies(answer)) continue;
+    step.apply(answer);
     dropped.push(step.drops);
     answer.notes[noteAt] = note();
-    if (size(answer) <= budget) return;
+    if (measure(answer) <= budget) return;
   }
   answer.notes.push(
     advice !== null
@@ -270,11 +346,11 @@ export async function competitivePosition(deps: CompetitiveDeps, query: Competit
 }
 
 /** The same answer from a snapshot already read, so a caller that inspected it does not read the graph twice. */
-export function competitivePositionFrom(
-  deps: Pick<CompetitiveDeps, "recentItems" | "briefs">,
+export async function competitivePositionFrom(
+  deps: Pick<CompetitiveDeps, "runCypher" | "briefs">,
   snapshot: GraphSnapshot,
   query: CompetitiveQuery,
-): CompetitiveResult {
+): Promise<CompetitiveResult> {
   const resolved = resolveCompetitivePosition(snapshot, query);
   if (!resolved.ok) return resolved;
   const r = resolved.value;
@@ -303,31 +379,52 @@ export function competitivePositionFrom(
     for (const segment of account.segments) for (const v of segment.vendors) modes[v.mode] = MODE_GUIDANCE[v.mode];
   }
 
+  const events = await readAccountEvidence(
+    deps.runCypher,
+    r.accounts.map((a) => a.account),
+  );
+  const accounts: AnswerAccount[] = r.accounts.map((account) => {
+    const rows = events.get(account.account) ?? [];
+    return {
+      ...account,
+      segments: account.segments.map((segment) => ({
+        ...segment,
+        events: rows
+          .filter((e) => e.segments.includes(segment.segment))
+          .slice(0, EVENTS_PER_SEGMENT)
+          .map((e) => ({ ...e.item })),
+      })),
+      general: rows
+        .filter((e) => e.segments.length === 0)
+        .slice(0, GENERAL_PER_ACCOUNT)
+        .map((e) => ({ ...e.item })),
+    };
+  });
+
   // Evidence for the queried vendor, or for every cited vendor when none was named.
   const evidenceVendors =
     r.query.vendor !== null ? [r.query.vendor] : [...new Set(Object.keys(standings).map((k) => k.split("/")[0]))].sort();
   const evidence: Record<string, EvidenceItem[]> = {};
   for (const vendor of evidenceVendors) {
-    const domains = new Set<Domain>();
-    for (const key of Object.keys(standings)) {
-      const [v, segment] = key.split("/");
-      if (v === vendor) for (const d of SEGMENT_DOMAINS[segment as Segment] ?? []) domains.add(d);
-    }
-    if (domains.size === 0) {
-      // Unfiltered, the vendor's newest items would come from any domain and
-      // read as evidence for a segment they say nothing about.
+    const segments = [
+      ...new Set(Object.keys(standings).filter((k) => k.split("/")[0] === vendor).map((k) => k.split("/")[1])),
+    ].sort();
+    if (segments.length === 0) {
+      // Unfiltered, the vendor's newest items would come from any segment and
+      // read as evidence for a standing it does not have.
       evidence[vendor] = [];
-      notes.push(`no segment-specific news for ${vendor}: no cited segment maps to a news domain`);
+      notes.push(`no segment-specific news for ${vendor}: it has no cited segment`);
       continue;
     }
-    evidence[vendor] = deps.recentItems(vendor, [...domains].sort(), EVIDENCE_PER_VENDOR);
+    const rows = await deps.runCypher(VENDOR_EVIDENCE_CYPHER, { vendor, segments });
+    evidence[vendor] = rows.map(evidenceItem).sort(newestFirst).slice(0, EVIDENCE_PER_VENDOR);
   }
 
   const answer: CompetitiveAnswer = {
     query: r.query,
     modes,
     market: r.market,
-    accounts: r.accounts,
+    accounts,
     standings,
     evidence,
     notes,

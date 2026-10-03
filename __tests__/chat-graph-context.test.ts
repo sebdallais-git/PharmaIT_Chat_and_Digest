@@ -7,9 +7,11 @@ import {
   type ChatGraphDeps,
 } from "../src/services/chat-graph-context.js";
 import {
+  ACCOUNT_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
+  VENDOR_EVIDENCE_CYPHER,
   VENDORS_CYPHER,
   type CompetitiveAnswer,
   type CompetitiveDeps,
@@ -87,14 +89,16 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
         account: "roche",
         name: "Roche",
         needs: ["cyber-resilience"],
+        general: [],
         segments: [
           {
             segment: "storage-block",
             via: ["cyber-resilience"],
             incumbents: ["dell"],
             vendors: [{ vendor: "dell", mode: "defend", position: "leader" }],
+            events: [],
           },
-          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }] },
+          { segment: "storage-object", via: [], incumbents: [], vendors: [{ vendor: "dell", mode: "greenfield", position: null }], events: [] },
         ],
       },
     ],
@@ -110,7 +114,7 @@ function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
         sources: ["https://example.test/s"],
       },
     },
-    evidence: { dell: [{ title: "Dell ships PowerMax 9", url: "https://example.test/n", publishedAt: "2026-09-28" }] },
+    evidence: { dell: [{ title: "Dell ships PowerMax 9", url: "https://example.test/n", publishedAt: "2026-09-28", signal: "it_move" }] },
     notes: ["no curated evidence for dell in storage-object: the position rests on the graph alone"],
     ...overrides,
   };
@@ -131,6 +135,60 @@ describe("renderCompetitiveContext", () => {
     expect(text).toContain("weak: Price.");
     expect(text).toContain("- dell: Dell ships PowerMax 9 (2026-09-28) https://example.test/n");
     expect(text).toContain("- no curated evidence for dell in storage-object");
+  });
+
+  it("shows each segment's events under its installs, and account-wide news as general", () => {
+    const base = answer();
+    const roche = base.accounts[0];
+    roche.general = [{ title: "Roche reorganises IT", url: "https://example.test/g", publishedAt: "2026-09-02", signal: null }];
+    roche.segments[0].events = [
+      { title: "Roche consolidates EU data centres", url: "https://example.test/e", publishedAt: "2026-09-14", signal: "it_move" },
+    ];
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain("  general:\n    ↳ 2026-09-02 [untagged] Roche reorganises IT");
+    expect(text).toContain(
+      "  storage-block (via cyber-resilience), installed: dell\n    ↳ 2026-09-14 [it_move] Roche consolidates EU data centres",
+    );
+  });
+
+  it("measures the budget on the rendered text, so JSON-only bulk does not cost the events", () => {
+    // Claim details and source URLs are in the answer's JSON but never in the
+    // text; measured as JSON this answer is far over budget and would lose
+    // every event, although its text fits easily.
+    const base = answer();
+    const standing = base.standings["dell/storage-block"];
+    standing.strong = [{ claim: "Cyber vault.", detail: "d".repeat(3000) }];
+    standing.sources = Array.from({ length: 10 }, (_, i) => `https://example.test/${"s".repeat(700)}/${i}`);
+    base.accounts[0].segments[0].events = [
+      { title: "Roche consolidates EU data centres", url: "https://example.test/e", publishedAt: "2026-09-14", signal: "it_move" },
+    ];
+    expect(JSON.stringify(base).length).toBeGreaterThan(CHAT_CONTEXT_CHARS);
+    const text = renderCompetitiveContext(base);
+    expect(text).toContain("↳ 2026-09-14 [it_move] Roche consolidates EU data centres");
+    expect(text).not.toMatch(/trimmed to fit|cut to fit/);
+  });
+
+  it("keeps one event per segment over claims and rationale when the text must shrink", () => {
+    // An event is one short line in the prompt; claims and rationale are the
+    // bulk. The chat drops all events only after everything else.
+    const base = answer();
+    const claims = Array.from({ length: 4 }, (_, i) => ({ claim: `${"c".repeat(150)} ${i}.`, detail: "" }));
+    base.standings = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [
+        `dell/seg-${i}`,
+        { ...base.standings["dell/storage-block"], rationale: "r".repeat(300), strong: claims, weak: claims },
+      ]),
+    );
+    base.accounts[0].segments[0].events = [1, 2, 3].map((n) => ({
+      title: `Roche event ${n}`,
+      url: `https://example.test/${n}`,
+      publishedAt: `2026-09-1${n}`,
+      signal: "it_move",
+    }));
+    const text = renderCompetitiveContext(base);
+    expect(text.length).toBeLessThanOrEqual(CHAT_CONTEXT_CHARS);
+    expect((text.match(/↳/g) ?? []).length).toBe(1);
+    expect(text).not.toContain("strong: ");
   });
 
   it("stays within the chat budget, saying it was cut", () => {
@@ -180,6 +238,7 @@ function fakeCypher(calls: string[] = []): RunCypher {
     if (query === NEED_SEGMENTS_CYPHER) return ROWS.needs;
     if (query === POSITIONS_CYPHER) return ROWS.positions;
     if (query === VENDORS_CYPHER) return ROWS.vendors;
+    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER) return [];
     throw new Error(`unexpected query: ${query}`);
   };
 }
@@ -187,7 +246,6 @@ function fakeCypher(calls: string[] = []): RunCypher {
 function competitive(overrides: Partial<CompetitiveDeps> = {}): CompetitiveDeps {
   return {
     runCypher: fakeCypher(),
-    recentItems: () => [],
     briefs: () => ({ excerpts: new Map(), errors: [] }),
     vendorAliases: () => ({}),
     ...overrides,

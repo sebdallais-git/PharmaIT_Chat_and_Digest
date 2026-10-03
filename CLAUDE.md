@@ -75,9 +75,12 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   and live news in parallel. `gap-detector.ts` asks the 27B (`gap-need.ts`) whether the question is
   in scope and went unanswered (or asked for one named thing the answer does not name); only then does it trigger an
   n8n self-healing workflow. Graph rebuild (`POST /api/graph/rebuild`, `scripts/rebuild-vendor-graph.ts`) is deterministic — vendor briefs,
-  `config/needs.yaml`, `config/accounts.local.yaml`, one write transaction — and works on every stack. MCP
+  `config/needs.yaml`, `config/accounts.local.yaml` and 180 days of `watchlist.db` items for the graph's vendors and
+  accounts (`Evidence -[:SUPPORTS {segments}]->`, `graph-evidence.ts`), one write transaction — and works on every stack.
+  The nightly ingest runs it after each pass; exit 3 = ingest ok, rebuild failed (Telegram via the Hermes wrapper). MCP
   `competitive_position` (`competitive-graph.ts`) answers "what is <vendor> doing best for my accounts", incumbency first:
-  defend / displace / greenfield (segment declared `[]`) / unknown (segment omitted from the accounts file).
+  defend / displace / greenfield (segment declared `[]`) / unknown (segment omitted from the accounts file). Account segments
+  carry `events`, accounts `general` (newest Evidence).
   The web chat's graph block uses the same answer, rendered to ~6k chars (`chat-graph-context.ts`), when the message
   names one briefed vendor or one account; otherwise, or on any failure or after 2.5 s, the old keyword lookup.
 - **Gap loop**: n8n `n8n/knowledge_gap_workflow_v2.json` → SearXNG (colima container, Brave API)

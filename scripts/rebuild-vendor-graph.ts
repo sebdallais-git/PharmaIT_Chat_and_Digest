@@ -1,5 +1,5 @@
 // Rebuild the vendor-intelligence graph from knowledge/vendors/*.md,
-// config/needs.yaml and config/accounts.local.yaml.
+// config/needs.yaml, config/accounts.local.yaml and data/watchlist.db (evidence).
 //
 // Usage:
 //   npx tsx scripts/rebuild-vendor-graph.ts          dry run, prints the plan
@@ -10,7 +10,9 @@
 // POST /api/graph/rebuild does the same as --apply --rebuild.
 // --rebuild is destructive. Export first: scripts/export-graph.ts
 import neo4j from "neo4j-driver";
+import { join } from "node:path";
 import { serviceUrl } from "../src/platform/host-config.js";
+import { watchlistEvidence } from "../src/services/graph-evidence.js";
 import { writeGraphFacts, type GraphWriter } from "../src/services/graph-writer.js";
 import {
   collectVendorGraphFacts,
@@ -20,7 +22,7 @@ import {
 
 const apply = process.argv.includes("--apply");
 const rebuild = process.argv.includes("--rebuild");
-const sources = { root: process.cwd() };
+const sources = { root: process.cwd(), evidence: watchlistEvidence(join(process.cwd(), "data", "watchlist.db")) };
 
 if (!apply) {
   const { batch, lines } = collectVendorGraphFacts(sources);

@@ -18,7 +18,9 @@ export function registerGraphTools(server: McpServer, client: PharmaITChatClient
         "defend (the vendor is installed), displace (a rival is), greenfield (declared: nobody is) or unknown " +
         "(who is installed is not recorded -- never read it as greenfield). Also returns the vendor's " +
         "position per segment with its rationale, confidence, short strong/weak claims from curated briefs, sources and " +
-        "recent news. Positions are labels, not a ranking: never present vendors as ranked. " +
+        "recent vendor news. Each account segment also carries `events` (the account's newest news there: triggering " +
+        "events, lifecycle moves) and each account `general` (account-wide news). " +
+        "Positions are labels, not a ranking: never present vendors as ranked. " +
         "Give at least one of vendor, account or segment.",
       inputSchema: {
         vendor: z.string().min(1).optional().describe("Vendor, e.g. 'dell', 'HPE' or 'Pure Storage'"),

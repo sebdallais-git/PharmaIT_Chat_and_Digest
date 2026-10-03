@@ -14,8 +14,10 @@ export type IncumbencyMode = "defend" | "displace" | "greenfield" | "unknown";
 
 export const MODE_GUIDANCE: Record<IncumbencyMode, string> = {
   defend:
-    "the vendor is installed: defend and expand through roadmap, lifecycle and adjacent attach; function gaps are tolerable",
-  displace: "a rival is installed: displacing it needs a disqualifying weakness or a triggering event",
+    "the vendor is installed: defend and expand through roadmap, lifecycle and adjacent attach; function gaps are tolerable; " +
+    "the segment's events show lifecycle and roadmap moves",
+  displace:
+    "a rival is installed: displacing it needs a disqualifying weakness or a triggering event; look for one in the segment's events",
   greenfield: "declared: nobody is installed, so function and price actually decide",
   unknown: "who is installed here is not recorded: find out before choosing defend, displace or greenfield",
 };

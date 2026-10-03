@@ -28,6 +28,9 @@ import {
   type IngestAdapters,
   type IngestDeps,
 } from "../src/services/watchlist-ingest.js";
+import { storeEvidence } from "../src/services/graph-evidence.js";
+import { closeNeo4j, getDriver } from "../src/services/graph-store.js";
+import { neo4jWriteTransaction, rebuildVendorGraph, type RebuildResult } from "../src/services/vendor-graph-rebuild.js";
 import { getLlmClient } from "../src/services/llm-client.js";
 import { addToChromaDB } from "../src/services/chromadb-store.js";
 
@@ -225,14 +228,19 @@ export interface RunIngestDeps {
   // items -- see resolveStackName's comment on why this matters.
   stackName: string;
   edgarMinIntervalMs?: number;
+  // Rebuilds the vendor graph from its sources, watchlist evidence included.
+  // Optional so a caller that only wants the ingest can leave it out; the CLI
+  // always binds it.
+  rebuildGraph?: () => Promise<RebuildResult>;
 }
 
 // Runs one ingest pass with fully injected dependencies (real ones are
 // wired by runIngestCli below) and returns a process exit code: 2 for a
 // usage problem caught before anything ran, 1 when every attempted feed
-// failed, 0 otherwise. Never throws for an ingest-side failure -- a failed
-// feed is reported in the printed result, exactly like createIngestRun
-// itself treats it as data, not an exception.
+// failed or the tagger failed, 3 when the ingest succeeded but the graph
+// rebuild after it failed, 0 otherwise. Never throws for an ingest-side
+// failure -- a failed feed is reported in the printed result, exactly like
+// createIngestRun itself treats it as data, not an exception.
 export async function runIngest(argv: string[], deps: RunIngestDeps): Promise<number> {
   let args: IngestArgs;
   try {
@@ -274,6 +282,21 @@ export async function runIngest(argv: string[], deps: RunIngestDeps): Promise<nu
     deps.log(`Anomaly: ${anomaly}`);
   }
 
+  // The graph's evidence mirrors watchlist.db, so it is rebuilt after every
+  // pass that ran -- failed feeds included. A --only pass is a debugging run
+  // over a few feeds and leaves the graph alone.
+  let rebuildFailed = false;
+  if (deps.rebuildGraph !== undefined && args.only === undefined) {
+    try {
+      const rebuilt = await deps.rebuildGraph();
+      for (const line of rebuilt.lines) deps.log(line);
+      deps.log(`Graph rebuilt: ${rebuilt.nodes} nodes, ${rebuilt.relationships} relationships`);
+    } catch (err) {
+      rebuildFailed = true;
+      deps.log(`graph rebuild failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   if (totalFeeds > 0 && result.failedFeeds.length === totalFeeds) {
     deps.log(`Every feed failed (${totalFeeds}/${totalFeeds}) -- treating this run as a failure.`);
     return 1;
@@ -292,6 +315,10 @@ export async function runIngest(argv: string[], deps: RunIngestDeps): Promise<nu
     );
     return 1;
   }
+
+  // Ingest failures above keep priority. A rebuild failure alone gets its own
+  // code so the Hermes wrapper (which reports any non-zero exit) says so.
+  if (rebuildFailed) return 3;
 
   return 0;
 }
@@ -352,9 +379,14 @@ async function runIngestCli(argv: string[]): Promise<void> {
       now: () => new Date(),
       log: (line) => console.log(line),
       stackName,
+      // Reads evidence through the store this run already holds open.
+      rebuildGraph: () =>
+        rebuildVendorGraph({ root: process.cwd(), evidence: storeEvidence(store) }, neo4jWriteTransaction(getDriver())),
     });
   } finally {
     store.close();
+    // An open driver keeps Node alive: the nightly Hermes job would never exit.
+    await closeNeo4j();
   }
 }
 

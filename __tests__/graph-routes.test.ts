@@ -4,9 +4,11 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createGraphRouter, type GraphRouterDeps } from "../src/api/graph.js";
 import {
+  ACCOUNT_EVIDENCE_CYPHER,
   ACCOUNTS_CYPHER,
   NEED_SEGMENTS_CYPHER,
   POSITIONS_CYPHER,
+  VENDOR_EVIDENCE_CYPHER,
   VENDORS_CYPHER,
   type CompetitiveDeps,
 } from "../src/services/competitive-graph.js";
@@ -26,9 +28,9 @@ const competitive: CompetitiveDeps = {
       return [{ vendor: "dell", segment: "storage-block", position: "leader", confidence: "high", rationale: "r", asOf: "" }];
     }
     if (query === VENDORS_CYPHER) return [{ id: "dell" }];
+    if (query === ACCOUNT_EVIDENCE_CYPHER || query === VENDOR_EVIDENCE_CYPHER) return [];
     throw new Error("unexpected query");
   },
-  recentItems: () => [],
   briefs: () => ({ excerpts: new Map(), errors: [] }),
   vendorAliases: () => ({}),
 };
