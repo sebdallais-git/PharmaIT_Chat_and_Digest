@@ -76,7 +76,8 @@ export const EDGE_IDENTITY: Record<RelationshipType, string[]> = {
   COMPETES_IN: [],
   HAS_NEED: [],
   ADDRESSED_BY: [],
-  USES: ["segment"],
+  // Dates in the identity: two stints of one vendor in one segment stay two edges.
+  USES: ["segment", "since", "until"],
   SUPPORTS: ["url"],
 };
 

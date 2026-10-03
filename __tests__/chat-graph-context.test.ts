@@ -4,6 +4,7 @@ import {
   chatGraphContext,
   matchCompetitiveQuery,
   renderCompetitiveContext,
+  wantsFullHistory,
   type ChatGraphDeps,
 } from "../src/services/chat-graph-context.js";
 import {
@@ -82,7 +83,7 @@ describe("matchCompetitiveQuery", () => {
 
 function answer(overrides: Partial<CompetitiveAnswer> = {}): CompetitiveAnswer {
   return {
-    query: { vendor: "dell", account: "roche", segment: null },
+    query: { vendor: "dell", account: "roche", segment: null, history: "recent" },
     modes: { defend: "the vendor is installed: defend and expand", greenfield: "declared: nobody is installed" },
     regimes: {},
     market: [],
@@ -355,5 +356,37 @@ describe("chatGraphContext", () => {
   it("reports none when neither path has anything", async () => {
     const result = await chatGraphContext("hello", [], deps({ keywordLookup: async () => "" }));
     expect(result).toEqual({ source: "none", label: null, text: "" });
+  });
+});
+
+describe("install history in the chat", () => {
+  it("asks for the full history only when the message is about the past", () => {
+    expect(wantsFullHistory("Who had storage at Novartis before HDS?")).toBe(true);
+    expect(wantsFullHistory("What changed over time at Roche?")).toBe(true);
+    expect(wantsFullHistory("How is Dell placed at Roche?")).toBe(false);
+  });
+
+  it("prints recent changes under the installs, and the full history in full mode", () => {
+    const base = answer();
+    base.accounts[0].segments[0].history = [
+      { vendor: "hds", since: "2026-03", until: "", source: "declared" },
+      { vendor: "dell", since: "2019", until: "2026-03", source: "news:https://n.test" },
+    ];
+    base.accounts[0].segments[0].olderChanges = 2;
+    expect(renderCompetitiveContext(base)).toContain(
+      "    changed: hds 2026-03–now (declared) · dell 2019–2026-03 (news:https://n.test) · +2 older",
+    );
+    const full = answer();
+    full.query = { ...full.query, history: "full" };
+    full.accounts[0].segments[0].history = [{ vendor: "netapp", since: "", until: "", source: "declared" }];
+    expect(renderCompetitiveContext(full)).toContain("    history: netapp ?–now (declared)");
+  });
+});
+
+describe("install history wording — review fixes", () => {
+  it("does not read an ordinary 'before' as a history question", () => {
+    expect(wantsFullHistory("What should Dell pitch to Novartis before the renewal?")).toBe(false);
+    expect(wantsFullHistory("Who had storage at Novartis?")).toBe(true);
+    expect(wantsFullHistory("What did Roche use before that?")).toBe(true);
   });
 });

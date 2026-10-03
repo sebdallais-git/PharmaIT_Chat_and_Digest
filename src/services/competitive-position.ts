@@ -31,10 +31,26 @@ export const REGIME_GUIDANCE: Record<Regime, string> = {
   unknown: "no ranking until you record who is installed",
 };
 
+export const HISTORY_RECENT_MONTHS = 18;
+
+export interface HistoryStint {
+  vendor: string;
+  since: string;
+  until: string;
+  source: string;
+}
+
+/** The latest day a stint's dates mention, for ordering and the recent window ("" when undated). */
+function stintDay(s: HistoryStint): string {
+  const dates = [s.since, s.until].filter((d) => d !== "" && d !== "?");
+  return dates.map((d) => (d.length === 4 ? `${d}-12-31` : d.length === 7 ? `${d}-28` : d)).sort().pop() ?? "";
+}
+
 export interface CompetitiveQuery {
   vendor?: string;
   account?: string;
   segment?: string;
+  history?: "recent" | "full";
 }
 
 export interface SnapshotAccount {
@@ -47,7 +63,10 @@ export interface SnapshotAccount {
    * An incumbent-less segment outside this list is unknown, not greenfield.
    */
   declared: string[];
-  uses: Array<{ segment: string; vendor: string }>;
+  /** USES edges; since/until/source are absent on graphs built before history (all current). */
+  uses: Array<{ segment: string; vendor: string; since?: string; until?: string; source?: string }>;
+  /** Approved news that contradicts the accounts file (install-history.ts). */
+  historyConflicts?: string[];
   /** Declared install-base triggers by segment; absent on hand-built snapshots. */
   triggers?: Record<string, string>;
 }
@@ -103,6 +122,10 @@ export interface SegmentView {
   hidden?: Array<{ rank: number; count: number }>;
   /** The asked vendor when no brief places it here and it is not installed: shown, never ranked. */
   unranked?: string;
+  /** Who held the segment, newest first: recent changes by default, every stint in full mode. */
+  history?: HistoryStint[];
+  /** Recent mode: dated stints older than the window, left out. */
+  olderChanges?: number;
 }
 
 export interface AccountView {
@@ -113,7 +136,7 @@ export interface AccountView {
 }
 
 export interface CompetitiveResolution {
-  query: { vendor: string | null; account: string | null; segment: string | null };
+  query: { vendor: string | null; account: string | null; segment: string | null; history: "recent" | "full" };
   /** Positions independent of any account, for the queried vendor and/or segment. */
   market: Array<{ vendor: string; segment: string; position: string }>;
   accounts: AccountView[];
@@ -154,10 +177,14 @@ function resolveAccount(raw: string, snap: GraphSnapshot): SnapshotAccount | nul
   return snap.accounts.find((a) => [a.id, a.name, ...a.aliases].some((name) => normaliseName(name) === key)) ?? null;
 }
 
-export function resolveCompetitivePosition(snap: GraphSnapshot, query: CompetitiveQuery): ResolveResult {
+export function resolveCompetitivePosition(snap: GraphSnapshot, query: CompetitiveQuery, now: Date = new Date()): ResolveResult {
   if (!query.vendor && !query.account && !query.segment) {
     return { ok: false, error: "give at least one of vendor, account or segment" };
   }
+  const historyMode = query.history ?? "recent";
+  const cutoff = new Date(now.getTime());
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - HISTORY_RECENT_MONTHS);
+  const cutoffDay = cutoff.toISOString().slice(0, 10);
 
   let vendor: string | null = null;
   if (query.vendor) {
@@ -189,6 +216,7 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
   const positionOf = new Map(snap.positions.map((p) => [standingKey(p.vendor, p.segment), p]));
   const standings: Record<string, Standing> = {};
   const notes = new Set<string>(snap.notes ?? []);
+  for (const account of scope) for (const conflict of account.historyConflicts ?? []) notes.add(conflict);
 
   // Records the full standing once and returns the bare label for the views.
   const cite = (v: string, seg: string): string | null => {
@@ -227,12 +255,14 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
     } else {
       for (const need of account.needs) for (const s of snap.needSegments[need] ?? []) inPlay.add(s);
       // Where the vendor is installed is always worth discussing (defend), need or not.
-      if (vendor !== null) for (const use of account.uses) if (use.vendor === vendor) inPlay.add(use.segment);
+      if (vendor !== null) for (const use of account.uses) if (use.vendor === vendor && (use.until ?? "") === "") inPlay.add(use.segment);
     }
     if (inPlay.size === 0) notes.add(`${account.id} declares no needs, so no segment is in play there`);
 
     const segments = [...inPlay].sort(bySegment).map((seg): SegmentView => {
-      const incumbents = [...new Set(account.uses.filter((u) => u.segment === seg).map((u) => u.vendor))].sort();
+      const incumbents = [
+        ...new Set(account.uses.filter((u) => u.segment === seg && (u.until ?? "") === "").map((u) => u.vendor)),
+      ].sort();
       const names =
         vendor !== null
           ? [vendor]
@@ -265,6 +295,23 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
         ),
         keep: vendor,
       });
+      const stints: HistoryStint[] = account.uses
+        .filter((u) => u.segment === seg)
+        .map((u) => ({ vendor: u.vendor, since: u.since ?? "", until: u.until ?? "", source: u.source ?? "declared" }))
+        // Current stints first, then newest first; the name only keeps the output stable.
+        .sort(
+          (a, b) =>
+            Number(b.until === "") - Number(a.until === "") ||
+            stintDay(b).localeCompare(stintDay(a)) ||
+            a.vendor.localeCompare(b.vendor),
+        );
+      const dated = stints.filter((s) => stintDay(s) !== "");
+      // Full mode lists every stint, but not a lone undated current one: it only
+      // repeats the installed line (today's plain files, pre-history graphs).
+      const hasHistory = stints.some((s) => stintDay(s) !== "" || s.until !== "");
+      const shown =
+        historyMode === "full" ? (hasHistory ? stints : []) : dated.filter((s) => stintDay(s) >= cutoffDay);
+      const older = historyMode === "full" ? 0 : dated.length - shown.length;
       return {
         segment: seg,
         via,
@@ -276,6 +323,8 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
         ranked,
         ...(hidden !== undefined ? { hidden } : {}),
         ...(unranked !== undefined ? { unranked } : {}),
+        ...(shown.length > 0 ? { history: shown } : {}),
+        ...(older > 0 ? { olderChanges: older } : {}),
       };
     });
 
@@ -289,7 +338,7 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
   return {
     ok: true,
     value: {
-      query: { vendor, account: query.account ? scope[0].id : null, segment },
+      query: { vendor, account: query.account ? scope[0].id : null, segment, history: historyMode },
       market,
       accounts,
       standings,

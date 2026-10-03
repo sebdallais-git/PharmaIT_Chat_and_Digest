@@ -26,6 +26,7 @@ export function registerGraphTools(server: McpServer, client: PharmaITChatClient
         "not listed at a rank, and `unranked` names the asked vendor when no brief places it there (never ranked). " +
         "`needEvidence` holds the user's approved reasons why each account has a need, with the quote and source " +
         "document. " +
+        "Each segment also carries `history` (who held it, newest first: recent changes, or every stint with history: 'full'). " +
         "Rank vendors " +
         "only as `ranking` gives them, per account and segment, with its reasons; never rank from positions alone, and " +
         "never across accounts. " +
@@ -38,11 +39,15 @@ export function registerGraphTools(server: McpServer, client: PharmaITChatClient
           .min(1)
           .optional()
           .describe("One segment, e.g. 'storage-block', 'storage-file', 'compute-ai', 'data-protection'"),
+        history: z
+          .enum(["recent", "full"])
+          .optional()
+          .describe("'full' when the user asks about past vendors, changes over time or who had a segment before; default 'recent' (last 18 months)"),
       },
     },
-    async ({ vendor, account, segment }) =>
+    async ({ vendor, account, segment, history }) =>
       runTool("competitive_position", log, () =>
-        client.post("/api/graph/competitive-position", { vendor, account, segment }),
+        client.post("/api/graph/competitive-position", { vendor, account, segment, history }),
       ),
   );
 

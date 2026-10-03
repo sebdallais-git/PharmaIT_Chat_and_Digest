@@ -146,6 +146,77 @@ ${triggers}`);
 `);
     expect(() => parseAccounts(scalar)).toThrow(message);
   });
+
+  const NOW = new Date("2026-10-03T00:00:00Z");
+  const dated = (entries: string) =>
+    yaml(`  novartis:
+    name: Novartis
+    needs: []
+    incumbents:
+      storage-block:
+${entries}`);
+
+  it("reads dated and plain entries; only entries without until are current", () => {
+    const account = parseAccounts(
+      dated(`        - {vendor: hds, since: 2026-03}
+        - {vendor: dell, since: 2019, until: 2026-03}
+        - netapp
+`),
+      NOW,
+    )[0];
+    expect(account.incumbents).toEqual({ "storage-block": ["hds", "netapp"] });
+    expect(account.history["storage-block"]).toEqual([
+      { vendor: "hds", since: "2026-03", until: "", source: "declared" },
+      { vendor: "dell", since: "2019", until: "2026-03", source: "declared" },
+      { vendor: "netapp", since: "", until: "", source: "declared" },
+    ]);
+  });
+
+  it("keeps two stints of the same vendor apart", () => {
+    const account = parseAccounts(
+      dated(`        - {vendor: dell, since: 2024-06}
+        - {vendor: dell, since: 2015, until: 2021}
+        - {vendor: hpe, since: 2021, until: 2024-06}
+`),
+      NOW,
+    )[0];
+    expect(account.incumbents["storage-block"]).toEqual(["dell"]);
+    expect(account.history["storage-block"]).toHaveLength(3);
+  });
+
+  it("reads a segment whose entries are all past as declared empty, with history", () => {
+    const account = parseAccounts(dated("        - {vendor: dell, until: 2025}\n"), NOW)[0];
+    expect(account.incumbents).toEqual({ "storage-block": [] });
+    expect(account.history["storage-block"]).toEqual([{ vendor: "dell", since: "", until: "2025", source: "declared" }]);
+  });
+
+  it("refuses a malformed date, since after until, a future until, an unknown key and a missing vendor", () => {
+    const at = "novartis: incumbents.storage-block";
+    expect(() => parseAccounts(dated("        - {vendor: dell, since: March 2026}\n"), NOW)).toThrow(
+      `${at}: since "March 2026" must be YYYY, YYYY-MM or YYYY-MM-DD`,
+    );
+    expect(() => parseAccounts(dated("        - {vendor: dell, since: 2026-05, until: 2026-03}\n"), NOW)).toThrow(
+      `${at}: dell since 2026-05 is after until 2026-03`,
+    );
+    expect(() => parseAccounts(dated("        - {vendor: dell, until: 2027-01}\n"), NOW)).toThrow(
+      `${at}: dell until 2027-01 is in the future — an announced end date belongs in triggers`,
+    );
+    expect(() => parseAccounts(dated("        - {vendor: dell, from: 2020}\n"), NOW)).toThrow(`${at}: unknown key "from"`);
+    expect(() => parseAccounts(dated("        - {since: 2020}\n"), NOW)).toThrow(`${at}: an entry needs a vendor`);
+  });
+
+  it("still requires a current incumbent for a trigger", () => {
+    const yamlText = yaml(`  novartis:
+    name: Novartis
+    needs: []
+    incumbents:
+      storage-block:
+        - {vendor: dell, until: 2025}
+    triggers:
+      storage-block: "end of support"
+`);
+    expect(() => parseAccounts(yamlText, NOW)).toThrow("opens a segment held by a rival; declare its incumbents first");
+  });
 });
 
 describe("config/accounts.example.yaml", () => {
@@ -154,6 +225,11 @@ describe("config/accounts.example.yaml", () => {
   it("shows a trigger on a segment with declared incumbents", () => {
     const roche = parseAccounts(readFileSync("config/accounts.example.yaml", "utf8")).find((a) => a.id === "roche");
     expect(roche?.triggers["storage-block"]).toBe("PowerMax arrays reach end of support 2027-03");
+  });
+
+  it("shows a dated change of hands", () => {
+    const novartis = parseAccounts(readFileSync("config/accounts.example.yaml", "utf8")).find((a) => a.id === "novartis");
+    expect(novartis?.history["storage-block"]?.some((s) => s.until !== "")).toBe(true);
   });
 
   it("parses, and shows both an omitted and a declared-empty segment", () => {
@@ -207,6 +283,37 @@ describe("accountToGraphFacts", () => {
       JSON.stringify({ "storage-block": "end of support", "storage-file": 'NetApp "ONTAP 9": renewal 2027-01\nsecond line' }),
     );
     expect(accountToGraphFacts({ ...account, triggers: {} }).nodes[0].properties).not.toHaveProperty("triggers");
+  });
+
+  it("writes one dated USES edge per stint, past ones included, and stores conflicts", () => {
+    const account = parseAccounts(
+      yaml(`  novartis:
+    name: Novartis
+    needs: []
+    incumbents:
+      storage-block:
+        - {vendor: hds, since: 2026-03}
+        - {vendor: dell, since: 2019, until: 2026-03}
+`),
+      new Date("2026-10-03T00:00:00Z"),
+    )[0];
+    const facts = accountToGraphFacts({ ...account, conflicts: ["approved news says x"] });
+    expect(facts.relationships.filter((r) => r.type === "USES").map((r) => [r.to, r.properties])).toEqual([
+      ["hds", { segment: "storage-block", since: "2026-03", until: "", source: "declared" }],
+      ["dell", { segment: "storage-block", since: "2019", until: "2026-03", source: "declared" }],
+    ]);
+    expect(facts.nodes.find((n) => n.label === "Account")?.properties.historyConflicts).toBe(JSON.stringify(["approved news says x"]));
+    expect(facts.nodes.filter((n) => n.label === "Vendor").map((n) => n.id).sort()).toEqual(["dell", "hds"]);
+  });
+
+  it("keeps today's plain lists as current edges with empty dates", () => {
+    const facts = accountToGraphFacts(parseAccounts(roche)[0]);
+    expect(facts.relationships.filter((r) => r.type === "USES").map((r) => r.properties)).toContainEqual({
+      segment: "storage-file",
+      since: "",
+      until: "",
+      source: "declared",
+    });
   });
 
   it("records every declared segment on the account, including an empty one", () => {

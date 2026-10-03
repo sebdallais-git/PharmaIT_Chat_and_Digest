@@ -75,6 +75,13 @@ describe("POST /api/graph/competitive-position", () => {
     expect(body.error).toBe('unknown vendor "lenovo" (known: dell)');
   });
 
+  it("returns 400 for a history mode other than recent or full", async () => {
+    const base = await start(fakeDeps());
+    const { status, body } = await post(`${base}/competitive-position`, { vendor: "dell", history: "all" });
+    expect(status).toBe(400);
+    expect(body.error).toBe('history must be "recent" or "full" when given');
+  });
+
   it("returns 400 when a field is not a string", async () => {
     const base = await start(fakeDeps());
     const { status, body } = await post(`${base}/competitive-position`, { vendor: 42 });

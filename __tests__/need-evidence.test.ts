@@ -34,6 +34,7 @@ const roche: Account = {
   aliases: [],
   needs: ["cyber-resilience", "gxp-compliance"],
   incumbents: {},
+  history: {},
   triggers: {},
   notes: "",
 };
