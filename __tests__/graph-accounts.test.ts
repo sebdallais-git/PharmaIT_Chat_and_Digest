@@ -205,6 +205,21 @@ ${entries}`);
     expect(() => parseAccounts(dated("        - {since: 2020}\n"), NOW)).toThrow(`${at}: an entry needs a vendor`);
   });
 
+  // Review of #70: the check used the UTC day, so between 00:00 and 02:00 in
+  // Zurich (CEST) today's date was refused as "in the future"
+  it("accepts today's date as until in local time, not UTC", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "Europe/Zurich";
+    try {
+      const justAfterMidnight = new Date("2026-10-02T22:30:00.000Z"); // 00:30 on 3 Oct in Zurich
+      const account = parseAccounts(dated("        - {vendor: dell, until: 2026-10-03}\n"), justAfterMidnight)[0];
+      expect(account.history["storage-block"]?.[0].until).toBe("2026-10-03");
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+  });
+
   it("still requires a current incumbent for a trigger", () => {
     const yamlText = yaml(`  novartis:
     name: Novartis

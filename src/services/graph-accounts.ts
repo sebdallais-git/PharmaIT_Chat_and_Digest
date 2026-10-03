@@ -37,6 +37,12 @@ export function boundOf(date: string, end: "low" | "high"): string {
   return `${y}-${month}-${day}`;
 }
 
+
+// The day as the user lives it: the UTC day refused today's date until 02:00 in Zurich
+function localDay(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 function parseStint(entry: unknown, where: string, now: Date): Stint {
   if (typeof entry === "string") return { vendor: entry, since: "", until: "", source: "declared" };
   if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
@@ -59,7 +65,7 @@ function parseStint(entry: unknown, where: string, now: Date): Stint {
   if (since !== "" && until !== "" && boundOf(since, "low") > boundOf(until, "high")) {
     throw new Error(`${where}: ${vendor} since ${since} is after until ${until}`);
   }
-  if (until !== "" && boundOf(until, "low") > now.toISOString().slice(0, 10)) {
+  if (until !== "" && boundOf(until, "low") > localDay(now)) {
     throw new Error(`${where}: ${vendor} until ${until} is in the future — an announced end date belongs in triggers`);
   }
   return { vendor, since, until, source: "declared" };
