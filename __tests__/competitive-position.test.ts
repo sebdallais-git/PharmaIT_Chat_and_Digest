@@ -376,3 +376,14 @@ describe("resolveCompetitivePosition — install history", () => {
     );
   });
 });
+
+describe("install history — review fixes", () => {
+  it("shows no history in full mode when every stint is undated and current", () => {
+    const base = snapshot();
+    const snap = snapshot({
+      accounts: [{ ...base.accounts[0], uses: [{ segment: "storage-block", vendor: "dell", since: "", until: "", source: "declared" }] }],
+    });
+    const s = ok(resolveCompetitivePosition(snap, { account: "roche", segment: "storage-block", history: "full" })).accounts[0].segments[0];
+    expect(s.history).toBeUndefined();
+  });
+});

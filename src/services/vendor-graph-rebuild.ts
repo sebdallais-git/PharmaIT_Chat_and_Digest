@@ -95,6 +95,8 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
     }),
   );
 
+  // Vendors declared by the briefs alone, before accounts and news add theirs.
+  const briefVendorIds = new Set(batch.flatMap((f) => f.nodes.filter((n) => n.label === "Vendor").map((n) => n.id)));
   let accounts: Account[] = [];
   // Approved install-base changes from news, applied to each account before it
   // becomes graph facts. Read first: the accounts source below needs them.
@@ -124,8 +126,13 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
 
   if (historyFile !== undefined) {
     // Validated against the accounts file, and before the wipe like every source.
+    // Vendors the graph knows without news: briefs and the accounts file.
+    const knownVendors = new Set(
+      batch.flatMap((f) => f.nodes.filter((n) => n.label === "Vendor").map((n) => n.id)).filter((id) => briefVendorIds.has(id)),
+    );
+    for (const a of accounts) for (const list of Object.values(a.history)) for (const st of list ?? []) knownVendors.add(st.vendor);
     try {
-      checkHistoryAgainstAccounts(historyFile, accounts);
+      checkHistoryAgainstAccounts(historyFile, accounts, knownVendors);
     } catch (err) {
       throw new Error(`install-history.local.yaml: ${(err as Error).message}`);
     }

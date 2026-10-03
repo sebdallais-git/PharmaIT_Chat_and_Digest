@@ -9,6 +9,8 @@ import { MIN_QUOTE_WORDS } from "./need-evidence-extract.js";
 import { normaliseSpace } from "./need-evidence.js";
 
 export interface NewsItem {
+  /** Unique per document, for resuming: archive news shares one source per day. */
+  key: string;
   source: string;
   /** YYYY-MM-DD: the item's own date. */
   date: string;
@@ -130,7 +132,7 @@ export async function runHistoryExtraction(
   const known = new Set(result.file.entries.map((e) => e.id));
 
   for (const c of cands) {
-    if (result.file.sources[c.item.source] === "done") {
+    if (result.file.sources[c.item.key] === "done") {
       result.skipped++;
       continue;
     }
@@ -170,10 +172,26 @@ export async function runHistoryExtraction(
         }
       }
     }
-    result.file.sources[c.item.source] = "done";
+    result.file.sources[c.item.key] = "done";
     options.onItem?.(result.file);
   }
   return result;
+}
+
+/**
+ * The vendors extraction may name: the graph's own ids (briefs and accounts),
+ * each with the watchlist names of the same entity. Watchlist ids alone would
+ * miss vendors the watchlist does not track (hds) and name others differently
+ * (hp-inc vs hp), so an approved change could never match the accounts file.
+ */
+export function historyVendorNames(
+  graphVendorIds: string[],
+  watchlistEntities: Array<{ id: string; name: string; aliases: string[] }>,
+): NameList[] {
+  return graphVendorIds.map((id) => {
+    const entity = watchlistEntities.find((e) => e.id === id);
+    return { id, names: entity === undefined ? [id] : [id, entity.name, ...entity.aliases] };
+  });
 }
 
 export function historyStatusReport(file: InstallHistoryFile): string[] {

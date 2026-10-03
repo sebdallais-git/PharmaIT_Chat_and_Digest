@@ -306,7 +306,11 @@ export function resolveCompetitivePosition(snap: GraphSnapshot, query: Competiti
             a.vendor.localeCompare(b.vendor),
         );
       const dated = stints.filter((s) => stintDay(s) !== "");
-      const shown = historyMode === "full" ? stints : dated.filter((s) => stintDay(s) >= cutoffDay);
+      // Full mode lists every stint, but not a lone undated current one: it only
+      // repeats the installed line (today's plain files, pre-history graphs).
+      const hasHistory = stints.some((s) => stintDay(s) !== "" || s.until !== "");
+      const shown =
+        historyMode === "full" ? (hasHistory ? stints : []) : dated.filter((s) => stintDay(s) >= cutoffDay);
       const older = historyMode === "full" ? 0 : dated.length - shown.length;
       return {
         segment: seg,

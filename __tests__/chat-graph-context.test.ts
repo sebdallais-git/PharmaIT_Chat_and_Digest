@@ -382,3 +382,11 @@ describe("install history in the chat", () => {
     expect(renderCompetitiveContext(full)).toContain("    history: netapp ?–now (declared)");
   });
 });
+
+describe("install history wording — review fixes", () => {
+  it("does not read an ordinary 'before' as a history question", () => {
+    expect(wantsFullHistory("What should Dell pitch to Novartis before the renewal?")).toBe(false);
+    expect(wantsFullHistory("Who had storage at Novartis?")).toBe(true);
+    expect(wantsFullHistory("What did Roche use before that?")).toBe(true);
+  });
+});

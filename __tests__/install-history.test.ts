@@ -113,3 +113,16 @@ describe("applyHistory", () => {
     expect(merged.history).toEqual(base.history);
   });
 });
+
+describe("review fixes — vendors", () => {
+  it("refuses an approved entry whose vendor or replaced vendor the graph does not know", () => {
+    const known = new Set(["hds", "dell"]);
+    expect(() => checkHistoryAgainstAccounts(file([entry({ id: "ih-1", vendor: "hp-inc" })]), [account({})], known)).toThrow(
+      'ih-1 names unknown vendor "hp-inc"',
+    );
+    expect(() =>
+      checkHistoryAgainstAccounts(file([entry({ id: "ih-2", change: "replaced", replaced_vendor: "emc" })]), [account({})], known),
+    ).toThrow('ih-2 names unknown vendor "emc"');
+    expect(() => checkHistoryAgainstAccounts(file([entry({ id: "ih-3" })]), [account({})], known)).not.toThrow();
+  });
+});

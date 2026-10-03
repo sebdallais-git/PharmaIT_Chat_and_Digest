@@ -304,3 +304,25 @@ describe("collectVendorGraphFacts — install history", () => {
     expect(rec.calls).toBe(0);
   });
 });
+
+describe("install history — review fixes", () => {
+  it("fails before the wipe on an approved entry naming a vendor the graph does not know", async () => {
+    const rec = recordingTransaction();
+    const history = `entries:
+  - id: ih-9
+    status: approved
+    account: roche
+    segment: storage-block
+    vendor: hp-inc
+    change: installed
+    date: 2026-03-12
+    quote: Roche has standardised its block storage on new arrays this year.
+    source: https://news.test/z
+    extracted: 2026-10-03
+`;
+    await expect(rebuildVendorGraph(files({ ...ALL, "/repo/config/install-history.local.yaml": history }), rec.tx)).rejects.toThrow(
+      'install-history.local.yaml: ih-9 names unknown vendor "hp-inc"',
+    );
+    expect(rec.calls).toBe(0);
+  });
+});

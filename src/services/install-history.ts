@@ -103,10 +103,20 @@ export function mergeInstallHistory(onDisk: InstallHistoryFile, fromRun: Install
   };
 }
 
-export function checkHistoryAgainstAccounts(file: InstallHistoryFile, accounts: Account[]): void {
+/** Approved entries must name a known account and, when given, known vendors: a typo would create a Vendor node. */
+export function checkHistoryAgainstAccounts(
+  file: InstallHistoryFile,
+  accounts: Account[],
+  knownVendors?: ReadonlySet<string>,
+): void {
   const ids = new Set(accounts.map((a) => a.id));
   for (const e of file.entries) {
-    if (e.status === "approved" && !ids.has(e.account)) throw new Error(`${e.id} names unknown account "${e.account}"`);
+    if (e.status !== "approved") continue;
+    if (!ids.has(e.account)) throw new Error(`${e.id} names unknown account "${e.account}"`);
+    if (knownVendors === undefined) continue;
+    for (const vendor of [e.vendor, ...(e.replaced_vendor !== undefined ? [e.replaced_vendor] : [])]) {
+      if (!knownVendors.has(vendor)) throw new Error(`${e.id} names unknown vendor "${vendor}"`);
+    }
   }
 }
 

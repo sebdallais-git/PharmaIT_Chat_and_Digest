@@ -90,7 +90,8 @@ function label(query: CompetitiveAnswer["query"]): string {
 
 const CUT_NOTE = "… (cut to fit the chat context: ask about one vendor, account or segment for the rest)";
 
-const HISTORY_WORDING = /\b(history|over time|previously|before|used to|since when|who had)\b/i;
+// No bare "before": "pitch to Novartis before the renewal" is not about the past.
+const HISTORY_WORDING = /\b(history|over time|previously|before (that|them|it)|used to|since when|who had)\b/i;
 
 /** The chat asks for the full install history only when the message is about the past. */
 export function wantsFullHistory(message: string): boolean {

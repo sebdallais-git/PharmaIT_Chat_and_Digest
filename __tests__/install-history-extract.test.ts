@@ -4,6 +4,7 @@ import {
   checkChange,
   historyStatusReport,
   mentioned,
+  historyVendorNames,
   parseHistoryReply,
   runHistoryExtraction,
   type NewsItem,
@@ -16,6 +17,7 @@ const vendors = [
   { id: "dell", names: ["dell", "Dell Technologies"] },
 ];
 const ITEM: NewsItem = {
+  key: "https://news.test/a",
   source: "https://news.test/a",
   date: "2026-03-12",
   text: "Novartis has replaced its Dell arrays with Hitachi Vantara storage across its EU manufacturing sites.",
@@ -37,7 +39,7 @@ describe("prefilter", () => {
   });
 
   it("keeps only items naming both an account and a vendor", () => {
-    const other: NewsItem = { source: "x", date: "2026-01-01", text: "Novartis opens a new site in Basel." };
+    const other: NewsItem = { key: "x", source: "x", date: "2026-01-01", text: "Novartis opens a new site in Basel." };
     expect(candidates([ITEM, other], accounts, vendors).map((c) => c.item.source)).toEqual(["https://news.test/a"]);
   });
 });
@@ -106,5 +108,39 @@ describe("runHistoryExtraction", () => {
     });
     expect(lines).toContain("novartis / storage-block: 0 approved, 1 proposed, 0 rejected");
     expect(lines).toContain('ih-1  novartis / storage-block  installed hds  2026-03-12  — "q" (s)');
+  });
+});
+
+describe("review fixes", () => {
+  it("resumes per document, not per source: archive news shares one source per day", async () => {
+    const day = (key: string, text: string): NewsItem => ({ key, source: "news-2026-06-23", date: "2026-06-23", text });
+    const items = [
+      day("news-a.json", ITEM.text),
+      day("news-b.json", "Novartis has removed its Dell arrays from every manufacturing site this quarter."),
+    ];
+    const prompts: string[] = [];
+    const result = await runHistoryExtraction(empty(), candidates(items, accounts, vendors), {
+      complete: async (p) => {
+        prompts.push(p);
+        return '{"none": true}';
+      },
+      today: () => "2026-10-03",
+      log: () => {},
+    });
+    expect(prompts).toHaveLength(2);
+    expect(Object.keys(result.file.sources).sort()).toEqual(["news-a.json", "news-b.json"]);
+  });
+
+  it("names graph vendors by their own ids, plus the watchlist names of the same entity", () => {
+    expect(
+      historyVendorNames(["hds", "dell", "hp"], [
+        { id: "dell", name: "Dell Technologies", aliases: ["Dell EMC"] },
+        { id: "hp-inc", name: "HP Inc", aliases: [] },
+      ]),
+    ).toEqual([
+      { id: "hds", names: ["hds"] },
+      { id: "dell", names: ["dell", "Dell Technologies", "Dell EMC"] },
+      { id: "hp", names: ["hp"] },
+    ]);
   });
 });
