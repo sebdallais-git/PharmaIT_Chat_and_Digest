@@ -527,6 +527,24 @@ describe("accounts grouped by theater", () => {
     const selection = selectDigestItems([...about("roche", 2), ...about("jnj", 2)], parseDigestRequest("digest EMEA", now, []), world, null);
     expect(selection.accountIds).toEqual(["roche", "novartis", "sandoz"]);
     expect(selection.sections.accounts.map((e) => e.item.title)).toEqual(["roche news 0", "roche news 1"]);
+    // Another theater's customer news does not slip into the market sections either
+    expect(selection.numbered.map((e) => e.item.title)).not.toContain("jnj news 0");
+  });
+
+  it("keeps an item about customers in two theaters when one is the theater asked for, and vendor news", () => {
+    const both = item({ title: "Roche and J&J pick NetApp", entities: ["roche", "jnj", "netapp"], domains: ["storage"] });
+    const vendor = item({ title: "NetApp launches array", entities: ["netapp"], domains: ["storage"] });
+    const selection = selectDigestItems([both, vendor], parseDigestRequest("digest EMEA", now, []), world, null);
+    expect(selection.numbered.map((e) => e.item.title)).toEqual(["Roche and J&J pick NetApp", "NetApp launches array"]);
+  });
+
+  it("tells an item about accounts in two theaters once, in the first theater", () => {
+    const both = item({ title: "J&J and Roche joint venture", entities: ["jnj", "roche"], domains: ["ai"] });
+    const selection = selectDigestItems([both, ...about("takeda", 1)], weekly, world, null);
+    expect(selection.accountGroups.map((g) => [g.theater, g.entries.map((e) => e.item.title)])).toEqual([
+      ["Americas", ["J&J and Roche joint venture"]],
+      ["APAC", ["takeda news 0"]],
+    ]);
   });
 
   it("writes each theater in its own short call and renders it under its own heading", async () => {

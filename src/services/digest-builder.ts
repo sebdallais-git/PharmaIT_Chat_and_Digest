@@ -106,6 +106,12 @@ function matchesFocus(item: StoredItem, request: DigestRequest, accountIds: stri
     const peers = new Set(accountIds.flatMap((id) => watchlist.entities.get(id)?.peers ?? []));
     if (!item.entities.some((id) => accountIds.includes(id) || peers.has(id))) return false;
   }
+  if (request.theater) {
+    // "digest EMEA": another theater's customer news stays out of every section,
+    // unless the item also names a customer headquartered in the theater asked for
+    const theaters = item.entities.map((id) => watchlist.entities.get(id)).filter((e) => e?.kind === "customer" && e.theater).map((e) => e?.theater);
+    if (theaters.length > 0 && !theaters.includes(request.theater)) return false;
+  }
   if (request.focusEntities.length > 0 && !overlaps(item.entities, request.focusEntities)) return false;
   if (request.focusDomains.length > 0 && !overlaps(item.domains, request.focusDomains)) return false;
   return true;

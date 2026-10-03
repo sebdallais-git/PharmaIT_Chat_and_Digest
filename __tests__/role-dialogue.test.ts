@@ -191,18 +191,42 @@ describe("handleRoleMessage", () => {
   // Live on 2026-10-02: "How should we approach novartis ?" typed mid-onboarding
   // was saved as the company, and the digests lost every account
   it.each(["How should we approach novartis ?", "what is Dell doing best for Roche", "Tell me about Lonza's storage"])(
-    "drops an open onboarding for a question and lets the chat answer it: %s",
+    "lets the chat answer a question typed during onboarding and keeps the onboarding as it was: %s",
     async (question) => {
       const { store } = tempStore();
-      store.write({ version: 1, active: null, roles: [], draft: { title: "HLS Principal", company: "", accounts: [], portfolio: [], focus: null, asking: "company" } });
+      const draft = { title: "HLS Principal", company: "", accounts: [], portfolio: [], focus: null, asking: "company" as const };
+      store.write({ version: 1, active: null, roles: [], draft });
       const { extract, calls } = extractor(null);
 
       expect(await handleRoleMessage(question, { store, extract, now })).toBeNull();
 
       expect(calls).toEqual([]);
-      expect(store.read()).toMatchObject({ draft: null, roles: [], active: null });
+      // Nothing saved, nothing lost: the next plain answer still fills the company
+      expect(store.read()).toMatchObject({ draft, roles: [], active: null });
+      await handleRoleMessage("Everpure", { store, extract, now });
+      expect(store.read().draft).toMatchObject({ title: "HLS Principal", company: "Everpure", asking: "accounts" });
     },
   );
+
+  it.each([
+    ["company", "Cancer Research UK"],
+    ["title", "Director of IT"],
+    ["accounts", "Roche, Novartis"],
+    // The focus answer is free text: only a question mark makes it a question
+    ["focus", "How we win storage at Novartis"],
+    ["focus", "Do more storage deals"],
+  ] as const)("still takes a plain %s answer during onboarding: %s", async (asking, answer) => {
+    const { store } = tempStore();
+    store.write({ version: 1, active: null, roles: [], draft: { title: "T", company: asking === "company" ? "" : "C", accounts: asking === "accounts" || asking === "title" || asking === "company" ? [] : ["Roche"], portfolio: asking === "focus" ? ["storage"] : [], focus: null, asking } });
+    expect(await handleRoleMessage(answer, { store, extract: extractor(null).extract, now })).not.toBeNull();
+  });
+
+  it("still cancels on 'cancel?'", async () => {
+    const { store } = tempStore();
+    store.write({ version: 1, active: null, roles: [], draft: { title: "Principal", company: "Everpure", accounts: [], portfolio: [], focus: null, asking: "accounts" } });
+    expect(await handleRoleMessage("cancel?", { store, extract: extractor(null).extract, now })).toMatch(/cancel/i);
+    expect(store.read().draft).toBeNull();
+  });
 
   it("drops the onboarding on cancel", async () => {
     const { store } = tempStore();
