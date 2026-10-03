@@ -90,6 +90,17 @@ function label(query: CompetitiveAnswer["query"]): string {
 
 const CUT_NOTE = "… (cut to fit the chat context: ask about one vendor, account or segment for the rest)";
 
+const HISTORY_WORDING = /\b(history|over time|previously|before|used to|since when|who had)\b/i;
+
+/** The chat asks for the full install history only when the message is about the past. */
+export function wantsFullHistory(message: string): boolean {
+  return HISTORY_WORDING.test(message);
+}
+
+function stintText(s: { vendor: string; since: string; until: string; source: string }): string {
+  return `${s.vendor} ${s.since || "?"}–${s.until === "" ? "now" : s.until} (${s.source})`;
+}
+
 function eventLine(e: EvidenceItem): string {
   return `    ↳ ${e.publishedAt} [${e.signal ?? "untagged"}] ${e.title}`;
 }
@@ -144,6 +155,11 @@ function renderLines(a: CompetitiveAnswer): string {
     for (const s of account.segments) {
       const via = s.via.length > 0 ? ` (via ${s.via.join(", ")})` : "";
       lines.push(`  ${s.segment}${via}, installed: ${s.incumbents.join(", ") || "nobody"}`);
+      if (s.history !== undefined && s.history.length > 0) {
+        const label = a.query.history === "full" ? "history" : "changed";
+        const older = s.olderChanges !== undefined ? ` · +${s.olderChanges} older` : "";
+        lines.push(`    ${label}: ${s.history.map(stintText).join(" · ")}${older}`);
+      }
       if (s.trigger !== null) lines.push(`    trigger: ${s.trigger}`);
       lines.push(rankingLine(s));
       lines.push(...s.events.map(eventLine));
@@ -185,6 +201,7 @@ async function competitiveContext(message: string, deps: ChatGraphDeps): Promise
   const snapshot = await readGraphSnapshot(deps.competitive.runCypher, deps.competitive.vendorAliases());
   const query = matchCompetitiveQuery(message, snapshot);
   if (query === null) return null;
+  if (wantsFullHistory(message)) query.history = "full";
   const result = await competitivePositionFrom(deps.competitive, snapshot, query);
   if (!result.ok) throw new Error(result.error);
   return { source: "competitive", label: label(result.answer.query), text: renderCompetitiveContext(result.answer) };

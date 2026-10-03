@@ -402,6 +402,29 @@ describe("competitivePosition — size budget", () => {
     expect(answer.notes.some((n) => n.includes("need-evidence quotes"))).toBe(true);
   });
 
+  it("trims history to the newest change per segment before claims", async () => {
+    const rows: Rows = {
+      ...ROWS,
+      accounts: [
+        {
+          ...ROWS.accounts[0],
+          uses: [
+            { segment: "storage-block", vendor: "dell", since: "2026-03", until: "", source: "declared" },
+            ...[1, 2, 3, 4].map((n) => ({ segment: "storage-block", vendor: `v${n}${"x".repeat(200)}`, since: "2025", until: "2026-02", source: "declared" })),
+          ],
+        },
+      ],
+    };
+    const result = await competitivePosition(deps({ runCypher: fakeCypher(rows) }), { account: "roche", history: "full" });
+    if (!result.ok) throw new Error(result.error);
+    const answer = result.answer;
+    fitBudget(answer, JSON.stringify(answer).length - 10);
+    const block = answer.accounts[0].segments.find((s) => s.segment === "storage-block");
+    expect(block?.history).toHaveLength(1);
+    expect(answer.standings["dell/storage-block"].strong.length).toBeGreaterThan(0);
+    expect(answer.notes.some((n) => n.includes("history beyond the newest change per segment"))).toBe(true);
+  });
+
   it("drops claim details before it drops claims", async () => {
     // One account: rankings on all 33 segments of a vendor-only question take
     // ~6k, so that answer needs more than the first step; this one needs it alone.

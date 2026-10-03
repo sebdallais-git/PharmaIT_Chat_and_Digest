@@ -339,7 +339,14 @@ export const TRIM_STEPS: TrimStep[] = [
     apply: (a) => {
       for (const acc of a.accounts) for (const list of Object.values(acc.needEvidence)) for (const e of list) e.quote = "";
     },
+  },  {
+    drops: "history beyond the newest change per segment",
+    applies: (a) => a.accounts.some((acc) => acc.segments.some((s) => (s.history?.length ?? 0) > 1)),
+    apply: (a) => {
+      for (const acc of a.accounts) for (const s of acc.segments) if (s.history !== undefined) s.history = s.history.slice(0, 1);
+    },
   },
+
   {
     drops: "need evidence",
     applies: (a) => a.accounts.some((acc) => Object.keys(acc.needEvidence).length > 0),
@@ -391,6 +398,18 @@ export const TRIM_STEPS: TrimStep[] = [
     drops: "sources",
     apply: (a) => {
       for (const s of Object.values(a.standings)) s.sources = [];
+    },
+  },
+  {
+    drops: "history",
+    applies: (a) => a.accounts.some((acc) => acc.segments.some((s) => s.history !== undefined)),
+    apply: (a) => {
+      for (const acc of a.accounts) {
+        for (const s of acc.segments) {
+          delete s.history;
+          delete s.olderChanges;
+        }
+      }
     },
   },
 ];

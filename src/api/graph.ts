@@ -58,6 +58,10 @@ export function createGraphRouter(deps: GraphRouterDeps): Router {
       res.status(400).json({ error: "vendor, account and segment must be strings when given" });
       return;
     }
+    if (body.history !== undefined && body.history !== "recent" && body.history !== "full") {
+      res.status(400).json({ error: 'history must be "recent" or "full" when given' });
+      return;
+    }
     try {
       if (!(await deps.isAvailable())) {
         res.status(503).json({ error: "Neo4j is not reachable" });
@@ -67,6 +71,7 @@ export function createGraphRouter(deps: GraphRouterDeps): Router {
         vendor: body.vendor,
         account: body.account,
         segment: body.segment,
+        history: body.history as "recent" | "full" | undefined,
       });
       if (!result.ok) {
         res.status(400).json({ error: result.error });
