@@ -12,7 +12,7 @@
 // active role sells. Rendered within a character budget: Telegram cuts a
 // message at 4096, and Hermes cuts scheduled-job output at 4000.
 
-import type { Domain, Entity, Watchlist } from "./watchlist-config.js";
+import { THEATERS, type Domain, type Entity, type Theater, type Watchlist } from "./watchlist-config.js";
 import type { StoredItem } from "./watchlist-store.js";
 import type { DigestRequest } from "./digest-request.js";
 import { PORTFOLIO_LINES, portfolioText, roleLabel, type PortfolioLine, type Role } from "./role-store.js";
@@ -40,8 +40,17 @@ export interface NumberedItem {
   section: SectionKey;
 }
 
+// "Your accounts" split by headquarters theater. One group with a null theater
+// when the accounts all sit in one theater (or none has a theater).
+export interface AccountGroup {
+  theater: Theater | null;
+  entries: NumberedItem[];
+}
+
 export interface DigestSelection {
   sections: Record<SectionKey, NumberedItem[]>;
+  // The accounts section again, grouped; its entries are the same objects
+  accountGroups: AccountGroup[];
   numbered: NumberedItem[];
   accountIds: string[];
   // Role accounts the watchlist does not follow, so the digest cannot cover them
@@ -97,6 +106,12 @@ function matchesFocus(item: StoredItem, request: DigestRequest, accountIds: stri
     const peers = new Set(accountIds.flatMap((id) => watchlist.entities.get(id)?.peers ?? []));
     if (!item.entities.some((id) => accountIds.includes(id) || peers.has(id))) return false;
   }
+  if (request.theater) {
+    // "digest EMEA": another theater's customer news stays out of every section,
+    // unless the item also names a customer headquartered in the theater asked for
+    const theaters = item.entities.map((id) => watchlist.entities.get(id)).filter((e) => e?.kind === "customer" && e.theater).map((e) => e?.theater);
+    if (theaters.length > 0 && !theaters.includes(request.theater)) return false;
+  }
   if (request.focusEntities.length > 0 && !overlaps(item.entities, request.focusEntities)) return false;
   if (request.focusDomains.length > 0 && !overlaps(item.domains, request.focusDomains)) return false;
   return true;
@@ -125,13 +140,42 @@ function roundRobin(items: StoredItem[], accountIds: string[]): StoredItem[] {
   return out;
 }
 
+// Per theater when grouped: three theaters at 4 items each stay close to the
+// ungrouped 8 while every theater gets a voice
+const THEATER_CAP = 4;
+
+const sizeRank = (watchlist: Watchlist, id: string): number => watchlist.entities.get(id)?.size?.rank ?? Number.MAX_SAFE_INTEGER;
+
+/** Accounts per theater in Americas, EMEA, APAC order; one null group unless they span two or more. */
+export function groupAccounts(accountIds: string[], watchlist: Watchlist): { theater: Theater | null; ids: string[] }[] {
+  const byTheater = new Map<Theater, string[]>();
+  const without: string[] = [];
+  for (const id of accountIds) {
+    const theater = watchlist.entities.get(id)?.theater;
+    if (theater) byTheater.set(theater, [...(byTheater.get(theater) ?? []), id]);
+    else without.push(id);
+  }
+  if (byTheater.size < 2) return [{ theater: null, ids: accountIds }];
+  const groups: { theater: Theater | null; ids: string[] }[] = THEATERS.filter((t) => byTheater.has(t)).map((t) => ({ theater: t, ids: byTheater.get(t) ?? [] }));
+  // Role accounts the watchlist has no theater for still get covered, last
+  if (without.length) groups.push({ theater: null, ids: without });
+  return groups;
+}
+
 export function selectDigestItems(
   items: StoredItem[],
   request: DigestRequest,
   watchlist: Watchlist,
   role: Role | null,
 ): DigestSelection {
-  const { ids: accountIds, unmatched } = resolveAccounts(watchlist, role);
+  const resolved = resolveAccounts(watchlist, role);
+  const unmatched = resolved.unmatched;
+  // Size rank first (the biggest account leads each round); unranked keep their order
+  const accountIds = resolved.ids
+    .filter((id) => !request.theater || watchlist.entities.get(id)?.theater === request.theater)
+    .map((id, i) => ({ id, i }))
+    .sort((a, b) => sizeRank(watchlist, a.id) - sizeRank(watchlist, b.id) || a.i - b.i)
+    .map(({ id }) => id);
   const focused = request.focusEntities.length > 0 || request.focusDomains.length > 0 || request.accountsOnly;
   const buckets: Record<SectionKey, StoredItem[]> = { accounts: [], infrastructure: [], industry: [], cyber: [], aiCloud: [], rdMfg: [] };
   for (const item of items) {
@@ -144,17 +188,28 @@ export function selectDigestItems(
   }
   const sections = {} as Record<SectionKey, NumberedItem[]>;
   const numbered: NumberedItem[] = [];
+  const number = (item: StoredItem, key: SectionKey): NumberedItem => {
+    const entry = { n: numbered.length + 1, item, section: key };
+    numbered.push(entry);
+    return entry;
+  };
+  const groups = groupAccounts(accountIds, watchlist);
+  const grouped = groups.length > 1;
+  // An item about accounts in two theaters is told once, in the first
+  const told = new Set<number>();
+  const accountGroups: AccountGroup[] = groups
+    .map(({ theater, ids }) => {
+      const picked = roundRobin(buckets.accounts.filter((item) => !told.has(item.id)), ids).slice(0, grouped ? THEATER_CAP : SECTION_CAPS.accounts);
+      for (const item of picked) told.add(item.id);
+      return { theater, entries: picked.map((item) => number(item, "accounts")) };
+    })
+    .filter((group) => group.entries.length > 0);
+  sections.accounts = accountGroups.flatMap((group) => group.entries);
   for (const key of SECTION_ORDER) {
-    const ranked = key === "accounts" ? roundRobin(buckets.accounts, accountIds) : buckets[key].sort(byImportance);
-    sections[key] = ranked
-      .slice(0, SECTION_CAPS[key])
-      .map((item) => {
-        const entry = { n: numbered.length + 1, item, section: key };
-        numbered.push(entry);
-        return entry;
-      });
+    if (key === "accounts") continue;
+    sections[key] = buckets[key].sort(byImportance).slice(0, SECTION_CAPS[key]).map((item) => number(item, key));
   }
-  return { sections, numbered, accountIds, unmatchedAccounts: unmatched, itemsInPeriod: items.length };
+  return { sections, accountGroups, numbered, accountIds, unmatchedAccounts: unmatched, itemsInPeriod: items.length };
 }
 
 // ---- Model-written parts --------------------------------------------------
@@ -255,6 +310,8 @@ export function parseBullets(reply: string, known: Set<number>, max: number): st
 export interface DigestProse {
   headline: string[];
   accounts: string[];
+  // Grouped selections: the account bullets per theater, written in one call each
+  byTheater?: Partial<Record<Theater, string[]>>;
   infrastructure: string[];
   actions: string[];
 }
@@ -278,23 +335,36 @@ export async function writeProse(
 ): Promise<DigestProse> {
   const { sections, numbered } = selection;
   const known = (entries: NumberedItem[]) => new Set(entries.map((e) => e.n));
+  // Grouped: one short call per theater (3 bullets weekly, 2 in the briefing);
+  // otherwise one call for all accounts, as before
+  const writeAccounts = async (): Promise<Pick<DigestProse, "accounts" | "byTheater">> => {
+    if (sections.accounts.length === 0) return { accounts: [] };
+    const theaters = selection.accountGroups.filter((g): g is AccountGroup & { theater: Theater } => g.theater !== null);
+    if (theaters.length === 0) return { accounts: await write(complete, accountsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 5, 450) };
+    const byTheater: Partial<Record<Theater, string[]>> = {};
+    for (const group of theaters) {
+      byTheater[group.theater] = await write(complete, accountsPrompt(group.entries, role, watchlist), known(group.entries), briefing ? 2 : 3, 300);
+    }
+    // Accounts without a theater (a role's, never the watchlist's customers) keep the plain call
+    const rest = selection.accountGroups.find((g) => g.theater === null);
+    const accounts = rest ? await write(complete, accountsPrompt(rest.entries, role, watchlist), known(rest.entries), briefing ? 2 : 3, 300) : [];
+    return { accounts, byTheater };
+  };
   if (briefing) {
-    // Accounts and what to do about them: two calls, not four
-    const accounts = await write(complete, accountsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 5, 450);
+    // Accounts and what to do about them
+    const written = await writeAccounts();
     const actions = await write(complete, actionsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 6, 500);
-    return { headline: [], accounts, infrastructure: [], actions };
+    return { headline: [], ...written, infrastructure: [], actions };
   }
   const top = [...numbered].sort((a, b) => byImportance(a.item, b.item)).slice(0, 10);
   const forActions = [...sections.accounts, ...sections.infrastructure, ...sections.cyber, ...sections.rdMfg].slice(0, 18);
   const headline = top.length ? await write(complete, headlinePrompt(top, role, watchlist, period), known(top), 4, 300) : [];
-  const accounts = sections.accounts.length
-    ? await write(complete, accountsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 5, 450)
-    : [];
+  const written = await writeAccounts();
   const infrastructure = sections.infrastructure.length
     ? await write(complete, infrastructurePrompt(sections.infrastructure, role, watchlist), known(sections.infrastructure), 4, 400)
     : [];
   const actions = forActions.length ? await write(complete, actionsPrompt(forActions, role, watchlist), known(forActions), 6, 500) : [];
-  return { headline, accounts, infrastructure, actions };
+  return { headline, ...written, infrastructure, actions };
 }
 
 // ---- Rendering -------------------------------------------------------------
@@ -340,6 +410,24 @@ function renderList(entries: NumberedItem[], links: boolean): string[] {
   });
 }
 
+// Bullets per theater for a variant's account allowance: 3 while there is
+// room, then 2, and never fewer than 1, so no theater drops out of the digest
+function theaterCap(accounts: number): number {
+  return accounts >= 4 ? 3 : accounts >= 3 ? 2 : 1;
+}
+
+function renderTheaters(selection: DigestSelection, prose: DigestProse, variant: Variant, refs: (text: string) => string): string[] {
+  const out: string[] = [];
+  for (const group of selection.accountGroups) {
+    const written = group.theater ? prose.byTheater?.[group.theater] ?? [] : prose.accounts;
+    const lines = written.length
+      ? written.slice(0, theaterCap(variant.accounts)).map((b) => `- ${refs(b)}`)
+      : renderList(group.entries.slice(0, Math.max(1, variant.listCap)), variant.links);
+    out.push("", `**${SECTION_TITLES.accounts}${group.theater ? ` · ${group.theater}` : ""}**`, ...lines);
+  }
+  return out;
+}
+
 function renderVariant(selection: DigestSelection, prose: DigestProse, footer: DigestFooter, options: RenderOptions, variant: Variant): string {
   const byNumber = new Map(selection.numbered.map((e) => [e.n, e.item]));
   const refs = (text: string) => renderRefs(text, byNumber, variant.links);
@@ -355,6 +443,10 @@ function renderVariant(selection: DigestSelection, prose: DigestProse, footer: D
     for (const key of SECTION_ORDER) {
       const entries = selection.sections[key];
       if (entries.length === 0) continue;
+      if (key === "accounts" && selection.accountGroups.some((g) => g.theater !== null)) {
+        out.push(...renderTheaters(selection, prose, variant, refs));
+        continue;
+      }
       const written =
         key === "accounts" ? prose.accounts.slice(0, variant.accounts) : key === "infrastructure" ? prose.infrastructure.slice(0, variant.infrastructure) : [];
       const hasProse = key === "accounts" ? prose.accounts.length > 0 : key === "infrastructure" ? prose.infrastructure.length > 0 : false;
@@ -428,10 +520,14 @@ export async function buildDigest(request: DigestRequest, deps: DigestDeps, budg
     const quiet = { markdown: "", period: request.label, items: 0 };
     // Importance 1 is the tagger's "barely relevant", where mis-tagged stories sit.
     // An empty result is how the Hermes job stays silent on a quiet day.
-    const accounts = selection.sections.accounts.filter((e) => (e.item.importance ?? 0) >= 2);
+    const worth = (e: NumberedItem) => (e.item.importance ?? 0) >= 2;
+    const accountGroups = selection.accountGroups
+      .map((group) => ({ ...group, entries: group.entries.filter(worth) }))
+      .filter((group) => group.entries.length > 0);
+    const accounts = accountGroups.flatMap((group) => group.entries);
     if (accounts.length === 0) return quiet;
     const empty = { accounts, infrastructure: [], industry: [], cyber: [], aiCloud: [], rdMfg: [] };
-    selection = { ...selection, sections: empty, numbered: accounts };
+    selection = { ...selection, sections: empty, accountGroups, numbered: accounts };
   }
   const prose = await writeProse(selection, deps.role, deps.watchlist, request.label, deps.complete, options.briefing === true);
   // A briefing exists to prompt action: with none left, say nothing
