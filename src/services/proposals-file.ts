@@ -8,7 +8,7 @@
 // a run appends to the parsed document instead of re-rendering it: comments
 // and extra fields on existing entries survive.
 
-import { isMap, isSeq, parse, parseDocument, stringify } from "yaml";
+import { isMap, isSeq, parse, parseDocument, stringify, type Document } from "yaml";
 
 export interface ProposalsDocument {
   sources: Record<string, string>;
@@ -49,12 +49,18 @@ export function proposalsDocument(yaml: string): ProposalsDocument {
  */
 export function appendProposals(onDisk: string, header: string, sources: Record<string, string>, added: object[]): string {
   if (onDisk.trim() === "") return header + stringify({ sources, entries: added }, { lineWidth: 0 });
-  const doc = parseDocument(onDisk);
+  // Widened from Document.Parsed: an only-comments file gets new contents below
+  const doc: Document = parseDocument(onDisk);
+  // Only comments (the user cleared the entries): build on them, keeping them
+  if (doc.contents === null) doc.contents = doc.createNode({ sources, entries: [] });
   if (!isMap(doc.contents)) throw new Error("the file must be a mapping with sources and entries");
   doc.set("sources", doc.createNode(sources));
   const entries = doc.get("entries", true);
   if (isSeq(entries)) {
     for (const entry of added) entries.add(doc.createNode(entry));
+    // An empty list is written as `entries: []`, a flow list: entries appended
+    // to it later would all land on that one line, unreadable to review
+    if (entries.items.length > 0) entries.flow = false;
   } else {
     doc.set("entries", doc.createNode(added));
   }

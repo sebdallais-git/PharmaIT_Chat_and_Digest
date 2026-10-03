@@ -88,7 +88,6 @@ export function renderInstallHistory(file: InstallHistoryFile): string {
   return HEADER + stringify({ sources: file.sources, entries: file.entries }, { lineWidth: 0 });
 }
 
-/** A run's result folded into the file as it is on disk now: the user's entries win. */
 /**
  * The run folded into the file's text as it is on disk now: new entries are
  * appended and sources updated; existing entries, comments and extra fields stay.
@@ -100,6 +99,7 @@ export function mergeInstallHistoryText(onDisk: string, fromRun: InstallHistoryF
   return appendProposals(onDisk, HEADER, merged.sources, merged.entries.filter((e) => !known.has(e.id)));
 }
 
+/** A run's result folded into the file as it is on disk now: the user's entries win. */
 export function mergeInstallHistory(onDisk: InstallHistoryFile, fromRun: InstallHistoryFile): InstallHistoryFile {
   const known = new Set(onDisk.entries.map((e) => e.id));
   return {
@@ -125,7 +125,6 @@ export function checkHistoryAgainstAccounts(
   }
 }
 
-/** Approved entries for this account, oldest first, applied to its stints. */
 // Declared dates may be YYYY or YYYY-MM; news dates are days. A day falls on a
 // declared date when the declared one is its prefix ("2026-03" holds "2026-03-12").
 const known = (d: string) => d !== "" && d !== "?";
@@ -133,6 +132,7 @@ const sameDate = (a: string, b: string) => known(a) && known(b) && (a.startsWith
 const notBefore = (day: string, bound: string) => day.slice(0, bound.length) >= bound;
 const notAfter = (day: string, bound: string) => day.slice(0, bound.length) <= bound;
 
+/** Approved entries for this account, oldest first, applied to its stints. */
 export function applyHistory(account: Account, entries: HistoryEntry[]): Account {
   const history: Account["history"] = {};
   for (const [segment, list] of Object.entries(account.history)) history[segment as Segment] = (list ?? []).map((s) => ({ ...s }));

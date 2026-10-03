@@ -97,11 +97,6 @@ export function checkAgainstAccounts(file: NeedEvidenceFile, accounts: Account[]
 }
 
 /**
- * Fold a run's result into the file as it is on disk now: the user may have
- * approved entries while the run went on. Their entries win; the run only
- * adds entries whose id is new, and the documents it processed.
- */
-/**
  * The run folded into the file's text as it is on disk now: new entries are
  * appended and sources updated; existing entries, comments and extra fields stay.
  */
@@ -112,6 +107,11 @@ export function mergeNeedEvidenceText(onDisk: string, fromRun: NeedEvidenceFile)
   return appendProposals(onDisk, HEADER, merged.sources, merged.entries.filter((e) => !known.has(e.id)));
 }
 
+/**
+ * Fold a run's result into the file as it is on disk now: the user may have
+ * approved entries while the run went on. Their entries win; the run only
+ * adds entries whose id is new, and the documents it processed.
+ */
 export function mergeNeedEvidence(onDisk: NeedEvidenceFile, fromRun: NeedEvidenceFile): NeedEvidenceFile {
   const known = new Set(onDisk.entries.map((e) => e.id));
   return {

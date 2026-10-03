@@ -43,6 +43,22 @@ entries:
     });
   });
 
+  // Review of this branch: a first save with nothing to add wrote `entries: []`,
+  // and every later entry was appended inside that one-line flow list
+  it("writes entries one per block even after a save that added none", () => {
+    const empty = appendProposals("", HEADER, { "a.md": "h1" }, []);
+    const out = appendProposals(empty, HEADER, { "a.md": "h1" }, [{ id: "x-1", status: "proposed" }]);
+    expect(out).toContain("entries:\n  - id: x-1\n    status: proposed\n");
+    expect(proposalsDocument(out).entries).toEqual([{ id: "x-1", status: "proposed" }]);
+  });
+
+  it("keeps a file that holds only comments, and its comments", () => {
+    const onlyComments = `${HEADER}# cleared on 2026-10-03\n`;
+    const out = appendProposals(onlyComments, HEADER, { "a.md": "h1" }, [{ id: "x-1", status: "proposed" }]);
+    expect(out).toContain("# cleared on 2026-10-03");
+    expect(proposalsDocument(out)).toEqual({ sources: { "a.md": "h1" }, entries: [{ id: "x-1", status: "proposed" }] });
+  });
+
   it("writes a fresh file with the header when there is none", () => {
     const out = appendProposals("", HEADER, { "a.md": "h1" }, [{ id: "x-1", status: "proposed" }]);
     expect(out.startsWith(HEADER)).toBe(true);
