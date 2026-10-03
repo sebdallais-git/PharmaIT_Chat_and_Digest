@@ -144,7 +144,8 @@ export function parseAccounts(yaml: string, now: Date = new Date()): Account[] {
         if ((incumbents[key] ?? []).length === 0) {
           throw new Error(`${id}: triggers.${key} opens a segment held by a rival; declare its incumbents first`);
         }
-        triggers[key] = text.trim();
+        // One line: the chat renders it as an indented "trigger:" line
+        triggers[key] = text.replace(/\s+/g, " ").trim();
       }
     }
 
