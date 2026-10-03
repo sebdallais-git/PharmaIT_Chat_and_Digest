@@ -515,6 +515,23 @@ describe("parseStatusArgs", () => {
 });
 
 describe("runStatus", () => {
+  it("lists customers by theater with their size rank", () => {
+    const store = openWatchlistStore(":memory:");
+    const logs: string[] = [];
+    const size = (rank: number) => ({ rank, year: 2025, basis: "FY2024 healthcare revenue" });
+    const watchlist = makeWatchlist([
+      { ...makeEntity({ id: "novartis", name: "Novartis" }), theater: "EMEA" as const, size: size(7) },
+      { ...makeEntity({ id: "roche", name: "Roche" }), theater: "EMEA" as const, size: size(2) },
+      { ...makeEntity({ id: "takeda", name: "Takeda" }), theater: "APAC" as const, size: size(17) },
+    ]);
+    runStatus([], { store, watchlist, now: () => new Date("2026-10-03T00:00:00.000Z"), log: (line) => logs.push(line) });
+    expect(logs).toContain("Customers by theater (size rank, 2025):");
+    expect(logs).toContain("  EMEA (2): #2 Roche · #7 Novartis");
+    expect(logs).toContain("  APAC (1): #17 Takeda");
+    expect(logs.some((l) => l.startsWith("  Americas"))).toBe(false);
+    store.close();
+  });
+
   it("prints per-entity counts for the window from the injected store", () => {
     const store = openWatchlistStore(":memory:");
     store.insertItem(baseItem({ urlCanonical: "u1", contentHash: "c1", entities: ["roche"], importance: 2 }));

@@ -4,7 +4,7 @@
 
 ### The IT landscape around pharma, tracked, tagged and answered with a local LLM, a vector store and a Neo4j vendor-intelligence graph
 
-PharmaITChat watches the IT and security scene around three pharma customers, their competitors and the vendors that shape their tech stack: **76 named entities**, collected nightly, deduplicated across sources, tagged by a 27B model and stored in a knowledge base you can ask questions of, in a browser or on Telegram. On top of that it keeps a **vendor-intelligence graph**: who is installed where, which vendor stands where in each segment, what happened at each account lately, and why each account has the needs it has. "What is Dell doing best at Roche?" is answered from that graph, incumbency first, with a deterministic win-likelihood ranking per segment.
+PharmaITChat watches the IT and security scene around the **top 60 pharma and medtech companies** (customers, by headquarters theater and size rank), their remaining peers and the vendors that shape their tech stack: **114 named entities**, collected nightly, deduplicated across sources, tagged by a 27B model and stored in a knowledge base you can ask questions of, in a browser or on Telegram. On top of that it keeps a **vendor-intelligence graph**: who is installed where, which vendor stands where in each segment, what happened at each account lately, and why each account has the needs it has. "What is Dell doing best at Roche?" is answered from that graph, incumbency first, with a deterministic win-likelihood ranking per segment.
 
 **Every model call happens on this machine.** Chat, embeddings, nightly tagging, retrieval, storage, need-evidence extraction. No cloud LLM, no API key for the model, no per-token bill, and no question, answer or document handed to a cloud model. What goes out is the news the system fetches, the web searches it runs (see [Everything local](#everything-local-on-one-machine)) and the Telegram messages it sends back.
 
@@ -20,7 +20,7 @@ PharmaITChat watches the IT and security scene around three pharma customers, th
 [![Splash](https://img.shields.io/badge/Splash-chat_only-EC4899?style=for-the-badge)](#four-interchangeable-stacks)
 [![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-M4_Pro_tested-555555?style=for-the-badge&logo=apple&logoColor=white)](#benchmarks)
 <br/>
-[![Watchlist](https://img.shields.io/badge/watchlist-76_entities-0f766e?style=for-the-badge)](#the-watchlist)
+[![Watchlist](https://img.shields.io/badge/watchlist-114_entities-0f766e?style=for-the-badge)](#the-watchlist)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-vector_store-FF6446?style=for-the-badge)](https://www.trychroma.com)
 [![Neo4j](https://img.shields.io/badge/Neo4j-vendor_intelligence_graph-4581C3?style=for-the-badge&logo=neo4j&logoColor=white)](#the-vendor-intelligence-graph)
 [![SQLite](https://img.shields.io/badge/SQLite-gaps_%C2%B7_watchlist_%C2%B7_exports-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](#the-watchlist)
@@ -117,7 +117,7 @@ Account intelligence never leaves the machine and never enters git: `config/acco
 |---|---|---|
 | 🏠 | **Local 27B LLM** | Qwen3.8 27B (4-bit) for chat, tagging and extraction, Qwen3-Embedding 0.6B (8-bit), 64K context, zero cloud calls |
 | 🔀 | **Four interchangeable stacks** | Ollama ⇄ MLX ⇄ oMLX ⇄ Splash by one script or from the web UI, Telegram-confirmed, with per-stack indexes and automatic rollback |
-| 👁️ | **Entity watchlist** | 76 watched entities (3 customers, 28 peers, 45 IT vendors) across 59 RSS feeds, 49 EDGAR CIKs and 188 entity-less topic queries |
+| 👁️ | **Entity watchlist** | 114 watched entities (60 customers, 9 peers, 45 IT vendors) across 114 RSS feeds, 49 EDGAR CIKs and 188 entity-less topic queries |
 | 🌙 | **Unattended nightly run** | 02:30: fetch, dedupe *before* the model, tag by entity and IT domain, store in SQLite and ChromaDB, rebuild the vendor graph, alert only on failure |
 | 🕸️ | **Vendor-intelligence graph** | Neo4j graph of vendors, segments, products, accounts, needs and evidence, rebuilt deterministically from five sources in one transaction, on any stack |
 | 🎯 | **Incumbency-first answers** | `competitive_position` resolves who holds each account segment first: defend, displace, greenfield or unknown, never guessed |
@@ -605,18 +605,104 @@ The question set has 23 questions: 11 vendor, 5 threat, 2 regulation, 2 pharma, 
 
 ## The watchlist
 
-Most news tooling watches *topics*. PharmaITChat watches **named entities**: three pharma customers, the peer sets they are measured against, and the IT and security vendors that sell into them. Every item is attributed to the entities it is about and the IT domains it touches, so "what has Novartis done in cloud this month" is a query over structured tags, not a keyword search. Since the vendor graph reads the same store, every tagged item about a graph vendor or account also becomes graph evidence after the next rebuild.
+Most news tooling watches *topics*. PharmaITChat watches **named entities**: the top 60 pharma and medtech customers, the remaining peers they are measured against, and the IT and security vendors that sell into them. Every item is attributed to the entities it is about and the IT domains it touches, so "what has Novartis done in cloud this month" is a query over structured tags, not a keyword search. Since the vendor graph reads the same store, every tagged item about a graph vendor or account also becomes graph evidence after the next rebuild.
 
 | | Count | Who |
 |---|---:|---|
-| **Customers** | 3 | Roche, Novartis, Sandoz |
-| **Peers** | 28 | The competitive sets each customer is measured against |
+| **Customers** | 60 | The top 60 pharma, medtech and life-science companies, each with a headquarters theater and a size rank (table below) |
+| **Peers** | 9 | Generics makers still measured against: Dr. Reddy's, Hikma, Stada, Zentiva, Celltrion, Samsung Bioepis, Biocon, Amneal, Aurobindo |
 | **IT vendors** | 45 | Grouped by the domain they sell into; networking and end-user computing added 2026-09-30 (Arista, HP Inc., Omnissa, Citrix, plus Nutanix) |
-| **Total watched entities** | **76** | |
-| **Verified RSS/Atom feeds** | 59 | Including 21 Google News search feeds where a company publishes none |
+| **Total watched entities** | **114** | |
+| **RSS/Atom feeds** | 114 | Every customer has a Google News IT query (digital transformation, AI, CIO, data center, cloud, SAP, IT infrastructure, last 30 days), plus company feeds where they exist |
 | **EDGAR CIKs** | 49 | SEC filings, rate-limited to one shared 10 req/s gate |
 | **IR pages** | 29 | Configured and researched, collection disabled at run level (see below) |
 | **Entity-less topic queries** | 188 | Google News queries covering the same ground with no named subject |
+
+
+### Customers by theater and size
+
+The 60 customers carry `theater` (headquarters: Americas, EMEA, APAC) and `size: {rank, year, basis}` in `config/watchlist.yaml`. Ranks are approximate, from the latest full fiscal year (FY2024 healthcare revenue; conglomerates on their healthcare business), and change every year: update the ranks and the `year` together. The parser refuses an unknown theater, a malformed size or two customers sharing a rank.
+
+```bash
+npm run watchlist -- status      # prints "Customers by theater (size rank, 2025)" before the per-entity counts
+```
+
+**Americas (26)**
+
+| Rank | Customer | Watchlist id |
+|---:|---|---|
+| 1 | Johnson & Johnson | `jnj` |
+| 3 | Merck & Co | `msd` |
+| 4 | Pfizer | `pfizer` |
+| 5 | AbbVie | `abbvie` |
+| 8 | Bristol Myers Squibb | `bms` |
+| 9 | Eli Lilly | `lilly` |
+| 11 | Thermo Fisher Scientific | `thermo-fisher` |
+| 12 | Abbott | `abbott` |
+| 15 | Amgen | `amgen` |
+| 19 | Gilead Sciences | `gilead` |
+| 22 | Danaher | `danaher` |
+| 24 | Stryker | `stryker` |
+| 26 | Becton Dickinson | `bd` |
+| 27 | GE HealthCare | `ge-healthcare` |
+| 29 | Boston Scientific | `boston-scientific` |
+| 33 | Viatris | `viatris` |
+| 34 | Regeneron | `regeneron` |
+| 37 | Vertex Pharmaceuticals | `vertex` |
+| 38 | Baxter | `baxter` |
+| 42 | Biogen | `biogen` |
+| 44 | Intuitive Surgical | `intuitive-surgical` |
+| 46 | Zimmer Biomet | `zimmer-biomet` |
+| 50 | Organon | `organon` |
+| 54 | Edwards Lifesciences | `edwards` |
+| 57 | ResMed | `resmed` |
+| 58 | Hologic | `hologic` |
+
+**EMEA (23)**
+
+| Rank | Customer | Watchlist id |
+|---:|---|---|
+| 2 | Roche | `roche` |
+| 6 | AstraZeneca | `astrazeneca` |
+| 7 | Novartis | `novartis` |
+| 10 | Sanofi | `sanofi` |
+| 13 | Novo Nordisk | `novo-nordisk` |
+| 14 | GSK | `gsk` |
+| 16 | Medtronic | `medtronic` |
+| 18 | Boehringer Ingelheim | `boehringer-ingelheim` |
+| 20 | Bayer | `bayer` |
+| 21 | Siemens Healthineers | `siemens-healthineers` |
+| 23 | Merck KGaA | `merck-kgaa` |
+| 25 | Fresenius Medical Care | `fresenius-medical-care` |
+| 28 | Philips | `philips` |
+| 30 | Teva | `teva` |
+| 39 | Sandoz | `sandoz` |
+| 40 | B. Braun | `b-braun` |
+| 41 | Alcon | `alcon` |
+| 43 | Fresenius Kabi | `fresenius-kabi` |
+| 45 | Grifols | `grifols` |
+| 47 | UCB | `ucb` |
+| 49 | Servier | `servier` |
+| 53 | Smith & Nephew | `smith-nephew` |
+| 59 | Ipsen | `ipsen` |
+
+**APAC (11)**
+
+| Rank | Customer | Watchlist id |
+|---:|---|---|
+| 17 | Takeda | `takeda` |
+| 31 | CSL | `csl` |
+| 32 | Otsuka | `otsuka` |
+| 35 | Astellas | `astellas` |
+| 36 | Daiichi Sankyo | `daiichi-sankyo` |
+| 48 | Terumo | `terumo` |
+| 51 | Sun Pharma | `sun-pharma` |
+| 52 | Olympus | `olympus` |
+| 55 | Eisai | `eisai` |
+| 56 | Mindray | `mindray` |
+| 60 | Jiangsu Hengrui | `jiangsu-hengrui` |
+
+Each customer also has an entry in `config/accounts.local.yaml` (needs and incumbents to fill in; until then every segment reads `unknown`). On 2026-10-03 the new IT queries for Hologic, B. Braun, UCB, Ipsen, Terumo, Olympus and Mindray returned no items in their 30-day window; the queries are valid and fill in as news appears.
 
 Twelve IT domains carry the tagging vocabulary: `cyber`, `ai`, `cloud`, `infrastructure`, `rnd_it`, `mfg_it`, `sap`, `data`, `storage`, `backup`, and since 2026-09-30 `networking` and `euc` (end-user computing), split out of `infrastructure` so each line you sell shows up on its own. Items stored before then keep their old tags. Measured before shipping (50 stored items re-tagged with the old and new prompt on Splash): 6 of 20 infrastructure items moved to `networking` or `euc` (PCs, network articles), none of 10 untagged items picked up a new tag, and the other ten domains agreed on 445 of 450 item-domain pairs. The vocabulary is **closed**: an entity id or domain the model invents rather than picks is dropped at the tagger boundary and again at the storage boundary, never stored.
 
@@ -2361,7 +2447,7 @@ What the graph work is tested for, all with fakes (no Neo4j, no sqlite file, no 
 
 <div align="center">
 
-**One machine. 76 entities watched every night. One graph rebuilt from them. Zero cloud model calls.**
+**One machine. 114 entities watched every night. One graph rebuilt from them. Zero cloud model calls.**
 
 Built by [@sebdallais-git](https://github.com/sebdallais-git).
 

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 PharmaITChat (renamed from PharmaLLM): local-first pharma IT intelligence. A nightly watchlist
-collects news on 76 entities, dedupes it, tags it with a local 27B model and stores it; a web
+collects news on 114 entities (the top 60 pharma / medtech customers with headquarters theater and size rank, 9 peers, 45 vendors), dedupes it, tags it with a local 27B model and stores it; a web
 chat, an HTTP API, an MCP server and a Telegram agent (Hermes) answer questions over it.
 **Every model call is local** — no cloud LLM, no API keys for inference.
 

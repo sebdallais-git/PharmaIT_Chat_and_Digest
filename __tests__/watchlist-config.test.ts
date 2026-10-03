@@ -268,3 +268,61 @@ describe("loadWatchlist", () => {
     }
   });
 });
+
+describe("customers — theater and size", () => {
+  const customer = (extra: Record<string, unknown>) => ({ customers: { roche: { name: "Roche", ...extra } } });
+
+  it("reads a customer's theater and size", () => {
+    const list = parseWatchlist(customer({ theater: "EMEA", size: { rank: 2, year: 2025, basis: "FY2024 healthcare revenue" } }));
+    const roche = list.entities.get("roche");
+    expect(roche?.theater).toBe("EMEA");
+    expect(roche?.size).toEqual({ rank: 2, year: 2025, basis: "FY2024 healthcare revenue" });
+  });
+
+  it("leaves both absent when not given", () => {
+    const roche = parseWatchlist(customer({})).entities.get("roche");
+    expect(roche?.theater).toBeUndefined();
+    expect(roche?.size).toBeUndefined();
+  });
+
+  it("refuses an unknown theater and a malformed size", () => {
+    expect(() => parseWatchlist(customer({ theater: "Europe" }))).toThrow('customer "roche" theater must be one of Americas, EMEA, APAC');
+    expect(() => parseWatchlist(customer({ size: { rank: 0, year: 2025, basis: "x" } }))).toThrow(
+      'customer "roche" size must be {rank: positive integer, year: YYYY, basis: text}',
+    );
+    expect(() => parseWatchlist(customer({ size: { rank: 2, year: "last", basis: "x" } }))).toThrow(
+      'customer "roche" size must be {rank: positive integer, year: YYYY, basis: text}',
+    );
+  });
+
+  it("refuses two customers with the same size rank", () => {
+    expect(() =>
+      parseWatchlist({
+        customers: {
+          roche: { name: "Roche", size: { rank: 2, year: 2025, basis: "x" } },
+          novartis: { name: "Novartis", size: { rank: 2, year: 2025, basis: "x" } },
+        },
+      }),
+    ).toThrow('customers "roche" and "novartis" share size rank 2');
+  });
+});
+
+describe("config/watchlist.yaml — the top 60", () => {
+  const customers = [...loadWatchlist().entities.values()].filter((e) => e.kind === "customer");
+
+  it("tracks 60 customers, each with a theater and a size rank", () => {
+    expect(customers).toHaveLength(60);
+    expect(customers.every((c) => c.theater !== undefined && c.size !== undefined)).toBe(true);
+  });
+
+  it("splits them 26 / 23 / 11 across Americas, EMEA and APAC, ranked 1 to 60 once each", () => {
+    const by = (t: string) => customers.filter((c) => c.theater === t).length;
+    expect([by("Americas"), by("EMEA"), by("APAC")]).toEqual([26, 23, 11]);
+    expect(customers.map((c) => c.size?.rank).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(Array.from({ length: 60 }, (_, i) => i + 1));
+  });
+
+  it("gives every customer an IT-news query", () => {
+    const missing = customers.filter((c) => !c.feeds.some((f) => f.kind === "rss" && (f.url ?? "").includes("news.google.com") && (f.url ?? "").includes("IT+infrastructure")));
+    expect(missing.map((c) => c.id)).toEqual([]);
+  });
+});

@@ -72,6 +72,8 @@ customers:
       - novo-nordisk
       - gilead
       - bayer
+    theater: EMEA
+    size: { rank: 2, year: 2025, basis: FY2024 healthcare revenue }
   novartis:
     name: Novartis
     feeds:
@@ -101,6 +103,8 @@ customers:
       - novo-nordisk
       - gilead
       - bayer
+    theater: EMEA
+    size: { rank: 7, year: 2025, basis: FY2024 healthcare revenue }
   sandoz:
     name: Sandoz
     feeds:
@@ -133,68 +137,94 @@ customers:
       - organon
       - amneal
       - aurobindo
-peers:
-  pfizer:
-    feeds:
-      edgar: "0000078003"
-      ir_page: "https://investors.pfizer.com/Investors/Financials/Quarterly-Results/default.aspx"
-    # no rss: investors.pfizer.com/rss/pressrelease.aspx and /rss/news-releases.xml --
-    # HTTP 403 (Cloudflare bot-wall), still blocked after the R9 UA change; pfizer.com/news/rss
-    # and /rss/press-releases -- HTTP 404; pfizer.com/rss.xml is an unrelated "Breakthrough
-    # Growth Initiative" portfolio feed, not press releases.
-    verifiedAt: "2026-09-20"
-  astrazeneca:
-    feeds:
-      edgar: "0000901832"
-      ir_page: "https://www.astrazeneca.com/investor-relations/results-and-presentations.html"
-    # no rss: 7 candidates tried on astrazeneca.com -- all HTTP 403 to the old UA;
-    # re-checked under the new UA (R9): now HTTP 200 but every path just serves the
-    # site's SPA shell, not a feed ("response is not an RSS or Atom feed").
-    verifiedAt: "2026-09-20"
-  msd:
-    feeds:
-      edgar: "0000310158"
-      ir_page: "https://www.msd.com/investor-relations/"
-    # no rss: merck.com is blocked with HTTP 403 domain-wide, still blocked after the R9 UA
-    # change; msd.com/feed/ is HTTP 404; msd.com/media/news/feed/ returns HTTP 200 but 0
-    # items. edgar CIK is filed under the SEC registrant name "Merck & Co., Inc."; MSD is
-    # the trading name outside US/Canada.
-    verifiedAt: "2026-09-20"
+    theater: EMEA
+    size: { rank: 39, year: 2025, basis: FY2024 healthcare revenue }
   jnj:
+    name: Johnson & Johnson
+    aliases:
+      - J&J
+      - Janssen
+      - J&J MedTech
     feeds:
-      rss: ["https://www.jnj.com/rss-feed/all"]
+      rss:
+        - https://www.jnj.com/rss-feed/all
+        - https://news.google.com/rss/search?q=%22Johnson+%26+Johnson%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
       edgar: "0000200406"
       ir_page: "https://www.investor.jnj.com/financials/quarterly-results/default.aspx"
     # media-releases feed, 25 items; ir_page only verifies over HTTP/1.1 (investor.jnj.com
     # resets/403s a plain curl over HTTP/2, not this project's fetch).
     verifiedAt: "2026-09-20"
-  abbvie:
+    theater: Americas
+    size: { rank: 1, year: 2025, basis: FY2024 healthcare revenue }
+  msd:
+    name: Merck & Co
+    aliases:
+      - MSD
+      - Merck Sharp & Dohme
     feeds:
-      rss: ["https://news.abbvie.com/index.php?s=2429&pagetemplate=rss"]
+      edgar: "0000310158"
+      ir_page: "https://www.msd.com/investor-relations/"
+      rss:
+        - https://news.google.com/rss/search?q=(%22Merck+%26+Co%22+OR+MSD)+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: merck.com is blocked with HTTP 403 domain-wide, still blocked after the R9 UA
+    # change; msd.com/feed/ is HTTP 404; msd.com/media/news/feed/ returns HTTP 200 but 0
+    # items. edgar CIK is filed under the SEC registrant name "Merck & Co., Inc."; MSD is
+    # the trading name outside US/Canada.
+    verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 3, year: 2025, basis: FY2024 healthcare revenue }
+  pfizer:
+    name: Pfizer
+    feeds:
+      edgar: "0000078003"
+      ir_page: "https://investors.pfizer.com/Investors/Financials/Quarterly-Results/default.aspx"
+      rss:
+        - https://news.google.com/rss/search?q=Pfizer+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: investors.pfizer.com/rss/pressrelease.aspx and /rss/news-releases.xml --
+    # HTTP 403 (Cloudflare bot-wall), still blocked after the R9 UA change; pfizer.com/news/rss
+    # and /rss/press-releases -- HTTP 404; pfizer.com/rss.xml is an unrelated "Breakthrough
+    # Growth Initiative" portfolio feed, not press releases.
+    verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 4, year: 2025, basis: FY2024 healthcare revenue }
+  abbvie:
+    name: AbbVie
+    feeds:
+      rss:
+        - https://news.abbvie.com/index.php?s=2429&pagetemplate=rss
+        - https://news.google.com/rss/search?q=AbbVie+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
       edgar: "0001551152"
       ir_page: "https://investors.abbvie.com/financial-reports"
     # corporate newsroom feed, preferred over investors.abbvie.com/rss/news-releases.xml
     # (also verifies, but older).
     verifiedAt: "2026-09-20"
-  sanofi:
+    theater: Americas
+    size: { rank: 5, year: 2025, basis: FY2024 healthcare revenue }
+  bms:
+    name: Bristol Myers Squibb
+    aliases:
+      - BMS
+      - Bristol-Myers Squibb
     feeds:
-      rss: ["https://www.news.sanofi.us/press-releases?pagetemplate=rss&category=730"]
-      edgar: "0001121404"
-      ir_page: "https://www.sanofi.com/en/investors/financial-results-and-events/financial-results"
-    # no global corporate feed found: sanofi.com/en/media-room/press-releases has no feed
-    # link, en/rss* all 404. Recorded instead is Sanofi's US media room "Corporate News"
-    # category feed -- second-choice coverage, not the global newsroom.
+      edgar: "0000014272"
+      ir_page: "https://www.bms.com/investors/financial-reporting/quarterly-results.html"
+      rss:
+        - https://news.google.com/rss/search?q=%22Bristol+Myers+Squibb%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: news.bms.com sits behind a Cloudflare JS challenge (HTTP 403 on both
+    # rss.xml and the ?rss=1 query variant, still blocked after the R9 UA change);
+    # bms.com/rss/press-releases.xml and news.bms.com/index.rss / /rss.xml -- HTTP 404.
     verifiedAt: "2026-09-20"
-  gsk:
-    feeds:
-      rss: ["https://www.gsk.com/en-gb/media/rss/"]
-      edgar: "0001131399"
-      ir_page: "https://www.gsk.com/en-gb/investors/quarterly-results/"
-    verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 8, year: 2025, basis: FY2024 healthcare revenue }
   lilly:
+    name: Eli Lilly
+    aliases:
+      - Lilly
     feeds:
       edgar: "0000059478"
       ir_page: "https://investor.lilly.com/financial-information/quarterly-results"
+      rss:
+        - https://news.google.com/rss/search?q=%22Eli+Lilly%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
     # no rss: investor.lilly.com/rss/news-releases.xml (IR news-releases feed, gcs-web
     # platform; no separate newsroom feed found on lilly.com itself) verified during
     # research but failed live verification here -- verify-feeds timed out on it 3/3
@@ -202,18 +232,35 @@ peers:
     # 8s even for a plain page fetch, so this looks like an egress/network issue in
     # this environment rather than a dead feed. Dropped rather than left unverified.
     verifiedAt: "2026-09-20"
-  bms:
+    theater: Americas
+    size: { rank: 9, year: 2025, basis: FY2024 healthcare revenue }
+  thermo-fisher:
+    name: Thermo Fisher Scientific
+    aliases:
+      - Thermo Fisher
+    theater: Americas
+    size: { rank: 11, year: 2025, basis: FY2024 healthcare revenue }
     feeds:
-      edgar: "0000014272"
-      ir_page: "https://www.bms.com/investors/financial-reporting/quarterly-results.html"
-    # no rss: news.bms.com sits behind a Cloudflare JS challenge (HTTP 403 on both
-    # rss.xml and the ?rss=1 query variant, still blocked after the R9 UA change);
-    # bms.com/rss/press-releases.xml and news.bms.com/index.rss / /rss.xml -- HTTP 404.
-    verifiedAt: "2026-09-20"
+      rss:
+        - https://news.google.com/rss/search?q=%22Thermo+Fisher+Scientific%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  abbott:
+    name: Abbott
+    aliases:
+      - Abbott Laboratories
+    theater: Americas
+    size: { rank: 12, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Abbott+Laboratories%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
   amgen:
+    name: Amgen
     feeds:
       edgar: "0000318154"
       ir_page: "https://investors.amgen.com/financials/quarterly-earnings/"
+      rss:
+        - https://news.google.com/rss/search?q=Amgen+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
     # no rss: investors.amgen.com/rss/news-releases.xml (IR news-releases feed, gcs-web
     # platform) verified during research but failed live verification here --
     # verify-feeds timed out on it 3/3 tries (20s each); investors.amgen.com is
@@ -221,32 +268,245 @@ peers:
     # looks like an egress/network issue in this environment rather than a dead feed.
     # Dropped rather than left unverified.
     verifiedAt: "2026-09-20"
-  takeda:
-    feeds:
-      edgar: "0001395064"
-      ir_page: "https://www.takeda.com/investors/financial-results/quarterly-results/"
-    # no rss: 8 candidates tried on takeda.com -- all HTTP 404; press-releases page
-    # (Next.js) has no feed link, only hreflang alternates.
-    verifiedAt: "2026-09-20"
-  novo-nordisk:
-    feeds:
-      edgar: "0000353278"
-      ir_page: "https://www.novonordisk.com/investors/financial-results.html"
-    # no rss: 6 candidates tried on novonordisk.com -- all HTTP 404; the site offers
-    # only an email alert subscription, no feed.
-    verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 15, year: 2025, basis: FY2024 healthcare revenue }
   gilead:
+    name: Gilead Sciences
+    aliases:
+      - Gilead
     feeds:
       edgar: "0000882095"
       ir_page: "https://investors.gilead.com/financials/quarterly-results/default.aspx"
+      rss:
+        - https://news.google.com/rss/search?q=%22Gilead+Sciences%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
     # no rss: gilead.com/rss, /~/rss/news, /rss/news, /rss.xml, /news/rss.xml -- HTTP
     # 404/redirect; investors.gilead.com/rss/news-releases.xml and /rss-feeds -- HTTP
     # 403/404, still blocked after the R9 UA change.
     verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 19, year: 2025, basis: FY2024 healthcare revenue }
+  danaher:
+    name: Danaher
+    theater: Americas
+    size: { rank: 22, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Danaher+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  stryker:
+    name: Stryker
+    theater: Americas
+    size: { rank: 24, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Stryker+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  bd:
+    name: Becton Dickinson
+    aliases:
+      - BD
+      - Becton, Dickinson and Company
+    theater: Americas
+    size: { rank: 26, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Becton+Dickinson%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  ge-healthcare:
+    name: GE HealthCare
+    aliases:
+      - GE Healthcare
+    theater: Americas
+    size: { rank: 27, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22GE+HealthCare%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  boston-scientific:
+    name: Boston Scientific
+    theater: Americas
+    size: { rank: 29, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Boston+Scientific%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  viatris:
+    name: Viatris
+    feeds:
+      rss:
+        - https://newsroom.viatris.com/press-releases?pagetemplate=rss
+        - https://news.google.com/rss/search?q=Viatris+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+      edgar: "0001792044"
+    # no ir_page: investor.viatris.com and its gcs-web mirror return HTTP 403 (Akamai
+    # bot-wall); still times out under the new UA (R9), so the ir_page gap remains.
+    verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 33, year: 2025, basis: FY2024 healthcare revenue }
+  regeneron:
+    name: Regeneron
+    theater: Americas
+    size: { rank: 34, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Regeneron+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  vertex:
+    name: Vertex Pharmaceuticals
+    aliases:
+      - Vertex
+    theater: Americas
+    size: { rank: 37, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Vertex+Pharmaceuticals%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  baxter:
+    name: Baxter
+    aliases:
+      - Baxter International
+    theater: Americas
+    size: { rank: 38, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Baxter+International%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  biogen:
+    name: Biogen
+    theater: Americas
+    size: { rank: 42, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Biogen+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  intuitive-surgical:
+    name: Intuitive Surgical
+    aliases:
+      - Intuitive
+    theater: Americas
+    size: { rank: 44, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Intuitive+Surgical%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  zimmer-biomet:
+    name: Zimmer Biomet
+    theater: Americas
+    size: { rank: 46, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Zimmer+Biomet%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  organon:
+    name: Organon
+    feeds:
+      edgar: "0001821825"
+      ir_page: "https://www.organon.com/investor-relations/financial-information/"
+      rss:
+        - https://news.google.com/rss/search?q=Organon+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: WordPress feeds are disabled site-wide -- /media/press-releases/feed/ and
+    # /?feed=rss2 both HTTP 500 with a WordPress "No feed available" response.
+    verifiedAt: "2026-09-20"
+    theater: Americas
+    size: { rank: 50, year: 2025, basis: FY2024 healthcare revenue }
+  edwards:
+    name: Edwards Lifesciences
+    theater: Americas
+    size: { rank: 54, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Edwards+Lifesciences%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  resmed:
+    name: ResMed
+    theater: Americas
+    size: { rank: 57, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=ResMed+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  hologic:
+    name: Hologic
+    theater: Americas
+    size: { rank: 58, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Hologic+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  astrazeneca:
+    name: AstraZeneca
+    feeds:
+      edgar: "0000901832"
+      ir_page: "https://www.astrazeneca.com/investor-relations/results-and-presentations.html"
+      rss:
+        - https://news.google.com/rss/search?q=AstraZeneca+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: 7 candidates tried on astrazeneca.com -- all HTTP 403 to the old UA;
+    # re-checked under the new UA (R9): now HTTP 200 but every path just serves the
+    # site's SPA shell, not a feed ("response is not an RSS or Atom feed").
+    verifiedAt: "2026-09-20"
+    theater: EMEA
+    size: { rank: 6, year: 2025, basis: FY2024 healthcare revenue }
+  sanofi:
+    name: Sanofi
+    feeds:
+      rss:
+        - https://www.news.sanofi.us/press-releases?pagetemplate=rss&category=730
+        - https://news.google.com/rss/search?q=Sanofi+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+      edgar: "0001121404"
+      ir_page: "https://www.sanofi.com/en/investors/financial-results-and-events/financial-results"
+    # no global corporate feed found: sanofi.com/en/media-room/press-releases has no feed
+    # link, en/rss* all 404. Recorded instead is Sanofi's US media room "Corporate News"
+    # category feed -- second-choice coverage, not the global newsroom.
+    verifiedAt: "2026-09-20"
+    theater: EMEA
+    size: { rank: 10, year: 2025, basis: FY2024 healthcare revenue }
+  novo-nordisk:
+    name: Novo Nordisk
+    feeds:
+      edgar: "0000353278"
+      ir_page: "https://www.novonordisk.com/investors/financial-results.html"
+      rss:
+        - https://news.google.com/rss/search?q=%22Novo+Nordisk%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: 6 candidates tried on novonordisk.com -- all HTTP 404; the site offers
+    # only an email alert subscription, no feed.
+    verifiedAt: "2026-09-20"
+    theater: EMEA
+    size: { rank: 13, year: 2025, basis: FY2024 healthcare revenue }
+  gsk:
+    name: GSK
+    aliases:
+      - GlaxoSmithKline
+    feeds:
+      rss:
+        - https://www.gsk.com/en-gb/media/rss/
+        - https://news.google.com/rss/search?q=GSK+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+      edgar: "0001131399"
+      ir_page: "https://www.gsk.com/en-gb/investors/quarterly-results/"
+    verifiedAt: "2026-09-20"
+    theater: EMEA
+    size: { rank: 14, year: 2025, basis: FY2024 healthcare revenue }
+  medtronic:
+    name: Medtronic
+    theater: EMEA
+    size: { rank: 16, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Medtronic+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  boehringer-ingelheim:
+    name: Boehringer Ingelheim
+    aliases:
+      - Boehringer
+    theater: EMEA
+    size: { rank: 18, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Boehringer+Ingelheim%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
   bayer:
+    name: Bayer
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=Bayer+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=Bayer+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://www.bayer.com/en/investors/financial-reports"
     # no rss: bayer.com/en/rss and every /en/rss/* path (rss-mediacenter, rss.xml,
     # rss-corporate-news, press-releases) -- HTTP 403, still blocked after the R9 UA
@@ -254,25 +514,236 @@ peers:
     # no edgar: Bayer AG's only SEC filings (CIK 0001144145) are insider Forms 3/4/13G,
     # never a 10-K/20-F/6-K -- not a current periodic-report filer.
     verifiedAt: "2026-09-20"
-  teva:
+    theater: EMEA
+    size: { rank: 20, year: 2025, basis: FY2024 healthcare revenue }
+  siemens-healthineers:
+    name: Siemens Healthineers
+    theater: EMEA
+    size: { rank: 21, year: 2025, basis: FY2024 healthcare revenue }
     feeds:
-      rss: ["https://ir.tevapharm.com/rss/pressrelease.aspx"]
+      rss:
+        - https://news.google.com/rss/search?q=%22Siemens+Healthineers%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  merck-kgaa:
+    name: Merck KGaA
+    aliases:
+      - EMD Serono
+      - MilliporeSigma
+      - Merck Group
+    theater: EMEA
+    size: { rank: 23, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Merck+KGaA%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  fresenius-medical-care:
+    name: Fresenius Medical Care
+    theater: EMEA
+    size: { rank: 25, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Fresenius+Medical+Care%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  philips:
+    name: Philips
+    aliases:
+      - Royal Philips
+      - Philips Healthcare
+    theater: EMEA
+    size: { rank: 28, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Philips+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  teva:
+    name: Teva
+    aliases:
+      - Teva Pharmaceutical
+    feeds:
+      rss:
+        - https://ir.tevapharm.com/rss/pressrelease.aspx
+        - https://news.google.com/rss/search?q=Teva+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
       edgar: "0000818686"
       ir_page: "https://ir.tevapharm.com/news-and-events/press-releases/default.aspx"
     verifiedAt: "2026-09-20"
-  viatris:
+    theater: EMEA
+    size: { rank: 30, year: 2025, basis: FY2024 healthcare revenue }
+  b-braun:
+    name: B. Braun
+    theater: EMEA
+    size: { rank: 40, year: 2025, basis: FY2024 healthcare revenue }
     feeds:
-      rss: ["https://newsroom.viatris.com/press-releases?pagetemplate=rss"]
-      edgar: "0001792044"
-    # no ir_page: investor.viatris.com and its gcs-web mirror return HTTP 403 (Akamai
-    # bot-wall); still times out under the new UA (R9), so the ir_page gap remains.
+      rss:
+        - https://news.google.com/rss/search?q=%22B.+Braun%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  alcon:
+    name: Alcon
+    theater: EMEA
+    size: { rank: 41, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Alcon+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  fresenius-kabi:
+    name: Fresenius Kabi
+    feeds:
+      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
+      rss: [ "https://news.google.com/rss/search?q=%22Fresenius+Kabi%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
+      ir_page: "https://www.fresenius.com/financial-results"
+    # no rss: Fresenius Kabi (a division of Fresenius SE) has no newsroom feed of its
+    # own (fresenius-kabi.com/news-room/rss and /rss both HTTP 404); ir_page above is
+    # the PARENT Fresenius SE Group's page, not Kabi-specific.
+    # no edgar: Fresenius Kabi is not itself an SEC filer; the parent's CIK belongs to a
+    # distinct legal entity and must not be attributed here.
     verifiedAt: "2026-09-20"
-  sun-pharma:
+    theater: EMEA
+    size: { rank: 43, year: 2025, basis: FY2024 healthcare revenue }
+  grifols:
+    name: Grifols
+    theater: EMEA
+    size: { rank: 45, year: 2025, basis: FY2024 healthcare revenue }
     feeds:
-      rss: ["https://sunpharma.com/feed/"]
+      rss:
+        - https://news.google.com/rss/search?q=Grifols+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  ucb:
+    name: UCB
+    theater: EMEA
+    size: { rank: 47, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22UCB+Pharma%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  servier:
+    name: Servier
+    theater: EMEA
+    size: { rank: 49, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Servier+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  smith-nephew:
+    name: Smith & Nephew
+    theater: EMEA
+    size: { rank: 53, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Smith+%26+Nephew%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  ipsen:
+    name: Ipsen
+    theater: EMEA
+    size: { rank: 59, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Ipsen+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  takeda:
+    name: Takeda
+    feeds:
+      edgar: "0001395064"
+      ir_page: "https://www.takeda.com/investors/financial-results/quarterly-results/"
+      rss:
+        - https://news.google.com/rss/search?q=Takeda+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    # no rss: 8 candidates tried on takeda.com -- all HTTP 404; press-releases page
+    # (Next.js) has no feed link, only hreflang alternates.
+    verifiedAt: "2026-09-20"
+    theater: APAC
+    size: { rank: 17, year: 2025, basis: FY2024 healthcare revenue }
+  csl:
+    name: CSL
+    aliases:
+      - CSL Behring
+      - CSL Seqirus
+    theater: APAC
+    size: { rank: 31, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=(%22CSL+Behring%22+OR+%22CSL+Limited%22)+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  otsuka:
+    name: Otsuka
+    aliases:
+      - Otsuka Pharmaceutical
+    theater: APAC
+    size: { rank: 32, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Otsuka+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  astellas:
+    name: Astellas
+    theater: APAC
+    size: { rank: 35, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Astellas+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  daiichi-sankyo:
+    name: Daiichi Sankyo
+    theater: APAC
+    size: { rank: 36, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Daiichi+Sankyo%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  terumo:
+    name: Terumo
+    theater: APAC
+    size: { rank: 48, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Terumo+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  sun-pharma:
+    name: Sun Pharma
+    aliases:
+      - Sun Pharmaceutical
+    feeds:
+      rss:
+        - https://sunpharma.com/feed/
+        - https://news.google.com/rss/search?q=%22Sun+Pharma%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
       ir_page: "https://sunpharma.com/quarterly-results/"
     # no edgar: not an SEC filer.
     verifiedAt: "2026-09-20"
+    theater: APAC
+    size: { rank: 51, year: 2025, basis: FY2024 healthcare revenue }
+  olympus:
+    name: Olympus
+    theater: APAC
+    size: { rank: 52, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Olympus+Corporation%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  eisai:
+    name: Eisai
+    theater: APAC
+    size: { rank: 55, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Eisai+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  mindray:
+    name: Mindray
+    theater: APAC
+    size: { rank: 56, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=Mindray+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+  jiangsu-hengrui:
+    name: Jiangsu Hengrui
+    aliases:
+      - Hengrui Medicine
+      - Hengrui
+    theater: APAC
+    size: { rank: 60, year: 2025, basis: FY2024 healthcare revenue }
+    feeds:
+      rss:
+        - https://news.google.com/rss/search?q=%22Jiangsu+Hengrui%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en
+    verifiedAt: "2026-10-03"
+peers:
   dr-reddys:
     feeds:
       edgar: "0001135951"
@@ -283,28 +754,17 @@ peers:
   hikma:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=Hikma+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=Hikma+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://www.hikma.com/investors/results-and-presentations/"
     # no rss: hikma.com/news/feed/ and /feed/ -- HTTP 404, no feed link in page source;
     # regulatory announcements go through the LSE Regulatory News Service instead of a
     # self-hosted feed.
     # no edgar: not an SEC filer.
     verifiedAt: "2026-09-20"
-  fresenius-kabi:
-    feeds:
-      # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=%22Fresenius+Kabi%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
-      ir_page: "https://www.fresenius.com/financial-results"
-    # no rss: Fresenius Kabi (a division of Fresenius SE) has no newsroom feed of its
-    # own (fresenius-kabi.com/news-room/rss and /rss both HTTP 404); ir_page above is
-    # the PARENT Fresenius SE Group's page, not Kabi-specific.
-    # no edgar: Fresenius Kabi is not itself an SEC filer; the parent's CIK belongs to a
-    # distinct legal entity and must not be attributed here.
-    verifiedAt: "2026-09-20"
   stada:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=STADA+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=STADA+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://www.stada.com/de/investor-relations/auf-einen-blick"
     # no rss: stada.com/media/newsroom/rss and /rss -- HTTP 404, no feed link tag;
     # still 404 after the R9 UA change.
@@ -315,7 +775,7 @@ peers:
   zentiva:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=Zentiva+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=Zentiva+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
     # no rss: zentiva.com/news/newsroom/rss and /rss -- both HTTP 404, no feed link found.
     # no ir_page: /investors and /investor-relations both 404, no dedicated investor page found.
     # no edgar: not an SEC filer.
@@ -325,7 +785,7 @@ peers:
   celltrion:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=Celltrion+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=Celltrion+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://www.celltrion.com/en-us/investment/notice"
     # no rss: candidates returned HTTP 200 HTML pages, not valid feeds -- the site is an
     # SPA that serves HTML for arbitrary paths.
@@ -334,7 +794,7 @@ peers:
   samsung-bioepis:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=%22Samsung+Bioepis%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=%22Samsung+Bioepis%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://samsungbiologics.com/ir/overview"
     # no rss: samsungbioepis.com/en/newsroom/rss and /rss both failed/404. Samsung Bioepis
     # has been a wholly-owned subsidiary of Samsung Biologics since April 2022 and has no
@@ -344,7 +804,7 @@ peers:
   biocon:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=Biocon+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=Biocon+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://www.biocon.com/investor-relations/financial-information/quarterly-reports/"
     # no rss: biocon.com/feed/ (found via rel=alternate) returns valid RSS under curl, but
     # this project's verifyFeed fails with a TLS chain error (biocon.com doesn't serve its
@@ -355,22 +815,15 @@ peers:
   aurobindo:
     feeds:
       # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-      rss: ["https://news.google.com/rss/search?q=%22Aurobindo+Pharma%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+      rss: [ "https://news.google.com/rss/search?q=%22Aurobindo+Pharma%22+(%22digital+transformation%22+OR+%22artificial+intelligence%22+OR+CIO+OR+%22data+center%22+OR+%22cloud+migration%22+OR+SAP+OR+%22IT+infrastructure%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
       ir_page: "https://www.aurobindo.com/investors/results-reports-presentations/results-announcements"
     # no rss: aurobindo.com/feed/ and /media/press-releases/feed/ -- both HTTP 404; no
     # feed link in page source.
     # no edgar: not an SEC filer.
     verifiedAt: "2026-09-20"
-  organon:
-    feeds:
-      edgar: "0001821825"
-      ir_page: "https://www.organon.com/investor-relations/financial-information/"
-    # no rss: WordPress feeds are disabled site-wide -- /media/press-releases/feed/ and
-    # /?feed=rss2 both HTTP 500 with a WordPress "No feed available" response.
-    verifiedAt: "2026-09-20"
   amneal:
     feeds:
-      rss: ["https://investors.amneal.com/rss/pressrelease.aspx"]
+      rss: [ "https://investors.amneal.com/rss/pressrelease.aspx" ]
       edgar: "0001723128"
       ir_page: "https://investors.amneal.com/news/press-releases/default.aspx"
     verifiedAt: "2026-09-20"
@@ -378,19 +831,19 @@ vendors:
   cloud:
     - aws:
         feeds:
-          rss: ["https://aws.amazon.com/blogs/aws/feed/"]
+          rss: [ "https://aws.amazon.com/blogs/aws/feed/" ]
           edgar: "0001018724"
         # edgar is Amazon.com, Inc.
         verifiedAt: "2026-09-20"
     - microsoft-azure:
         feeds:
-          rss: ["https://azure.microsoft.com/en-us/blog/feed/"]
+          rss: [ "https://azure.microsoft.com/en-us/blog/feed/" ]
           edgar: "0000789019"
         # edgar is Microsoft Corp (also covers microsoft-security)
         verifiedAt: "2026-09-20"
     - google-cloud:
         feeds:
-          rss: ["https://cloudblog.withgoogle.com/rss/"]
+          rss: [ "https://cloudblog.withgoogle.com/rss/" ]
           edgar: "0001652044"
         # edgar is Alphabet Inc.; legacy cloudblog.withgoogle.com host still backs the
         # current blog (cloud.google.com/blog/rss did not verify)
@@ -404,25 +857,25 @@ vendors:
   ai:
     - nvidia:
         feeds:
-          rss: ["https://blogs.nvidia.com/feed/"]
+          rss: [ "https://blogs.nvidia.com/feed/" ]
           edgar: "0001045810"
         verifiedAt: "2026-09-20"
     - openai:
         feeds:
-          rss: ["https://openai.com/news/rss.xml"]
+          rss: [ "https://openai.com/news/rss.xml" ]
         # no edgar: private company
         verifiedAt: "2026-09-20"
     - anthropic:
         feeds:
           # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-          rss: ["https://news.google.com/rss/search?q=Anthropic+(pharma+OR+pharmaceutical+OR+healthcare+OR+%22life+sciences%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+          rss: [ "https://news.google.com/rss/search?q=Anthropic+(pharma+OR+pharmaceutical+OR+healthcare+OR+%22life+sciences%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
         # no rss: anthropic.com/rss.xml and /news/rss.xml -- both HTTP 404; no
         # rel=alternate feed tag found either
         # no edgar: private company
         verifiedAt: "2026-09-20"
     - databricks:
         feeds:
-          rss: ["https://www.databricks.com/feed"]
+          rss: [ "https://www.databricks.com/feed" ]
         # no edgar: private company. Also the data-category vendor id.
         verifiedAt: "2026-09-20"
   infrastructure:
@@ -431,7 +884,7 @@ vendors:
           # Added 2026-09-30: with EDGAR alone the user's own company had no news in
           # the watchlist. Scoped to Dell's infrastructure product lines; the IR feed
           # below still times out from this Mac (retried 2026-09-30).
-          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=%22Dell+Technologies%22+(PowerEdge+OR+PowerStore+OR+PowerScale+OR+PowerProtect+OR+PowerSwitch+OR+%22AI+Factory%22+OR+APEX)+when:30d"]
+          rss: [ "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=%22Dell+Technologies%22+(PowerEdge+OR+PowerStore+OR+PowerScale+OR+PowerProtect+OR+PowerSwitch+OR+%22AI+Factory%22+OR+APEX)+when:30d" ]
           edgar: "0001571996"
         # no rss: dell.com's own newsroom feed is dead
         # (dell.com/api/feeds.svc/rss/newsroom-press-releases geo-redirects to an HTML
@@ -445,19 +898,19 @@ vendors:
         verifiedAt: "2026-09-20"
     - hpe:
         feeds:
-          rss: ["https://developer.hpe.com/rss.xml"]
+          rss: [ "https://developer.hpe.com/rss.xml" ]
           edgar: "0001645590"
         # main newsroom has no discoverable feed; used the HPE Developer engineering
         # blog feed instead
         verifiedAt: "2026-09-20"
     - lenovo:
         feeds:
-          rss: ["https://news.lenovo.com/feed/"]
+          rss: [ "https://news.lenovo.com/feed/" ]
         # no edgar: Lenovo Group Ltd is HKEX-listed, not an SEC full-reporting registrant
         verifiedAt: "2026-09-20"
     - cisco:
         feeds:
-          rss: ["https://blogs.cisco.com/feed"]
+          rss: [ "https://blogs.cisco.com/feed" ]
           edgar: "0000858877"
         verifiedAt: "2026-09-20"
     - supermicro:
@@ -470,7 +923,7 @@ vendors:
     - nutanix:
         name: Nutanix
         feeds:
-          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Nutanix+when:30d"]
+          rss: [ "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Nutanix+when:30d" ]
           edgar: "0001618732"
         # no rss: nutanix.com/blog/feed and /blog/rss.xml 404; the IR feed timed out
         verifiedAt: "2026-09-30"
@@ -483,9 +936,9 @@ vendors:
     # tagged row was orphaned. "Pure Storage" stays an alias for matching.
     - everpure:
         name: Everpure
-        aliases: ["Pure Storage"]
+        aliases: [ "Pure Storage" ]
         feeds:
-          rss: ["https://blog.everpuredata.com/feed/"]
+          rss: [ "https://blog.everpuredata.com/feed/" ]
           edgar: "0001474432"
         # public blog moved to blog.everpuredata.com; legacy blog.purestorage.com/feed/
         # still resolves to the same feed today
@@ -498,7 +951,7 @@ vendors:
         verifiedAt: "2026-09-20"
     - vast-data:
         feeds:
-          rss: ["https://www.vastdata.com/rss/blog.xml"]
+          rss: [ "https://www.vastdata.com/rss/blog.xml" ]
         # no edgar: private company
         verifiedAt: "2026-09-20"
   backup:
@@ -510,12 +963,12 @@ vendors:
         verifiedAt: "2026-09-20"
     - veeam:
         feeds:
-          rss: ["https://www.veeam.com/blog/feed"]
+          rss: [ "https://www.veeam.com/blog/feed" ]
         # no edgar: private company
         verifiedAt: "2026-09-20"
     - cohesity:
         feeds:
-          rss: ["https://www.cohesity.com/feed/"]
+          rss: [ "https://www.cohesity.com/feed/" ]
         # no edgar: private company. Newest item was over a year old at verification
         # time -- low posting cadence, not a dead feed.
         verifiedAt: "2026-09-20"
@@ -528,7 +981,7 @@ vendors:
         verifiedAt: "2026-09-20"
     - dell-powerprotect:
         feeds:
-          rss: ["https://www.dell.com/en-us/blog/feed/"]
+          rss: [ "https://www.dell.com/en-us/blog/feed/" ]
           edgar: "0001571996"
         # no PowerProtect-specific feed exists; using Dell's general blog feed. edgar is
         # the same Dell Technologies Inc. filer as vendor id dell.
@@ -539,34 +992,34 @@ vendors:
   networking:
     - arista:
         name: Arista
-        aliases: ["Arista Networks"]
+        aliases: [ "Arista Networks" ]
         feeds:
-          rss: ["https://blogs.arista.com/blog/rss.xml"]
+          rss: [ "https://blogs.arista.com/blog/rss.xml" ]
           edgar: "0001596532"
         # arista.com's press-release "feed" returns HTML; blogs.arista.com/rss.xml 404s
         verifiedAt: "2026-09-30"
   euc:
     - hp-inc:
         name: HP Inc.
-        aliases: ["HP Inc"]
+        aliases: [ "HP Inc" ]
         feeds:
-          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=%22HP+Inc%22+(PC+OR+laptop+OR+workstation+OR+%22AI+PC%22+OR+Wolf)+when:30d"]
+          rss: [ "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=%22HP+Inc%22+(PC+OR+laptop+OR+workstation+OR+%22AI+PC%22+OR+Wolf)+when:30d" ]
           edgar: "0000047217"
         # no rss: press.hp.com/.../press-releases.rss and hp.com/us-en/newsroom/rss.xml 404.
         # Google News scoped to PCs; plain "HP" would also match HPE and printers
         verifiedAt: "2026-09-30"
     - omnissa:
         name: Omnissa
-        aliases: ["VMware EUC", "Workspace ONE"]
+        aliases: [ "VMware EUC", "Workspace ONE" ]
         feeds:
-          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Omnissa+when:30d"]
+          rss: [ "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Omnissa+when:30d" ]
         # no rss: omnissa.com/feed and /insights/feed 404. No edgar: private (KKR)
         verifiedAt: "2026-09-30"
     - citrix:
         name: Citrix
-        aliases: ["Cloud Software Group"]
+        aliases: [ "Cloud Software Group" ]
         feeds:
-          rss: ["https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Citrix+when:30d"]
+          rss: [ "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=Citrix+when:30d" ]
         # no rss: citrix.com/blogs/feed and cloud.com/blog/feed 404. No edgar: private
         # (Cloud Software Group). Much of its news is NetScaler CVEs, which matter for EUC too
         verifiedAt: "2026-09-30"
@@ -580,52 +1033,52 @@ vendors:
     - databricks # feeds recorded once, under the "ai" group above
     - palantir:
         feeds:
-          rss: ["https://blog.palantir.com/feed"]
+          rss: [ "https://blog.palantir.com/feed" ]
           edgar: "0001321655"
         # blog is Medium-hosted; the standard Medium /feed path works
         verifiedAt: "2026-09-20"
   sap:
     - sap:
         feeds:
-          rss: ["https://news.sap.com/feed/"]
+          rss: [ "https://news.sap.com/feed/" ]
           edgar: "0001000184"
         # edgar is SAP SE (files 20-F)
         verifiedAt: "2026-09-20"
   cyber:
     - crowdstrike:
         feeds:
-          rss: ["https://www.crowdstrike.com/blog/feed/"]
+          rss: [ "https://www.crowdstrike.com/blog/feed/" ]
           edgar: "0001535527"
         # general company/product blog feed, not the threat-intel-only feed
         verifiedAt: "2026-09-20"
     - palo-alto:
         feeds:
-          rss: ["https://www.paloaltonetworks.com/blog/feed/"]
+          rss: [ "https://www.paloaltonetworks.com/blog/feed/" ]
           edgar: "0001327567"
         # general company blog feed; avoided the security-advisory and Unit42
         # threat-research feeds
         verifiedAt: "2026-09-20"
     - microsoft-security:
         feeds:
-          rss: ["https://www.microsoft.com/en-us/security/blog/feed/"]
+          rss: [ "https://www.microsoft.com/en-us/security/blog/feed/" ]
           edgar: "0000789019"
         # dedicated Microsoft Security Blog feed, distinct from the general Azure blog;
         # edgar is the same Microsoft Corp filer as vendor id microsoft-azure
         verifiedAt: "2026-09-20"
     - zscaler:
         feeds:
-          rss: ["https://www.zscaler.com/blogs/feeds"]
+          rss: [ "https://www.zscaler.com/blogs/feeds" ]
           edgar: "0001713683"
         verifiedAt: "2026-09-20"
     - wiz:
         feeds:
-          rss: ["https://www.wiz.io/blog/rss.xml"]
+          rss: [ "https://www.wiz.io/blog/rss.xml" ]
         # no edgar: private company (pending Google acquisition, not yet an SEC registrant)
         verifiedAt: "2026-09-20"
   rnd_it:
     - veeva:
         feeds:
-          rss: ["https://ir.veeva.com/rss/pressrelease.aspx"]
+          rss: [ "https://ir.veeva.com/rss/pressrelease.aspx" ]
           edgar: "0001393052"
         # rss recovered after the R9 UA change (was HTTP 403 to the old UA);
         # www.veeva.com/feed/, /blog/feed/, /news/feed/ and /rss.xml all still fail.
@@ -639,21 +1092,21 @@ vendors:
         verifiedAt: "2026-09-20"
     - benchling:
         feeds:
-          rss: ["https://benchling.engineering/feed"]
+          rss: [ "https://benchling.engineering/feed" ]
         # engineering blog (Medium-hosted); the main marketing blog's Medium feed
         # verified empty. No edgar: private company.
         verifiedAt: "2026-09-20"
     - dotmatics:
         feeds:
           # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-          rss: ["https://news.google.com/rss/search?q=Dotmatics+when:30d&hl=en-US&gl=US&ceid=US:en"]
+          rss: [ "https://news.google.com/rss/search?q=Dotmatics+when:30d&hl=en-US&gl=US&ceid=US:en" ]
         # no rss: dotmatics.com/news/rss.xml, /blog/feed, /feed, /feed.xml, /rss.xml,
         # blog.dotmatics.com/feed -- all failed, no autodiscovery link found
         # no edgar: private company (acquired by Siemens in 2025)
         verifiedAt: "2026-09-20"
     - schrodinger:
         feeds:
-          rss: ["https://ir.schrodinger.com/rss/pressrelease.aspx"]
+          rss: [ "https://ir.schrodinger.com/rss/pressrelease.aspx" ]
           edgar: "0001490978"
         # rss recovered after the R9 UA change (was HTTP 403 to the old UA);
         # ir.schrodinger.com/rss/news-releases.aspx still 403s, and the WordPress
@@ -668,14 +1121,14 @@ vendors:
         verifiedAt: "2026-09-20"
     - certara:
         feeds:
-          rss: ["https://www.certara.com/feed/"]
+          rss: [ "https://www.certara.com/feed/" ]
           edgar: "0001827090"
         # WordPress feed on the main site; the IR site 403s bots
         verifiedAt: "2026-09-20"
   mfg_it:
     - siemens:
         feeds:
-          rss: ["https://blogs.sw.siemens.com/thought-leadership/feed/"]
+          rss: [ "https://blogs.sw.siemens.com/thought-leadership/feed/" ]
         # no edgar: Siemens AG is not an SEC full-reporting registrant (no current ADR
         # listing) -- do not confuse with the unrelated "Siemens Energy AG/ADR" filer
         verifiedAt: "2026-09-20"
@@ -689,7 +1142,7 @@ vendors:
     - koerber:
         feeds:
           # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-          rss: ["https://news.google.com/rss/search?q=(K%C3%B6rber+OR+Koerber)+(pharma+OR+software+OR+MES+OR+%22Werum%22)+when:30d&hl=en-US&gl=US&ceid=US:en"]
+          rss: [ "https://news.google.com/rss/search?q=(K%C3%B6rber+OR+Koerber)+(pharma+OR+software+OR+MES+OR+%22Werum%22)+when:30d&hl=en-US&gl=US&ceid=US:en" ]
         # no rss: koerber-pharma.com/?feed=rss2 responds but isn't a valid feed;
         # koerber-supplychain.com/feed/ -- HTTP 404; koerber.com and
         # koerber-technologies.com also checked with no working feed
@@ -707,7 +1160,7 @@ vendors:
         verifiedAt: "2026-09-20"
     - emerson:
         feeds:
-          rss: ["https://emersonautomationexperts.com/feed/"]
+          rss: [ "https://emersonautomationexperts.com/feed/" ]
           edgar: "0000032604"
         # "Emerson Automation Experts" is Emerson's official engineering/product blog;
         # ir.emerson.com and emerson.com/en-us/news expose no working RSS
@@ -715,7 +1168,7 @@ vendors:
     - tulip:
         feeds:
           # Google News search feed added 2026-09-30 (design spec: every entity gets one)
-          rss: ["https://news.google.com/rss/search?q=%22Tulip+Interfaces%22+when:30d&hl=en-US&gl=US&ceid=US:en"]
+          rss: [ "https://news.google.com/rss/search?q=%22Tulip+Interfaces%22+when:30d&hl=en-US&gl=US&ceid=US:en" ]
         # no rss: tulip.co/blog/feed and /press/feed -- both HTTP 404; site (Craft CMS)
         # has no feed autodiscovery link
         # no edgar: private company
