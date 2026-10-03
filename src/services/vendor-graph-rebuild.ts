@@ -16,6 +16,7 @@ import { evidenceSince, evidenceToGraphFacts, type EvidenceSource, type Evidence
 import { briefToGraphFacts, parseVendorBrief, type GraphFacts } from "./graph-schema.js";
 import { writeGraphFacts, type GraphWriter } from "./graph-writer.js";
 import { checkAgainstAccounts, needEvidenceToGraphFacts, parseNeedEvidence } from "./need-evidence.js";
+import { applyHistory, checkHistoryAgainstAccounts, parseInstallHistory, type HistoryEntry } from "./install-history.js";
 
 export interface RebuildSources {
   root: string;
@@ -40,13 +41,13 @@ function isMissingFile(err: unknown): boolean {
  * file that fails to parse throws. The difference matters for a wipe-and-write
  * rebuild: skipping a broken accounts file would silently delete every account.
  */
-function optionalSource(
+function optionalSource<T>(
   name: string,
   path: string,
   readFile: (path: string) => string,
   lines: string[],
-  toFacts: (text: string) => GraphFacts[],
-): GraphFacts[] {
+  toFacts: (text: string) => T[],
+): T[] {
   let text: string;
   try {
     text = readFile(path);
@@ -95,9 +96,22 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
   );
 
   let accounts: Account[] = [];
+  // Approved install-base changes from news, applied to each account before it
+  // becomes graph facts. Read first: the accounts source below needs them.
+  let historyEntries: HistoryEntry[] = [];
+  let historyLine: string | null = null;
+  const historyFile = optionalSource(
+    "install-history.local.yaml",
+    join(sources.root, "config", "install-history.local.yaml"),
+    readFile,
+    lines,
+    (text) => [parseInstallHistory(text)],
+  )[0];
+  if (historyFile !== undefined) historyEntries = historyFile.entries;
   batch.push(
     ...optionalSource("accounts.local.yaml", join(sources.root, "config", "accounts.local.yaml"), readFile, lines, (text) =>
-      (accounts = parseAccounts(text)).map((account) => {
+      (accounts = parseAccounts(text)).map((parsed) => {
+        const account = applyHistory(parsed, historyEntries);
         const facts = accountToGraphFacts(account);
         lines.push(
           `${`${account.id}.account`.padEnd(28)} ${account.needs.length} needs, ` +
@@ -107,6 +121,21 @@ export function collectVendorGraphFacts(sources: RebuildSources): CollectedFacts
       }),
     ),
   );
+
+  if (historyFile !== undefined) {
+    // Validated against the accounts file, and before the wipe like every source.
+    try {
+      checkHistoryAgainstAccounts(historyFile, accounts);
+    } catch (err) {
+      throw new Error(`install-history.local.yaml: ${(err as Error).message}`);
+    }
+    const count = (s: string) => historyFile.entries.filter((e) => e.status === s).length;
+    const conflicts = accounts.reduce((n, a) => n + applyHistory(a, historyEntries).conflicts!.length, 0);
+    historyLine =
+      `${"install-history.local.yaml".padEnd(28)} -> ${count("approved")} approved, ${count("proposed")} proposed, ` +
+      `${count("rejected")} rejected, ${conflicts} conflicts`;
+    lines.push(historyLine);
+  }
 
   batch.push(
     ...optionalSource(

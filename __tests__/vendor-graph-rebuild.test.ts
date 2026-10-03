@@ -255,3 +255,52 @@ describe("collectVendorGraphFacts — need evidence", () => {
     expect(rec.calls).toBe(0);
   });
 });
+
+describe("collectVendorGraphFacts — install history", () => {
+  const HISTORY = `entries:
+  - id: ih-1
+    status: approved
+    account: roche
+    segment: storage-block
+    vendor: dell
+    change: installed
+    date: 2024-05-02
+    quote: Roche has standardised its block storage on Dell PowerMax arrays.
+    source: https://news.test/a
+    extracted: 2026-10-03
+  - id: ih-2
+    status: approved
+    account: roche
+    segment: storage-block
+    vendor: dell
+    change: removed
+    date: 2026-01-10
+    quote: Roche retired its last Dell PowerMax arrays in January this year.
+    source: https://news.test/b
+    extracted: 2026-10-03
+`;
+
+  it("adds approved history to the accounts' USES edges, stores conflicts and reports the file", () => {
+    const { batch, lines } = collectVendorGraphFacts(files({ ...ALL, "/repo/config/install-history.local.yaml": HISTORY }));
+    const uses = batch.flatMap((f) => f.relationships.filter((r) => r.type === "USES"));
+    expect(uses.map((r) => r.properties)).toContainEqual({ segment: "storage-block", since: "2024-05-02", until: "", source: "declared" });
+    const account = batch.flatMap((f) => f.nodes).find((n) => n.label === "Account");
+    expect(JSON.parse(String(account?.properties.historyConflicts))).toEqual([
+      "approved news says dell left storage-block on 2026-01-10; accounts.local.yaml still lists it as current",
+    ]);
+    expect(lines).toContain("install-history.local.yaml   -> 2 approved, 0 proposed, 0 rejected, 1 conflicts");
+  });
+
+  it("skips and reports a missing file", () => {
+    expect(collectVendorGraphFacts(files(ALL)).lines).toContain("install-history.local.yaml   -> skipped (no such file)");
+  });
+
+  it("fails before the wipe on an approved entry for an unknown account", async () => {
+    const rec = recordingTransaction();
+    const bad = HISTORY.replace("account: roche", "account: acme");
+    await expect(rebuildVendorGraph(files({ ...ALL, "/repo/config/install-history.local.yaml": bad }), rec.tx)).rejects.toThrow(
+      'install-history.local.yaml: ih-1 names unknown account "acme"',
+    );
+    expect(rec.calls).toBe(0);
+  });
+});
