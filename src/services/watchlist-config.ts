@@ -40,10 +40,24 @@ export interface Feed {
   note?: string;
 }
 
+export const THEATERS = ["Americas", "EMEA", "APAC"] as const;
+export type Theater = (typeof THEATERS)[number];
+
+/** A customer's size rank among the tracked companies; ranks change yearly, so the year travels with it. */
+export interface SizeRank {
+  rank: number;
+  year: number;
+  basis: string;
+}
+
 export interface Entity {
   id: string;
   name: string;
   kind: EntityKind;
+  /** Customers only: headquarters theater. */
+  theater?: Theater;
+  /** Customers only: size rank with its year and basis. */
+  size?: SizeRank;
   aliases: string[];
   domains: Domain[];
   peers: string[];
@@ -242,6 +256,7 @@ export function parseWatchlist(raw: unknown): Watchlist {
     errors.push('"customers" must be an object');
   }
   const customerEntries = isRecord(customersRaw) ? Object.entries(customersRaw) : [];
+  const rankHolders = new Map<number, string>();
 
   for (const [id, value] of customerEntries) {
     if (!isRecord(value)) {
@@ -258,7 +273,32 @@ export function parseWatchlist(raw: unknown): Watchlist {
     const peers = parseStringArray(value.peers, `customer "${id}" peers`, errors);
     const feeds = parseFeeds(value.feeds, `customer "${id}"`, errors);
     stampVerifiedAt(feeds, value.verifiedAt, `customer "${id}"`, errors);
-    addEntity(id, { id, name, kind: "customer", aliases, domains: [], peers, feeds }, customerIds);
+    let theater: Theater | undefined;
+    if (value.theater !== undefined) {
+      if (typeof value.theater === "string" && (THEATERS as readonly string[]).includes(value.theater)) theater = value.theater as Theater;
+      else errors.push(`customer "${id}" theater must be one of ${THEATERS.join(", ")}`);
+    }
+    let size: SizeRank | undefined;
+    if (value.size !== undefined) {
+      const s = isRecord(value.size) ? value.size : {};
+      if (
+        typeof s.rank === "number" && Number.isInteger(s.rank) && s.rank > 0 &&
+        typeof s.year === "number" && Number.isInteger(s.year) && s.year >= 1900 &&
+        typeof s.basis === "string" && s.basis.trim() !== ""
+      ) {
+        size = { rank: s.rank, year: s.year, basis: s.basis.trim() };
+        const holder = rankHolders.get(size.rank);
+        if (holder !== undefined) errors.push(`customers "${holder}" and "${id}" share size rank ${size.rank}`);
+        else rankHolders.set(size.rank, id);
+      } else {
+        errors.push(`customer "${id}" size must be {rank: positive integer, year: YYYY, basis: text}`);
+      }
+    }
+    addEntity(
+      id,
+      { id, name, kind: "customer", ...(theater !== undefined ? { theater } : {}), ...(size !== undefined ? { size } : {}), aliases, domains: [], peers, feeds },
+      customerIds,
+    );
   }
 
   // --- vendors ---

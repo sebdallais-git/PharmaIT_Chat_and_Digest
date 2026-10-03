@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Entity, Feed, Watchlist } from "../src/services/watchlist-config.js";
-import { loadWatchlist } from "../src/services/watchlist-config.js";
+import { loadWatchlist, THEATERS } from "../src/services/watchlist-config.js";
 import {
   createFetch,
   DEFAULT_FEED_TIMEOUT_MS,
@@ -450,6 +450,22 @@ export function runStatus(argv: string[], deps: RunStatusDeps): number {
         `failedFeeds=${lastRun.failedFeeds} skippedByCap=${lastRun.skippedByCap} ` +
         `skippedByBudget=${lastRun.skippedByBudget} anomalies=${lastRun.anomalies}`,
     );
+  }
+
+  // Customers by headquarters theater, largest first (size ranks change yearly:
+  // the year printed is the one stored in config/watchlist.yaml).
+  const customers = [...deps.watchlist.entities.values()].filter((e) => e.kind === "customer" && e.theater !== undefined);
+  if (customers.length > 0) {
+    const year = customers.find((c) => c.size !== undefined)?.size?.year;
+    deps.log(`Customers by theater (size rank${year !== undefined ? `, ${year}` : ""}):`);
+    for (const theater of THEATERS) {
+      const inTheater = customers
+        .filter((c) => c.theater === theater)
+        .sort((a, b) => (a.size?.rank ?? Infinity) - (b.size?.rank ?? Infinity));
+      if (inTheater.length === 0) continue;
+      const names = inTheater.map((c) => (c.size !== undefined ? `#${c.size.rank} ${c.name}` : c.name)).join(" · ");
+      deps.log(`  ${theater} (${inTheater.length}): ${names}`);
+    }
   }
 
   const counts = deps.store.countsByEntity(from.toISOString(), to.toISOString());
