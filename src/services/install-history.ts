@@ -5,7 +5,8 @@
 // The accounts file is the truth for now; approved news only adds the past.
 // A contradiction never overrides the file: it becomes a conflict note.
 import { createHash } from "node:crypto";
-import { parse, stringify } from "yaml";
+import { stringify } from "yaml";
+import { appendProposals, proposalsDocument } from "./proposals-file.js";
 import type { Account, Stint } from "./graph-accounts.js";
 import { SEGMENTS, type Segment } from "./graph-schema.js";
 import { normaliseSpace } from "./need-evidence.js";
@@ -50,17 +51,10 @@ export function historyEntryId(account: string, segment: string, vendor: string,
 const text = (v: unknown): string => (typeof v === "string" ? v : v === undefined || v === null ? "" : String(v));
 
 export function parseInstallHistory(yaml: string): InstallHistoryFile {
-  const doc = (parse(yaml) ?? {}) as { sources?: unknown; entries?: unknown };
-  const sources: Record<string, string> = {};
-  if (doc.sources !== null && typeof doc.sources === "object" && !Array.isArray(doc.sources)) {
-    for (const [k, v] of Object.entries(doc.sources as Record<string, unknown>)) sources[k] = text(v);
-  }
-  const seen = new Set<string>();
-  const entries = (Array.isArray(doc.entries) ? doc.entries : []).map((raw): HistoryEntry => {
-    const r = (raw ?? {}) as Record<string, unknown>;
+  // Shape, ids and duplicates: a malformed file fails instead of reading as empty
+  const { sources, entries: raw } = proposalsDocument(yaml);
+  const entries = raw.map((r): HistoryEntry => {
     const id = text(r.id);
-    if (seen.has(id)) throw new Error(`duplicate id ${id}`);
-    seen.add(id);
     const status = text(r.status);
     if (!(STATUSES as readonly string[]).includes(status)) throw new Error(`${id}: status must be proposed, approved or rejected`);
     const change = text(r.change);
@@ -95,6 +89,17 @@ export function renderInstallHistory(file: InstallHistoryFile): string {
 }
 
 /** A run's result folded into the file as it is on disk now: the user's entries win. */
+/**
+ * The run folded into the file's text as it is on disk now: new entries are
+ * appended and sources updated; existing entries, comments and extra fields stay.
+ */
+export function mergeInstallHistoryText(onDisk: string, fromRun: InstallHistoryFile): string {
+  const current = parseInstallHistory(onDisk);
+  const known = new Set(current.entries.map((e) => e.id));
+  const merged = mergeInstallHistory(current, fromRun);
+  return appendProposals(onDisk, HEADER, merged.sources, merged.entries.filter((e) => !known.has(e.id)));
+}
+
 export function mergeInstallHistory(onDisk: InstallHistoryFile, fromRun: InstallHistoryFile): InstallHistoryFile {
   const known = new Set(onDisk.entries.map((e) => e.id));
   return {

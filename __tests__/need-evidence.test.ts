@@ -3,6 +3,7 @@ import type { Account } from "../src/services/graph-accounts.js";
 import {
   checkAgainstAccounts,
   mergeNeedEvidence,
+  mergeNeedEvidenceText,
   entryId,
   needEvidenceToGraphFacts,
   parseNeedEvidence,
@@ -167,5 +168,20 @@ describe("mergeNeedEvidence", () => {
         { "knowledge/a.md": "h1", "knowledge/b.md": "h2" },
       ),
     );
+  });
+});
+
+// Review of #67: every run re-rendered the file and dropped the user's comments
+describe("mergeNeedEvidenceText", () => {
+  it("appends the run's new entries and keeps the user's comments on the existing ones", () => {
+    const onDisk = renderNeedEvidence(file([entry({ id: "ne-000001", status: "approved" })], { "knowledge/a.md": "h1" })).replace(
+      "status: approved",
+      "status: approved # confirmed by the account team",
+    );
+    const out = mergeNeedEvidenceText(onDisk, file([entry({ id: "ne-000001", status: "proposed" }), entry({ id: "ne-000002", status: "proposed" })], { "knowledge/b.md": "h2" }));
+    expect(out).toContain("status: approved # confirmed by the account team");
+    const merged = parseNeedEvidence(out);
+    expect(merged.entries.map((e) => [e.id, e.status])).toEqual([["ne-000001", "approved"], ["ne-000002", "proposed"]]);
+    expect(merged.sources).toEqual({ "knowledge/a.md": "h1", "knowledge/b.md": "h2" });
   });
 });

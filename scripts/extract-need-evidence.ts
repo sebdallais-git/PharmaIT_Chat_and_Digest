@@ -13,9 +13,8 @@ import { parseAccounts } from "../src/services/graph-accounts.js";
 import { getLlmClient } from "../src/services/llm-client.js";
 import {
   NEED_EVIDENCE_FILE,
-  mergeNeedEvidence,
   parseNeedEvidence,
-  renderNeedEvidence,
+  mergeNeedEvidenceText,
   type NeedEvidenceFile,
 } from "../src/services/need-evidence.js";
 import {
@@ -26,10 +25,28 @@ import {
   statusReport,
 } from "../src/services/need-evidence-extract.js";
 
+// A bad file or flag is the user's to fix: one line on stderr, not a stack trace
+function fail(err: unknown): never {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+process.on("uncaughtException", fail);
+process.on("unhandledRejection", fail);
+
 const root = process.cwd();
 const args = parseExtractArgs(process.argv.slice(2));
 const filePath = join(root, NEED_EVIDENCE_FILE);
-const file = existsSync(filePath) ? parseNeedEvidence(readFileSync(filePath, "utf8")) : { sources: {}, entries: [] };
+function readFile(): string {
+  return existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+}
+function parseOnDisk(text: string): NeedEvidenceFile {
+  try {
+    return parseNeedEvidence(text);
+  } catch (err) {
+    throw new Error(`${NEED_EVIDENCE_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+const file = parseOnDisk(readFile());
 
 if (args.status) {
   for (const line of statusReport(file)) console.log(line);
@@ -51,9 +68,11 @@ if (!(await llm.isReachable())) {
 
 // Merge into the file as it is on disk now (the user may approve entries during
 // a run), then replace it atomically so a crash mid-write cannot truncate it.
+// Appends to the text on disk, so the user's comments and extra fields survive.
 function save(fromRun: NeedEvidenceFile): void {
-  const onDisk = existsSync(filePath) ? parseNeedEvidence(readFileSync(filePath, "utf8")) : { sources: {}, entries: [] };
-  writeFileSync(`${filePath}.tmp`, renderNeedEvidence(mergeNeedEvidence(onDisk, fromRun)));
+  const onDisk = readFile();
+  parseOnDisk(onDisk);
+  writeFileSync(`${filePath}.tmp`, mergeNeedEvidenceText(onDisk, fromRun));
   renameSync(`${filePath}.tmp`, filePath);
 }
 

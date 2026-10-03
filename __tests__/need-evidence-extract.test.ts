@@ -237,4 +237,18 @@ describe("documents and arguments", () => {
     expect(parseExtractArgs(["--status"])).toEqual({ dryRun: false, status: true });
     expect(() => parseExtractArgs(["--force"])).toThrow('unknown option "--force"');
   });
+
+  // Review of #67: "--only" with no value ran every document through the 27B, and
+  // a name without "knowledge/" silently matched nothing
+  it("refuses --only without a file and reads a bare file name as under knowledge/", () => {
+    expect(() => parseExtractArgs(["--only"])).toThrow("--only needs a file, e.g. --only knowledge/<file>");
+    expect(() => parseExtractArgs(["--only", "--dry-run"])).toThrow("--only needs a file");
+    expect(parseExtractArgs(["--only", "a.md"]).only).toBe("knowledge/a.md");
+  });
+
+  it("fails when --only names no extractable document", async () => {
+    await expect(runExtraction(empty(), [roche], deps(), { only: "knowledge/missing.md" })).rejects.toThrow(
+      '--only knowledge/missing.md matches no document (excluded, or not in knowledge/)',
+    );
+  });
 });

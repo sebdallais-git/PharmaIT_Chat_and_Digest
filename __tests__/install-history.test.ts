@@ -5,6 +5,7 @@ import {
   checkHistoryAgainstAccounts,
   historyEntryId,
   mergeInstallHistory,
+  mergeInstallHistoryText,
   parseInstallHistory,
   renderInstallHistory,
   type HistoryEntry,
@@ -134,5 +135,15 @@ describe("review fixes — vendors", () => {
       checkHistoryAgainstAccounts(file([entry({ id: "ih-2", change: "replaced", replaced_vendor: "emc" })]), [account({})], known),
     ).toThrow('ih-2 names unknown vendor "emc"');
     expect(() => checkHistoryAgainstAccounts(file([entry({ id: "ih-3" })]), [account({})], known)).not.toThrow();
+  });
+});
+
+// Review of #70: every run re-rendered the file and dropped the user's comments
+describe("mergeInstallHistoryText", () => {
+  it("appends the run's new entries and keeps the user's comments on the existing ones", () => {
+    const onDisk = renderInstallHistory(file([entry({ id: "ih-1" })])).replace("status: approved", "status: approved # seen in the QBR deck");
+    const out = mergeInstallHistoryText(onDisk, file([entry({ id: "ih-1", status: "proposed" }), entry({ id: "ih-2", status: "proposed", date: "2026-04-01" })]));
+    expect(out).toContain("status: approved # seen in the QBR deck");
+    expect(parseInstallHistory(out).entries.map((e) => [e.id, e.status])).toEqual([["ih-1", "approved"], ["ih-2", "proposed"]]);
   });
 });

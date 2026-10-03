@@ -5,7 +5,8 @@
 // by editing `status`; only approved entries reach the graph, through the
 // rebuild. Pure: the callers read and write the file.
 import { createHash } from "node:crypto";
-import { parse, stringify } from "yaml";
+import { stringify } from "yaml";
+import { appendProposals, proposalsDocument } from "./proposals-file.js";
 import type { Account } from "./graph-accounts.js";
 import { NEEDS, type GraphFacts, type GraphNode, type GraphRelationship } from "./graph-schema.js";
 
@@ -51,18 +52,10 @@ function text(value: unknown): string {
 }
 
 export function parseNeedEvidence(yaml: string): NeedEvidenceFile {
-  const doc = (parse(yaml) ?? {}) as { sources?: unknown; entries?: unknown };
-  const sources: Record<string, string> = {};
-  if (doc.sources !== null && typeof doc.sources === "object" && !Array.isArray(doc.sources)) {
-    for (const [path, hash] of Object.entries(doc.sources as Record<string, unknown>)) sources[path] = String(hash);
-  }
-
-  const seen = new Set<string>();
-  const entries = (Array.isArray(doc.entries) ? doc.entries : []).map((raw): NeedEvidenceEntry => {
-    const r = (raw ?? {}) as Record<string, unknown>;
+  // Shape, ids and duplicates: a malformed file fails instead of reading as empty
+  const { sources, entries: raw } = proposalsDocument(yaml);
+  const entries = raw.map((r): NeedEvidenceEntry => {
     const id = text(r.id);
-    if (seen.has(id)) throw new Error(`duplicate id ${id}`);
-    seen.add(id);
     const status = text(r.status);
     if (!(STATUSES as readonly string[]).includes(status)) {
       throw new Error(`${id}: status must be proposed, approved or rejected`);
@@ -108,6 +101,17 @@ export function checkAgainstAccounts(file: NeedEvidenceFile, accounts: Account[]
  * approved entries while the run went on. Their entries win; the run only
  * adds entries whose id is new, and the documents it processed.
  */
+/**
+ * The run folded into the file's text as it is on disk now: new entries are
+ * appended and sources updated; existing entries, comments and extra fields stay.
+ */
+export function mergeNeedEvidenceText(onDisk: string, fromRun: NeedEvidenceFile): string {
+  const current = parseNeedEvidence(onDisk);
+  const known = new Set(current.entries.map((e) => e.id));
+  const merged = mergeNeedEvidence(current, fromRun);
+  return appendProposals(onDisk, HEADER, merged.sources, merged.entries.filter((e) => !known.has(e.id)));
+}
+
 export function mergeNeedEvidence(onDisk: NeedEvidenceFile, fromRun: NeedEvidenceFile): NeedEvidenceFile {
   const known = new Set(onDisk.entries.map((e) => e.id));
   return {

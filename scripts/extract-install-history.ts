@@ -18,9 +18,8 @@ import {
 } from "../src/services/install-history-extract.js";
 import {
   INSTALL_HISTORY_FILE,
-  mergeInstallHistory,
   parseInstallHistory,
-  renderInstallHistory,
+  mergeInstallHistoryText,
   type InstallHistoryFile,
 } from "../src/services/install-history.js";
 import { getLlmClient } from "../src/services/llm-client.js";
@@ -28,11 +27,26 @@ import { listRawDocuments } from "../src/services/raw-documents.js";
 import { loadWatchlist } from "../src/services/watchlist-config.js";
 import { openWatchlistStore } from "../src/services/watchlist-store.js";
 
+// A bad file or flag is the user's to fix: one line on stderr, not a stack trace
+function fail(err: unknown): never {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+process.on("uncaughtException", fail);
+process.on("unhandledRejection", fail);
+
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const filePath = join(root, INSTALL_HISTORY_FILE);
-const read = (): InstallHistoryFile =>
-  existsSync(filePath) ? parseInstallHistory(readFileSync(filePath, "utf8")) : { sources: {}, entries: [] };
+const readText = (): string => (existsSync(filePath) ? readFileSync(filePath, "utf8") : "");
+function parseOnDisk(text: string): InstallHistoryFile {
+  try {
+    return parseInstallHistory(text);
+  } catch (err) {
+    throw new Error(`${INSTALL_HISTORY_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+const read = (): InstallHistoryFile => parseOnDisk(readText());
 
 if (process.argv.includes("--status")) {
   for (const line of historyStatusReport(read())) console.log(line);
@@ -59,7 +73,7 @@ const vendors = historyVendorNames([...graphVendorIds].sort(), [...loadWatchlist
 const items: NewsItem[] = [];
 const dbPath = join(root, "data", "watchlist.db");
 if (existsSync(dbPath)) {
-  const store = openWatchlistStore(dbPath);
+  const store = openWatchlistStore(dbPath, { readonly: true });
   try {
     for (const it of store.itemsInPeriod("0000-01-01T00:00:00.000Z", "9999-12-31T23:59:59.999Z", { entities: accounts.map((a) => a.id) })) {
       items.push({ key: it.urlCanonical, source: it.urlCanonical, date: it.publishedAt.slice(0, 10), text: [it.title, it.summary, it.body].join("\n\n").slice(0, 6000) });
@@ -85,7 +99,10 @@ if (!(await llm.isReachable())) {
 }
 
 function save(fromRun: InstallHistoryFile): void {
-  writeFileSync(`${filePath}.tmp`, renderInstallHistory(mergeInstallHistory(read(), fromRun)));
+  // Appends to the text on disk, so the user's comments and extra fields survive.
+  const onDisk = readText();
+  parseOnDisk(onDisk);
+  writeFileSync(`${filePath}.tmp`, mergeInstallHistoryText(onDisk, fromRun));
   renameSync(`${filePath}.tmp`, filePath);
 }
 

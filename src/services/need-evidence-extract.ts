@@ -151,7 +151,11 @@ export async function runExtraction(
   };
   const known = new Set(result.file.entries.map((e) => e.id));
 
-  for (const doc of deps.documents().filter((d) => options.only === undefined || d === options.only)) {
+  const documents = deps.documents().filter((d) => options.only === undefined || d === options.only);
+  if (options.only !== undefined && documents.length === 0) {
+    throw new Error(`--only ${options.only} matches no document (excluded, or not in knowledge/)`);
+  }
+  for (const doc of documents) {
     let text: string;
     try {
       text = await deps.read(doc);
@@ -248,7 +252,11 @@ export function parseExtractArgs(argv: string[]): ExtractArgs {
   const args: ExtractArgs = { dryRun: false, status: false };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
-    if (flag === "--only") args.only = argv[++i];
+    if (flag === "--only") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) throw new Error("--only needs a file, e.g. --only knowledge/<file>");
+      args.only = value.startsWith("knowledge/") ? value : `knowledge/${value}`;
+    }
     else if (flag === "--dry-run") args.dryRun = true;
     else if (flag === "--status") args.status = true;
     else throw new Error(`unknown option "${flag}"`);
