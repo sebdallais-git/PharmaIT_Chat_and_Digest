@@ -384,10 +384,23 @@ async function runIngestCli(argv: string[]): Promise<void> {
         rebuildVendorGraph({ root: process.cwd(), evidence: storeEvidence(store) }, neo4jWriteTransaction(getDriver())),
     });
   } finally {
-    store.close();
-    // An open driver keeps Node alive: the nightly Hermes job would never exit.
-    await closeNeo4j();
+    // An open driver keeps Node alive: the nightly Hermes job would never exit,
+    // so Neo4j is closed even when closing the store throws.
+    await closeAll([() => store.close(), () => closeNeo4j()]);
   }
+}
+
+/** Runs every closer, even past a failing one, then rethrows the first failure. */
+export async function closeAll(closers: Array<() => unknown>): Promise<void> {
+  let first: unknown = null;
+  for (const close of closers) {
+    try {
+      await close();
+    } catch (err) {
+      first ??= err;
+    }
+  }
+  if (first !== null) throw first;
 }
 
 // ---- `status` -------------------------------------------------------------
