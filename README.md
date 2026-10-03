@@ -819,7 +819,7 @@ The reasoning panel shows each step live ("Searching knowledge graph…", "Compe
 
 ### The knowledge base
 
-`knowledge/` ships **40 curated documents** at its top level (36 Markdown, 2 DOCX, 2 PDF) plus **6 vendor briefs** in `knowledge/vendors/` (Dell and HPE, each in storage-block, storage-file and storage-object), grown by uploads, the n8n research loop and the watchlist's nightly ingest. The embedded corpus is about 439 MB across the per-stack ChromaDB collections; at the last verified rebuild the Ollama index held 7,779 chunks and the MLX index 7,623.
+`knowledge/` ships **40 curated documents** at its top level (36 Markdown, 2 DOCX, 2 PDF) plus **6 vendor briefs** in `knowledge/vendors/` (Dell and HPE, each in storage-block, storage-file and storage-object), grown by uploads, the n8n research loop and the watchlist's nightly ingest. On 2026-10-03 the MLX collection (`knowledge_base_mlx`, shared by MLX, oMLX and Splash) held 11,114 chunks and the Ollama collection 7,372, every one carrying a date (see [Dates on every source](#dates-on-every-source)).
 
 | Area | Examples |
 |---|---|
