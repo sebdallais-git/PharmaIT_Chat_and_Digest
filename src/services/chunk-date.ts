@@ -103,3 +103,41 @@ export function knowledgeContextBlock(items: Array<{ source: string; date: Chunk
     items.map((i) => `${formatSourceLabel(i.source, i.date)}\n${i.text.slice(0, 1500)}`).join("\n\n---\n\n")
   );
 }
+
+export interface DateBackfillPlan {
+  /** Whole metadata per chunk: ChromaDB's update replaces a chunk's metadata, it does not merge. */
+  updates: Array<{ id: string; metadata: Record<string, unknown> }>;
+  counts: Record<DateKind | "alreadyDated" | "unknown", number>;
+  /** Distinct sources no rule could date, for the report. */
+  unknownSources: string[];
+}
+
+/** Dates for chunks stored before dates existed: their own metadata first, then the resolver. */
+export function planDateBackfill(
+  rows: Array<{ id: string; metadata: Record<string, unknown> }>,
+  resolve: (source: string) => ChunkDate | null,
+): DateBackfillPlan {
+  const plan: DateBackfillPlan = {
+    updates: [],
+    counts: { published: 0, retrieved: 0, document: 0, alreadyDated: 0, unknown: 0 },
+    unknownSources: [],
+  };
+  const unknown = new Set<string>();
+  for (const row of rows) {
+    if (day(row.metadata.date) !== null && KINDS.includes(row.metadata.date_kind as DateKind)) {
+      plan.counts.alreadyDated++;
+      continue;
+    }
+    const source = typeof row.metadata.source === "string" ? row.metadata.source : "";
+    const date = chunkDateOf(row.metadata) ?? resolve(source);
+    if (date === null) {
+      plan.counts.unknown++;
+      unknown.add(source);
+      continue;
+    }
+    plan.counts[date.date_kind]++;
+    plan.updates.push({ id: row.id, metadata: { ...row.metadata, ...date } });
+  }
+  plan.unknownSources = [...unknown].sort();
+  return plan;
+}

@@ -5,6 +5,7 @@ import {
   formatSourceLabel,
   knowledgeContextBlock,
   knowledgeFileDate,
+  planDateBackfill,
   rawDocumentDate,
   todayLine,
   watchlistDate,
@@ -93,5 +94,30 @@ describe("knowledgeContextBlock", () => {
     expect(block).toContain("[Source: news-2026-01-17 | 2026-01-17, published]\nRoche Q2 results.");
     expect(block).toContain(`[Source: old.md | date unknown]\n${"x".repeat(1500)}`);
     expect(block).not.toContain("x".repeat(1501));
+  });
+});
+
+describe("planDateBackfill", () => {
+  const resolve = (source: string) =>
+    source === "pharma-basics.md" ? ({ date: "2026-03-10", date_kind: "document" } as const) : null;
+
+  it("dates what it can, keeps stamped chunks, sends the whole metadata, and lists the unknown", () => {
+    const plan = planDateBackfill(
+      [
+        { id: "a", metadata: { source: "news-2026-01-17", type: "news", added_at: "x" } },
+        { id: "b", metadata: { source: "https://w.test", published_at: "2026-09-28T08:00:00Z" } },
+        { id: "c", metadata: { source: "pharma-basics.md" } },
+        { id: "d", metadata: { source: "done.md", date: "2026-01-01", date_kind: "document" } },
+        { id: "e", metadata: { source: "mystery" } },
+      ],
+      resolve,
+    );
+    expect(plan.updates).toEqual([
+      { id: "a", metadata: { source: "news-2026-01-17", type: "news", added_at: "x", date: "2026-01-17", date_kind: "published" } },
+      { id: "b", metadata: { source: "https://w.test", published_at: "2026-09-28T08:00:00Z", date: "2026-09-28", date_kind: "published" } },
+      { id: "c", metadata: { source: "pharma-basics.md", date: "2026-03-10", date_kind: "document" } },
+    ]);
+    expect(plan.counts).toEqual({ published: 2, retrieved: 0, document: 1, alreadyDated: 1, unknown: 1 });
+    expect(plan.unknownSources).toEqual(["mystery"]);
   });
 });
