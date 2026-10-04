@@ -30,6 +30,7 @@ describe("config/host.yaml (mac-mini profile)", () => {
       scorer: { cacheLimitBytes: 1073741824 },
       omlx: { ssdCacheMaxGb: 20 },
       ollama: { numParallel: 1 },
+      image: { minFreeGb: 10, waitMinutes: 10, timeoutSeconds: 300, steps: 4, quantize: 4 },
     });
   });
 

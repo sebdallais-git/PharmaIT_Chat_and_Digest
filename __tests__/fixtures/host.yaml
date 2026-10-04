@@ -20,3 +20,4 @@ resources:
   scorer: { cache_limit_bytes: 1073741824 }
   omlx: { ssd_cache_max_gb: 20 }
   ollama: { num_parallel: 1 }
+  image: { min_free_gb: 10, wait_minutes: 10, timeout_seconds: 300, steps: 4, quantize: 4 }

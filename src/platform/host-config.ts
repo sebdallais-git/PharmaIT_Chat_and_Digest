@@ -29,6 +29,7 @@ export interface HostResources {
   scorer: { cacheLimitBytes: number };
   omlx: { ssdCacheMaxGb: number };
   ollama: { numParallel: number };
+  image: { minFreeGb: number; waitMinutes: number; timeoutSeconds: number; steps: number; quantize: number };
 }
 
 export interface HostConfig {
@@ -109,6 +110,15 @@ function readPositive(raw: Record<string, unknown>, key: string, where: string, 
   return 0;
 }
 
+// mflux quantizes FLUX to 3, 4, 6 or 8 bits; anything else fails at setup time
+const QUANTIZE_BITS = [3, 4, 6, 8];
+function readQuantize(raw: Record<string, unknown>, problems: string[]): number {
+  const value = raw.quantize;
+  if (typeof value === "number" && QUANTIZE_BITS.includes(value)) return value;
+  problems.push(`resources.image.quantize must be one of ${QUANTIZE_BITS.join(", ")}, got ${JSON.stringify(value)}`);
+  return 0;
+}
+
 function readEndpoint(raw: Record<string, unknown>, where: string, hostAddress: string, problems: string[]): Endpoint {
   let scheme = "http";
   if (raw.scheme !== undefined) {
@@ -176,6 +186,7 @@ export function parseHostConfig(text: string, path: string): HostConfig {
   const scorer = section(res, "scorer", "resources.", problems);
   const omlx = section(res, "omlx", "resources.", problems);
   const ollama = section(res, "ollama", "resources.", problems);
+  const image = section(res, "image", "resources.", problems);
   const resources: HostResources = {
     mlxChat: {
       cacheLimitBytes: readPositive(mlxChat, "cache_limit_bytes", "resources.mlx_chat", problems),
@@ -187,6 +198,16 @@ export function parseHostConfig(text: string, path: string): HostConfig {
     scorer: { cacheLimitBytes: readPositive(scorer, "cache_limit_bytes", "resources.scorer", problems) },
     omlx: { ssdCacheMaxGb: readPositive(omlx, "ssd_cache_max_gb", "resources.omlx", problems) },
     ollama: { numParallel: readPositive(ollama, "num_parallel", "resources.ollama", problems) },
+    image:
+      Object.keys(image).length === 0
+        ? { minFreeGb: 0, waitMinutes: 0, timeoutSeconds: 0, steps: 0, quantize: 0 }
+        : {
+            minFreeGb: readPositive(image, "min_free_gb", "resources.image", problems),
+            waitMinutes: readPositive(image, "wait_minutes", "resources.image", problems),
+            timeoutSeconds: readPositive(image, "timeout_seconds", "resources.image", problems),
+            steps: readPositive(image, "steps", "resources.image", problems),
+            quantize: readQuantize(image, problems),
+          },
   };
 
   if (problems.length > 0) throw new HostConfigError(path, problems);

@@ -21,7 +21,7 @@ function sourceHost(env: Record<string, string>, print: string[]) {
 
 describe("scripts/lib/host.sh", () => {
   it("exports ports and resource limits from the host profile", () => {
-    const result = sourceHost(hostTestEnv(), ["APP_PORT", "MLX_CHAT_PORT", "JEV_HOST", "JEV_PORT", "MLX_CACHE_LIMIT", "OMLX_CACHE_MAX_GB", "PHARMAITCHAT_HOST_NAME"]);
+    const result = sourceHost(hostTestEnv(), ["APP_PORT", "MLX_CHAT_PORT", "JEV_HOST", "JEV_PORT", "MLX_CACHE_LIMIT", "OMLX_CACHE_MAX_GB", "IMAGE_QUANTIZE", "PHARMAITCHAT_HOST_NAME"]);
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout.trim().split("\n")).toEqual([
@@ -31,6 +31,7 @@ describe("scripts/lib/host.sh", () => {
       "JEV_PORT=8010",
       "MLX_CACHE_LIMIT=2147483648",
       "OMLX_CACHE_MAX_GB=20",
+      "IMAGE_QUANTIZE=4",
       "PHARMAITCHAT_HOST_NAME=test-host",
     ]);
   });
