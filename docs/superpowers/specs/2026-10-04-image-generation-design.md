@@ -48,7 +48,10 @@ updates, delivery and retention with the document runner.
 
 ## Request
 
-`POST /api/export` and the MCP tool `create_artifact` accept, for `kind: "image"`:
+`POST /api/export` accepts, for `kind: "image"`, the fields below; the MCP tool `create_image` sends the same fields
+(it fills in `kind` and `format`). A separate tool rather than a widened `create_artifact` keeps `create_artifact`'s
+required `audience` required and gives the model one clear schema per job. The scheduled-runs MCP server
+(`pharmaitchat_cron`) excludes `create_image`: no cron job draws.
 
 | Field | Rule |
 |---|---|
@@ -61,11 +64,14 @@ updates, delivery and retention with the document runner.
 | `destination` | As for documents: `download` (default), `telegram`, `icloud` |
 | `audience` | Optional for images. When omitted, the job row stores `internal` (the column is NOT NULL); image filenames do not include the audience |
 
-When the model is not installed (`data/models/flux-schnell-4bit` missing), the request is refused at once with a 503
+When the model is not installed (`data/models/flux-schnell-<quantize>bit`, by default `flux-schnell-4bit`, missing), the request is refused at once with a 503
 saying to run `scripts/setup-image-model.sh`, instead of queuing a job that is bound to fail.
 
-The chat and Hermes recognise image wording ("make / draw / generate an image / a picture / a visual of …") and map
-style words to presets ("a photo of", "in our house style", "abstract background").
+Hermes recognises image wording ("make / draw / generate an image / a picture / a visual of …") through the
+`create_image` tool description and maps style words to presets ("a photo of", "in our house style", "abstract
+background"); `destination: telegram` sends the PNG to the chat. The **web chat** does not get image wording in this
+piece: its renderer draws no images or links and the download route is behind the API token. It gets images with
+piece 2, which needs a document UI anyway.
 
 ### Style presets
 
@@ -101,7 +107,9 @@ cropping, so no image-processing dependency.
 | `export-jobs.ts` | Image fields on the job (migration) | — |
 | `export-pipeline.ts` | Dispatches `image` to the image runner | the three units above, delivery |
 | `api/export.ts`, `mcp/src/tools/export.ts` | Request validation and documentation for the new kind | — |
-| `scripts/setup-image-model.sh` | Creates `.venv-image`, installs `mflux`, downloads FLUX.1-schnell once and saves a 4-bit copy to `data/models/flux-schnell-4bit` | `python3`, network once |
+| `scripts/setup-image-model.sh` | Creates `.venv-image` (Python 3.12 via `uv`), installs `mflux`, checks that `mflux-generate` supports every flag the generator passes, downloads FLUX.1-schnell once and saves a quantized copy to `data/models/flux-schnell-<quantize>bit` | `uv`, network once |
+| `src/services/image-system.ts` | Free memory (`vm_stat`), the lock file, the process-group runner, PNG header and `/usr/bin/time` parsing | `node:*` |
+| `src/services/export-image.ts` | The image runner: narrating → rendering → delivering on the shared job store | the units above |
 
 `.venv-image` is separate from open-jev's environment so the two cannot break each other's dependencies.
 
@@ -125,7 +133,7 @@ requests hang until the watchdog restarts it. Images must never cause that.
   | `wait_minutes` | 10 | How long a job waits for the gate |
   | `timeout_seconds` | 300 | Kill the process group after this |
   | `steps` | 4 | FLUX.1-schnell is distilled for 4 |
-  | `quantize` | 4 | Bits |
+  | `quantize` | 4 | Bits of the saved model; changing it means re-running setup into `flux-schnell-<bits>bit` |
 
 - **Hard stops.** `mflux` runs with `--low-ram`, in its own process group, killed at the timeout. A non-zero exit fails
   the job with stderr's last line. The output must be a PNG (signature) whose header width and height match the size
