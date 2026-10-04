@@ -5,12 +5,20 @@
 // real Telegram document.
 import neo4j from "neo4j-driver";
 import type { Driver } from "neo4j-driver";
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { GatherDeps } from "./export-artifacts.js";
 import { gather } from "./export-artifacts.js";
 import { deliver } from "./export-delivery.js";
+import type { DeliveryDeps } from "./export-delivery.js";
+import type { ImageRunnerDeps } from "./export-image.js";
+import { generateImage } from "./image-generator.js";
+import { loadImagePresets } from "./image-presets.js";
+import { fileLock, imageModelPath, mfluxBinary, readFreeMemoryGb, runProcess } from "./image-system.js";
+import { readGpuUtilization } from "./health.js";
+import { loadHostConfig } from "../platform/host-config.js";
 import type { ExportJobStore } from "./export-jobs.js";
 import { narrateArtifact } from "./export-narrative.js";
 import type { PipelineDeps } from "./export-pipeline.js";
@@ -300,19 +308,55 @@ export async function buildPipelineDeps(jobs: ExportJobStore): Promise<PipelineD
     },
     render: { xlsx: renderXlsx, pdf: renderPdf, pptx: renderPptx },
     deliver,
-    deliveryDeps: {
-      downloadDir: join(process.cwd(), "data", "exports"),
-      icloudDir: join(homedir(), "Documents", "PharmaITChat_Artifacts"),
-      async writeFile(path, bytes) {
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, bytes);
-      },
-      async sendDocument(filename, bytes) {
-        const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
-        const chatId = process.env.TELEGRAM_CHAT_ID ?? "";
-        if (!botToken || !chatId) throw new Error("telegram delivery needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID");
-        await sendTelegramDocument(filename, bytes, { botToken, chatId });
-      },
+    deliveryDeps: liveDeliveryDeps(),
+  };
+}
+
+export function liveDeliveryDeps(): DeliveryDeps {
+  return {
+    downloadDir: join(process.cwd(), "data", "exports"),
+    icloudDir: join(homedir(), "Documents", "PharmaITChat_Artifacts"),
+    async writeFile(path, bytes) {
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, bytes);
     },
+    async sendDocument(filename, bytes) {
+      const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+      const chatId = process.env.TELEGRAM_CHAT_ID ?? "";
+      if (!botToken || !chatId) throw new Error("telegram delivery needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID");
+      await sendTelegramDocument(filename, bytes, { botToken, chatId });
+    },
+  };
+}
+
+/** The image runner's live collaborators; nothing here opens a database. */
+export async function buildImageDeps(jobs: ExportJobStore): Promise<ImageRunnerDeps> {
+  const root = process.cwd();
+  const limits = loadHostConfig().resources.image;
+  const workDir = join(root, "data", "run", "images");
+  await mkdir(workDir, { recursive: true });
+  mkdirSync(join(root, "data", "logs"), { recursive: true });
+  return {
+    jobs,
+    presets: loadImagePresets(root),
+    complete: (prompt, maxTokens) => getLlmClient().chat([{ role: "user", content: prompt }], { temperature: 0.7, maxTokens }),
+    generate: (spec) =>
+      generateImage(spec, {
+        limits,
+        modelPath: imageModelPath(root, limits.quantize),
+        mfluxBin: mfluxBinary(root),
+        freeMemoryGb: readFreeMemoryGb,
+        gpuBusyPercent: readGpuUtilization,
+        lock: fileLock(join(root, "data", "run", "image.lock")),
+        run: runProcess,
+        readFile: (path) => readFile(path),
+        sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+        now: () => Date.now(),
+        log: (line) => appendFileSync(join(root, "data", "logs", `image-${new Date().toISOString().slice(0, 10)}.log`), `${line}\n`),
+      }),
+    workDir,
+    deliver,
+    deliveryDeps: liveDeliveryDeps(),
+    removeFile: (path) => rm(path, { force: true }),
   };
 }

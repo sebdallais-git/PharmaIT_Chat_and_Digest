@@ -43,7 +43,8 @@ import { MAX_PROMPT_CHARS } from "../services/image-prompt.js";
 import { imageModelPath } from "../services/image-system.js";
 import { loadHostConfig } from "../platform/host-config.js";
 import { sweepExpiredExports } from "../services/export-retention.js";
-import { buildPipelineDeps } from "../services/export-wiring.js";
+import { buildImageDeps, buildPipelineDeps } from "../services/export-wiring.js";
+import { runImageExport } from "../services/export-image.js";
 
 export type ValidationResult = { ok: true; value: ExportRequest } | { ok: false; error: string };
 
@@ -254,10 +255,10 @@ export function createExportRouter(deps: ExportRouterDeps): Router {
   return router;
 }
 
-export interface PipelineRunnerDeps {
+export interface PipelineRunnerDeps<D = PipelineDeps> {
   jobs: ExportJobStore;
-  buildPipelineDeps: () => Promise<PipelineDeps>;
-  runExport: (id: string, deps: PipelineDeps) => Promise<void>;
+  buildPipelineDeps: () => Promise<D>;
+  runExport: (id: string, deps: D) => Promise<void>;
   // Optional so a test can leave housekeeping out of what it is asserting.
   sweep?: () => Promise<unknown>;
 }
@@ -283,7 +284,7 @@ export interface PipelineRunnerDeps {
 // the job id is unknown (export-jobs.ts); that should not happen here
 // since create() already returned this id, but the inner try/catch guards
 // against it regardless.
-export function createPipelineRunner(deps: PipelineRunnerDeps): (jobId: string) => Promise<void> {
+export function createPipelineRunner<D = PipelineDeps>(deps: PipelineRunnerDeps<D>): (jobId: string) => Promise<void> {
   return async (jobId: string): Promise<void> => {
     try {
       const pipelineDeps = await deps.buildPipelineDeps();
@@ -344,18 +345,11 @@ function lazyJobStore(): ExportJobStore {
 const exportJobs = lazyJobStore();
 // buildPipelineDeps is given the router's own store (R6 in export-wiring.ts):
 // the pipeline must not open a second connection to the same job database.
-const runPipeline = createPipelineRunner({
-  jobs: exportJobs,
-  buildPipelineDeps: () => buildPipelineDeps(exportJobs),
-  runExport,
-  sweep: () =>
-    sweepExpiredExports({
-      jobs: exportJobs,
-      downloadDir: join(process.cwd(), "data", "exports"),
-      now: new Date(),
-      unlink,
-    }),
-});
+const sweep = () =>
+  sweepExpiredExports({ jobs: exportJobs, downloadDir: join(process.cwd(), "data", "exports"), now: new Date(), unlink });
+const runDocument = createPipelineRunner({ jobs: exportJobs, buildPipelineDeps: () => buildPipelineDeps(exportJobs), runExport, sweep });
+// Images skip the document wiring (Neo4j, watchlist): a graph outage must not stop a picture
+const runImage = createPipelineRunner({ jobs: exportJobs, buildPipelineDeps: () => buildImageDeps(exportJobs), runExport: runImageExport, sweep });
 
 export default createExportRouter({
   jobs: exportJobs,
@@ -364,7 +358,7 @@ export default createExportRouter({
   // must not await the pipeline. createPipelineRunner's returned promise
   // never rejects (see its own comment), so there is nothing to catch here.
   runPipeline: (jobId) => {
-    void runPipeline(jobId);
+    void (exportJobs.get(jobId)?.kind === "image" ? runImage : runDocument)(jobId);
   },
   imageModelReady: () => existsSync(imageModelPath(process.cwd(), loadHostConfig().resources.image.quantize)),
 });

@@ -443,6 +443,26 @@ describe("GET /api/export/file/:id", () => {
 // here touches a live service: buildPipelineDeps and runExport are both
 // fakes, and jobs is the same in-memory store the route reads back from.
 describe("createPipelineRunner", () => {
+  it("records a wiring failure for any runner, the image runner included", async () => {
+    const jobs = openExportJobs(":memory:");
+    const id = jobs.create({
+      kind: "image",
+      format: "png",
+      audience: "internal",
+      destination: "download",
+      image: { prompt: "a lab bench", preset: "none", size: "square", raw: false, seed: 1 },
+    });
+    const runner = createPipelineRunner<unknown>({
+      jobs,
+      buildPipelineDeps: async () => {
+        throw new Error("no model");
+      },
+      runExport: async () => {},
+    });
+    await runner(id);
+    expect(jobs.get(id)).toMatchObject({ stage: "failed", error: "queued: export could not be started: no model" });
+  });
+
   it("fails the job with a stage and message when the pipeline runner rejects, readable through the status route", async () => {
     const jobs = openExportJobs(":memory:");
     const runner = createPipelineRunner({

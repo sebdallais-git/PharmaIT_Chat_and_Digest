@@ -67,7 +67,7 @@ export interface PipelineDeps {
 // The slug is built from a model-influenced title, so it is reduced to
 // [a-z0-9-] here and still passed through export-delivery.ts's containment
 // check before any write.
-function slugify(title: string): string {
+export function slugify(title: string): string {
   return title
     .replace(/[^a-z0-9]+/gi, "-")
     .replace(/^-+|-+$/g, "")
