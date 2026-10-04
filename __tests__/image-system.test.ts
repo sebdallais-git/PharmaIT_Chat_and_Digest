@@ -42,12 +42,18 @@ Error: something broke in mflux
                    0  average shared memory size
 `;
 
-function png(width: number, height: number): Buffer {
+const IEND = Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+
+function pngNoEnd(width: number, height: number): Buffer {
   const header = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
   const dims = Buffer.alloc(8);
   dims.writeUInt32BE(width, 0);
   dims.writeUInt32BE(height, 4);
   return Buffer.concat([header, dims, Buffer.alloc(16)]);
+}
+
+function png(width: number, height: number): Buffer {
+  return Buffer.concat([pngNoEnd(width, height), IEND]);
 }
 
 describe("parsers", () => {
@@ -67,6 +73,8 @@ describe("parsers", () => {
     expect(pngDimensions(png(1088, 1360))).toEqual({ width: 1088, height: 1360 });
     expect(pngDimensions(Buffer.from("not a png at all, not at all"))).toBeNull();
     expect(pngDimensions(png(1088, 1088).subarray(0, 20))).toBeNull();
+    // header-valid but cut off before the IEND chunk
+    expect(pngDimensions(pngNoEnd(1088, 1088))).toBeNull();
   });
 
   it("names the model folder after its quantization and the venv's mflux-generate", () => {

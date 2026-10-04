@@ -15,12 +15,18 @@ const SPEC: ImageSpec = {
   outputPath: "/work/job-1.png",
 };
 
-function png(width: number, height: number): Buffer {
+const IEND = Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+
+function pngNoEnd(width: number, height: number): Buffer {
   const header = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
   const dims = Buffer.alloc(8);
   dims.writeUInt32BE(width, 0);
   dims.writeUInt32BE(height, 4);
   return Buffer.concat([header, dims, Buffer.alloc(16)]);
+}
+
+function png(width: number, height: number): Buffer {
+  return Buffer.concat([pngNoEnd(width, height), IEND]);
 }
 
 const OK_RUN: ProcessResult = { code: 0, signal: null, stderr: "        40.0 real\n  7000000000  maximum resident set size\n", timedOut: false };
@@ -136,7 +142,7 @@ describe("generateImage", () => {
     expect(JSON.parse(failed.logs[0])).toMatchObject({ outcome: "image model failed: Error: out of memory" });
 
     // Review focus 4: exit 0 with no file, a non-PNG, or the wrong size
-    for (const file of [new Error("ENOENT"), Buffer.from("garbage garbage garbage"), png(1024, 1024)]) {
+    for (const file of [new Error("ENOENT"), Buffer.from("garbage garbage garbage"), png(1024, 1024), pngNoEnd(1088, 1088)]) {
       const bad = harness({ file });
       await expect(generateImage(SPEC, bad.deps)).rejects.toThrow("bad image output");
       expect(bad.held()).toBe(false);

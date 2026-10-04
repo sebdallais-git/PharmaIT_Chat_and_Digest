@@ -47,8 +47,12 @@ export function toolError(stderr: string): string {
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+// Every PNG ends with this empty IEND chunk; its absence means a truncated file
+const PNG_IEND = Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+
 export function pngDimensions(png: Buffer): { width: number; height: number } | null {
-  if (png.length < 24 || !png.subarray(0, 8).equals(PNG_SIGNATURE) || png.toString("ascii", 12, 16) !== "IHDR") return null;
+  if (png.length < 24 + PNG_IEND.length || !png.subarray(0, 8).equals(PNG_SIGNATURE) || png.toString("ascii", 12, 16) !== "IHDR") return null;
+  if (!png.subarray(png.length - PNG_IEND.length).equals(PNG_IEND)) return null;
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
 }
 
