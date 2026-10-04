@@ -19,7 +19,7 @@ Request: ${request}`;
 }
 
 function clean(text: string): string {
-  return text.replace(/\s+/g, " ").trim().replace(/^["'""]+|["'""]+$/g, "").trim();
+  return text.replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
 }
 
 export async function buildImagePrompt(input: { prompt: string; preset: ImagePreset; raw: boolean }, complete: CompleteFn): Promise<string> {

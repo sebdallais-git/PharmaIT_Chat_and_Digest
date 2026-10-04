@@ -34,6 +34,12 @@ describe("buildImagePrompt", () => {
     expect(NO_TEXT).toBe("no text, no letters, no words, no logos, no watermark");
   });
 
+  it("strips curly quotes from model response", async () => {
+    const m = model("“A lab bench at dawn”");
+    const out = await buildImagePrompt({ prompt: "x", preset: none, raw: false }, m.complete);
+    expect(out).toBe(`A lab bench at dawn, ${NO_TEXT}`);
+  });
+
   // Review focus 3: an expansion failure must not cost the image
   it("falls back to the user's prompt when the expansion fails or comes back empty", async () => {
     expect(await buildImagePrompt({ prompt: "a lab bench", preset: none, raw: false }, model(new Error("stack down")).complete)).toBe(`a lab bench, ${NO_TEXT}`);
