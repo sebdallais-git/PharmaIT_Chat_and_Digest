@@ -1,0 +1,15 @@
+# Style presets for generated images: each style phrase is appended to the
+# prompt (after the 27B's expansion), followed by "no text, no letters, ...".
+# "none" is built in and adds nothing. Edit freely; add your own presets.
+# Words, numbers and logos never come from the image model: decks and PDFs
+# render all text themselves.
+presets:
+  house:
+    style: "clean modern corporate illustration, flat vector shapes, palette of deep navy, teal and warm grey, generous empty space, soft shadows"
+  photo:
+    style: "photorealistic editorial photograph, natural light, shallow depth of field, 35mm lens, high detail"
+  abstract:
+    style: "abstract technology background, flowing data streams, soft light and geometric shapes, low contrast, dark blue tones, wide empty areas"
+  # Describe your employer's palette and mood in words (colours by name or hex).
+  brand:
+    style: "professional corporate look, restrained palette of navy, white and one bright accent colour, clean composition, calm and confident mood"
