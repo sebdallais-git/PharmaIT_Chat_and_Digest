@@ -20,7 +20,7 @@ function box(opts: { helpLacks?: string } = {}) {
   mkdirSync(bin);
   const calls = join(root, "calls.log");
   // uv: "venv <dir> ..." creates the venv's bin with mflux stubs; "pip install ..." is recorded
-  const help = ["--model", "--path", "--prompt", "--steps", "--seed", "--width", "--height", "--output", "--low-ram"]
+  const help = ["--model", "--base-model", "--prompt", "--steps", "--seed", "--width", "--height", "--output", "--low-ram"]
     .filter((f) => f !== opts.helpLacks)
     .join(" ");
   writeFileSync(
