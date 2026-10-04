@@ -186,7 +186,7 @@ export function parseHostConfig(text: string, path: string): HostConfig {
   const scorer = section(res, "scorer", "resources.", problems);
   const omlx = section(res, "omlx", "resources.", problems);
   const ollama = section(res, "ollama", "resources.", problems);
-  const image = section(res, "image", "resources.", problems);
+  const image = isRecord(res.image) ? (res.image as Record<string, unknown>) : section(res, "image", "resources.", problems);
   const resources: HostResources = {
     mlxChat: {
       cacheLimitBytes: readPositive(mlxChat, "cache_limit_bytes", "resources.mlx_chat", problems),
@@ -198,16 +198,15 @@ export function parseHostConfig(text: string, path: string): HostConfig {
     scorer: { cacheLimitBytes: readPositive(scorer, "cache_limit_bytes", "resources.scorer", problems) },
     omlx: { ssdCacheMaxGb: readPositive(omlx, "ssd_cache_max_gb", "resources.omlx", problems) },
     ollama: { numParallel: readPositive(ollama, "num_parallel", "resources.ollama", problems) },
-    image:
-      Object.keys(image).length === 0
-        ? { minFreeGb: 0, waitMinutes: 0, timeoutSeconds: 0, steps: 0, quantize: 0 }
-        : {
-            minFreeGb: readPositive(image, "min_free_gb", "resources.image", problems),
-            waitMinutes: readPositive(image, "wait_minutes", "resources.image", problems),
-            timeoutSeconds: readPositive(image, "timeout_seconds", "resources.image", problems),
-            steps: readPositive(image, "steps", "resources.image", problems),
-            quantize: readQuantize(image, problems),
-          },
+    image: isRecord(res.image)
+      ? {
+          minFreeGb: readPositive(image, "min_free_gb", "resources.image", problems),
+          waitMinutes: readPositive(image, "wait_minutes", "resources.image", problems),
+          timeoutSeconds: readPositive(image, "timeout_seconds", "resources.image", problems),
+          steps: readPositive(image, "steps", "resources.image", problems),
+          quantize: readQuantize(image, problems),
+        }
+      : { minFreeGb: 0, waitMinutes: 0, timeoutSeconds: 0, steps: 0, quantize: 0 },
   };
 
   if (problems.length > 0) throw new HostConfigError(path, problems);

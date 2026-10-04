@@ -61,6 +61,17 @@ describe("parseHostConfig", () => {
     expect(problemsOf(fixture.replace(/^  image: .*\n/m, ""))).toEqual(["resources.image is missing or not a mapping"]);
   });
 
+  it("reports all missing fields when image is an empty mapping", () => {
+    const problems = problemsOf(fixture.replace(/^  image: .*\n/m, "  image: {}"));
+    expect(problems).toEqual([
+      "resources.image.min_free_gb must be a positive integer, got undefined",
+      "resources.image.wait_minutes must be a positive integer, got undefined",
+      "resources.image.timeout_seconds must be a positive integer, got undefined",
+      "resources.image.steps must be a positive integer, got undefined",
+      "resources.image.quantize must be one of 3, 4, 6, 8, got undefined",
+    ]);
+  });
+
   it("lists every problem at once, not just the first", () => {
     const text = fixture
       .replace("chromadb:  { port: 8100 }", "chromadb:  { port: 99999 }")
