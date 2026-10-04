@@ -33,6 +33,8 @@ Without `MCP_TOKEN` the service only accepts requests from the same machine with
 | `run_news_agent`, `news_agent_status` | Trigger or inspect the news scrub |
 | `start_reindex`, `reindex_status` | Background index rebuild |
 | `record_feedback`, `feedback_report` | Rate answers, feedback reports |
+| `create_artifact`, `artifact_status` | Account brief, incumbency matrix or vendor comparison as xlsx, pdf or pptx (asynchronous job) |
+| `create_image` | Local FLUX.1-schnell image (png) from a prompt, preset and size; `icloud` delivery copies it off this machine, so only on request |
 
 ## Hermes Agent
 
