@@ -904,7 +904,7 @@ flowchart LR
 - **Quiet days stay quiet**: a briefing with nothing actionable sends neither a Telegram message nor an email.
 - **The only part that leaves the machine is the delivery**, like Telegram. Every model call stays local.
 
-Run either by hand: `npx tsx scripts/digest.ts --request "digest of last week"` or `--request "briefing of yesterday" --briefing` (`--budget N` changes the character budget, default 3,900). The script runs the digest agent in-process rather than through HTTP, because Node's `fetch` gives up after 300 s. Each scheduled run is kept in `data/logs/weekly-digest-<date>.log` or `daily-briefing-<date>.log`, `image-<date>.log` (prompt, seed, duration, peak memory).
+Run either by hand: `npx tsx scripts/digest.ts --request "digest of last week"` or `--request "briefing of yesterday" --briefing` (`--budget N` changes the character budget, default 3,900). The script runs the digest agent in-process rather than through HTTP, because Node's `fetch` gives up after 300 s. Each scheduled run is kept in `data/logs/weekly-digest-<date>.log` or `daily-briefing-<date>.log`.
 
 ---
 
@@ -1658,6 +1658,7 @@ flowchart LR
 - **The 27B comes first.** One image at a time (`data/run/image.lock`), started only with enough free memory and an idle GPU (limits in `config/host.yaml` `resources.image`), and killed after 300 s. Scheduled Hermes runs cannot draw (`create_image` is excluded from `pharmaitchat_cron`).
 - **A crashed run cannot block the next.** The lock is published atomically (temp file, then link); a dead owner's lock is taken over by rename, and an empty or unreadable lock counts as stale only after 10 seconds.
 - **Measured, not guessed.** Each image logs prompt, seed, duration and peak memory to `data/logs/image-<date>.log`.
+- **Stuck lock.** If images keep failing with "another image is being drawn" while none is, a crashed app's pid was reused: delete `data/run/image.lock`.
 - **Setup once:** `scripts/setup-image-model.sh` installs mflux in `.venv-image`, checks that `mflux-generate` supports every flag the generator uses *before* downloading, then downloads ~24 GB once and keeps a ~6 GB 4-bit copy in `data/models/flux-schnell-4bit`. The copy is saved into a `.partial` folder and renamed only when `mflux-save` succeeds, so an interrupted download is redone on the next run instead of being mistaken for an install. Until then an image request answers `503` with that command.
 
 ---
