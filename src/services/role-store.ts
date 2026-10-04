@@ -43,6 +43,8 @@ export interface RoleDraft {
   accounts: string[];
   portfolio: PortfolioLine[];
   focus: string | null;
+  // Stated while starting the role ("..., my home theater is EMEA")
+  homeTheater?: Theater;
   asking: DraftField;
 }
 
@@ -121,7 +123,7 @@ export function portfolioText(lines: readonly PortfolioLine[]): string {
 // Cheap pre-check before any model call: could this message be about the role?
 // A false positive costs one extraction call and then falls through to the chat.
 const ROLE_PATTERN =
-  /\b(my role|roles?\b.*\b(switch|change|use)|switch (to )?(my |the )?[\w\s-]{0,40}\brole|act as|i am now|i'm now|(i am|i'm) (the |a |an )?[\w\s/&-]{0,40}\b(at|for|from) \w|my accounts|to my accounts|from my accounts|i (don't|do not|no longer|also) sell|i sell|my portfolio|my focus|home theater|gam\b)/i;
+  /\b(my role|roles?\b.*\b(switch|change|use)|switch (to )?(my |the )?[\w\s-]{0,40}\brole|act as|i am now|i'm now|(i am|i'm) (the |a |an )?[\w\s/&-]{0,40}\b(at|for|from) \w|my accounts|to my accounts|from my accounts|i (don't|do not|no longer|also) sell|i sell|my portfolio|my focus|home theat(?:er|re)|gam\b)/i;
 
 export function isRoleCandidate(text: string, onboarding: boolean): boolean {
   return onboarding || ROLE_PATTERN.test(text);
@@ -138,13 +140,18 @@ export function inferHomeTheater(title: string): Theater | undefined {
   return THEATER_WORDS.find(([, pattern]) => pattern.test(title))?.[0];
 }
 
+/** The saved home theater, else the one the title names (roles saved before the field existed). */
+export function effectiveHomeTheater(role: Role): Theater | undefined {
+  return role.homeTheater ?? inferHomeTheater(role.title);
+}
+
 export function roleSummary(role: Role): string {
   return [
     `**${roleLabel(role)}**`,
     `- Accounts: ${role.accounts.join(", ") || "none yet"}`,
     `- Portfolio: ${portfolioText(role.portfolio) || "none yet"}`,
     `- Focus: ${role.focus || "none"}`,
-    ...(role.homeTheater ? [`- Home theater: ${role.homeTheater}`] : []),
+    ...(effectiveHomeTheater(role) ? [`- Home theater: ${effectiveHomeTheater(role)}`] : []),
     "",
     `Change anything by telling me, e.g. "add Lonza to my accounts" or "I don't sell networking".`,
   ].join("\n");
@@ -157,8 +164,8 @@ export function rolePreamble(role: Role): string {
     "",
     `The user is ${roleLabel(role)}. Their accounts: ${role.accounts.join(", ")}. They sell: ${portfolioText(role.portfolio)}.`,
     ...(role.focus ? [`Their current focus: ${role.focus}.`] : []),
-    ...(role.homeTheater
-      ? [`Their strategic influence is with accounts headquartered in ${role.homeTheater}: lead with those, then the rest.`]
+    ...(effectiveHomeTheater(role)
+      ? [`Their strategic influence is with accounts headquartered in ${effectiveHomeTheater(role)}: lead with those, then the rest.`]
       : []),
     `- Answer for this seller: say what the facts mean for their accounts and for selling ${portfolioText(role.portfolio)} there.`,
     `- When recommending solutions, lead with ${role.company}'s products; name competitors plainly, especially where they are installed.`,

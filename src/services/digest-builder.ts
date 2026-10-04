@@ -15,7 +15,7 @@
 import { THEATERS, type Domain, type Entity, type Theater, type Watchlist } from "./watchlist-config.js";
 import type { StoredItem } from "./watchlist-store.js";
 import type { DigestRequest } from "./digest-request.js";
-import { PORTFOLIO_LINES, portfolioText, roleLabel, type PortfolioLine, type Role } from "./role-store.js";
+import { PORTFOLIO_LINES, effectiveHomeTheater, portfolioText, roleLabel, type PortfolioLine, type Role } from "./role-store.js";
 
 export type SectionKey = "accounts" | "infrastructure" | "industry" | "cyber" | "aiCloud" | "rdMfg";
 
@@ -203,7 +203,7 @@ export function selectDigestItems(
     numbered.push(entry);
     return entry;
   };
-  const home = role?.homeTheater;
+  const home = role ? effectiveHomeTheater(role) : undefined;
   const groups = groupAccounts(accountIds, watchlist, home);
   const grouped = groups.length > 1;
   const capFor = (theater: Theater | null): number =>

@@ -73,7 +73,7 @@ Return ONLY a JSON object:
 {"intent": "switch" | "update" | "show" | "none", "role": "", "title": "", "company": "", "accounts_add": [], "accounts_remove": [], "portfolio_add": [], "portfolio_remove": [], "focus": "", "home_theater": ""}
 
 - "switch": they say who they are, or ask to switch to or act as a role. Fill "role" with how they named it, and title/company/accounts_add/portfolio_add/focus with whatever they stated.
-- "update": they change the accounts, portfolio or focus of their current role.
+- "update": they change the accounts, portfolio, focus or home theater of their current role.
 - "show": they ask what their current role is.
 - "none": anything else, including ordinary questions that merely mention a company.
 - portfolio values only from: ${PORTFOLIO_LINES.join(", ")} ("euc" is end-user computing: PCs, laptops, workplace).
@@ -162,6 +162,16 @@ function mergeLines(current: PortfolioLine[], add: PortfolioLine[], remove: Port
   return PORTFOLIO_LINES.filter((l) => set.has(l));
 }
 
+// Stated while onboarding, else named by the title, else kept from the role this
+// draft replaces (re-onboarding must not wipe a theater set earlier by chat)
+function homeTheaterFor(state: RoleState, draft: RoleDraft): Theater | undefined {
+  return draft.homeTheater ?? inferHomeTheater(draft.title) ?? state.roles.find((r) => r.id === roleId(draft.title, draft.company))?.homeTheater;
+}
+
+// The model may only set a theater the message actually mentions: on "add Lonza
+// to my accounts" it could otherwise volunteer the account's region
+const MENTIONS_THEATER = /\b(home )?theat(?:er|re)\b|\bregion\b/i;
+
 // Saves a complete draft as a role (replacing one with the same id) and activates it
 function finishDraft(state: RoleState, draft: RoleDraft, now: Date): { state: RoleState; role: Role } {
   const role: Role = {
@@ -171,7 +181,7 @@ function finishDraft(state: RoleState, draft: RoleDraft, now: Date): { state: Ro
     accounts: draft.accounts,
     portfolio: draft.portfolio,
     focus: draft.focus ?? "",
-    ...(inferHomeTheater(draft.title) ? { homeTheater: inferHomeTheater(draft.title) } : {}),
+    ...(homeTheaterFor(state, draft) ? { homeTheater: homeTheaterFor(state, draft) } : {}),
     updatedAt: now.toISOString(),
   };
   const roles = [...state.roles.filter((r) => r.id !== role.id), role];
@@ -275,6 +285,7 @@ export async function handleRoleMessage(message: string, deps: RoleDeps): Promis
 
   intent ??= await deps.extract(message, state.roles);
   if (!intent || intent.intent === "none") return null;
+  const theater = MENTIONS_THEATER.test(message) ? intent.homeTheater : "";
   const current = activeRole(state);
 
   if (intent.intent === "show") {
@@ -289,7 +300,7 @@ export async function handleRoleMessage(message: string, deps: RoleDeps): Promis
       accounts: mergeNames(current.accounts, intent.accountsAdd, intent.accountsRemove),
       portfolio: mergeLines(current.portfolio, intent.portfolioAdd, intent.portfolioRemove),
       focus: intent.focus || current.focus,
-      ...(intent.homeTheater || current.homeTheater ? { homeTheater: intent.homeTheater || current.homeTheater } : {}),
+      ...(theater || current.homeTheater ? { homeTheater: theater || current.homeTheater } : {}),
       updatedAt: now.toISOString(),
     };
     const changes = describeChanges(current, updated);
@@ -301,7 +312,8 @@ export async function handleRoleMessage(message: string, deps: RoleDeps): Promis
   // "switch" (or an update with no role yet): a known role, or onboarding a new one
   const known = findRole(state.roles, intent);
   if (known) {
-    deps.store.write({ ...state, active: known.id });
+    const switched: Role = theater ? { ...known, homeTheater: theater, updatedAt: now.toISOString() } : known;
+    deps.store.write({ ...state, roles: state.roles.map((r) => (r.id === known.id ? switched : r)), active: known.id });
     return `Switched to your role as ${roleLabel(known)}:\n\n${roleSummary(known)}`;
   }
   const draft: RoleDraft = {
@@ -310,6 +322,7 @@ export async function handleRoleMessage(message: string, deps: RoleDeps): Promis
     accounts: mergeNames([], intent.accountsAdd),
     portfolio: mergeLines([], intent.portfolioAdd),
     focus: intent.focus || null,
+    ...(theater ? { homeTheater: theater } : {}),
     asking: "title",
   };
   const lead = draft.company ? `New role at ${draft.company}. ` : "New role. ";

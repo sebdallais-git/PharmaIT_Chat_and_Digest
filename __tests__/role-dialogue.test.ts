@@ -11,6 +11,7 @@ import {
   rolePreamble,
   splitList,
   inferHomeTheater,
+  effectiveHomeTheater,
   type Role,
   type RoleStore,
 } from "../src/services/role-store.js";
@@ -400,5 +401,57 @@ describe("home theater", () => {
     expect(roleIntentPrompt("x", [])).toContain('"home_theater"');
     // Only keyword-matched messages reach the role engine in the chat
     expect(isRoleCandidate("my home theater is EMEA", false)).toBe(true);
+  });
+
+  // Review: the live role (saved before this field existed) has no homeTheater
+  it("falls back to the title for a role saved without one", () => {
+    const old: Role = { ...everpure, homeTheater: undefined };
+    expect(effectiveHomeTheater(old)).toBe("EMEA");
+    expect(roleSummary(old)).toContain("- Home theater: EMEA");
+    expect(rolePreamble(old)).toContain("headquartered in EMEA");
+    expect(effectiveHomeTheater(dellGam)).toBeUndefined();
+  });
+
+  it("tells the model a home-theater message is an update, and accepts British spelling", () => {
+    expect(roleIntentPrompt("x", [])).toMatch(/"update": they change the accounts, portfolio, focus or home theater/);
+    expect(isRoleCandidate("my home theatre is EMEA", false)).toBe(true);
+  });
+
+  it("ignores a theater the model offers when the message does not mention one", async () => {
+    const { store } = tempStore();
+    store.write({ version: 1, active: dellGam.id, roles: [dellGam], draft: null });
+    await handleRoleMessage("add Lonza to my accounts", {
+      store,
+      extract: extractor(intent({ intent: "update", accountsAdd: ["Lonza"], homeTheater: "EMEA" })).extract,
+      now,
+    });
+    expect(store.read().roles[0].homeTheater).toBeUndefined();
+    expect(store.read().roles[0].accounts).toContain("Lonza");
+  });
+
+  it("keeps a theater stated while starting a new role, and when switching to a known one", async () => {
+    const { store } = tempStore();
+    const extract = extractor(intent({ intent: "switch", title: "GAM", company: "Dell", homeTheater: "EMEA" })).extract;
+    await handleRoleMessage("I am the Dell GAM, my home theater is EMEA", { store, extract, now });
+    expect(store.read().draft).toMatchObject({ homeTheater: "EMEA" });
+    for (const answer of ["Roche", "storage", "skip"]) await handleRoleMessage(answer, { store, extract: extractor(null).extract, now });
+    expect(store.read().roles[0]).toMatchObject({ title: "GAM", homeTheater: "EMEA" });
+
+    const other = tempStore().store;
+    other.write({ version: 1, active: null, roles: [dellGam], draft: null });
+    await handleRoleMessage("switch to my Dell GAM role, home theater APAC", {
+      store: other,
+      extract: extractor(intent({ intent: "switch", role: "Dell GAM", company: "Dell", homeTheater: "APAC" })).extract,
+      now,
+    });
+    expect(other.read().roles[0]).toMatchObject({ id: dellGam.id, homeTheater: "APAC" });
+  });
+
+  it("re-onboarding the same role keeps a theater set earlier by chat", async () => {
+    const { store } = tempStore();
+    const set: Role = { ...dellGam, homeTheater: "EMEA" };
+    store.write({ version: 1, active: set.id, roles: [set], draft: { title: dellGam.title, company: "Dell", accounts: ["Roche"], portfolio: ["storage"], focus: null, asking: "focus" } });
+    await handleRoleMessage("skip", { store, extract: extractor(null).extract, now });
+    expect(store.read().roles.find((r) => r.id === dellGam.id)?.homeTheater).toBe("EMEA");
   });
 });

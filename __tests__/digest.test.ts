@@ -722,7 +722,7 @@ describe("digest with a home theater", () => {
   });
 
   it("changes nothing for a role without a home theater", () => {
-    const selection = selectDigestItems(items, weekly, withAliases, { ...everpure, homeTheater: undefined });
+    const selection = selectDigestItems(items, weekly, withAliases, { ...everpure, title: "Global Account Manager", homeTheater: undefined });
     expect(selection.accountGroups.map((g) => [g.theater, g.home, g.entries.length])).toEqual([
       ["Americas", false, 4],
       ["EMEA", false, 4],
