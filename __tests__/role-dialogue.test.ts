@@ -10,6 +10,7 @@ import {
   roleSummary,
   rolePreamble,
   splitList,
+  inferHomeTheater,
   type Role,
   type RoleStore,
 } from "../src/services/role-store.js";
@@ -53,6 +54,7 @@ const intent = (partial: Partial<RoleIntent>): RoleIntent => ({
   portfolioAdd: [],
   portfolioRemove: [],
   focus: "",
+  homeTheater: "",
   ...partial,
 });
 
@@ -345,5 +347,58 @@ describe("/api/role (Hermes)", () => {
     expect(JSON.stringify(other.body)).toMatch(/did not read as a change to your role/);
 
     expect((await roleMessageReply("  ", { store, extract: extractor(null).extract, now })).status).toBe(400);
+  });
+});
+
+// Home theater (2026-10-04): a seller paid on every deal whose strategic influence
+// sits with the customers headquartered in one theater. The digest leads with it.
+describe("home theater", () => {
+  const everpure: Role = {
+    id: "everpure-hls-principal-emea",
+    title: "HLS Principal, EMEA",
+    company: "Everpure",
+    accounts: ["Roche", "Pfizer"],
+    portfolio: ["storage", "backup"],
+    focus: "",
+    homeTheater: "EMEA",
+    updatedAt: "2026-10-04T08:00:00.000Z",
+  };
+
+  it("is inferred from a title that names a theater", () => {
+    expect(inferHomeTheater("HLS Principal, EMEA")).toBe("EMEA");
+    expect(inferHomeTheater("GAM Americas")).toBe("Americas");
+    expect(inferHomeTheater("apac sales lead")).toBe("APAC");
+    expect(inferHomeTheater("Global Account Manager")).toBeUndefined();
+  });
+
+  it("shows in the role summary and tells the chat model to lead with it", () => {
+    expect(roleSummary(everpure)).toContain("- Home theater: EMEA");
+    expect(roleSummary(dellGam)).not.toContain("Home theater");
+    expect(rolePreamble(everpure)).toContain("headquartered in EMEA");
+    expect(rolePreamble(dellGam)).not.toContain("headquartered");
+  });
+
+  it("is set from the title when an onboarding finishes", async () => {
+    const { store } = tempStore();
+    store.write({ version: 1, active: null, roles: [], draft: { title: "HLS Principal, EMEA", company: "Everpure", accounts: ["Roche"], portfolio: ["storage"], focus: null, asking: "focus" } });
+    await handleRoleMessage("skip", { store, extract: extractor(null).extract, now });
+    expect(store.read().roles[0].homeTheater).toBe("EMEA");
+  });
+
+  it("is changed by chatting, and read from the model's JSON only when it is a theater", async () => {
+    const { store } = tempStore();
+    store.write({ version: 1, active: dellGam.id, roles: [dellGam], draft: null });
+    const reply = await handleRoleMessage("my home theater is EMEA", {
+      store,
+      extract: extractor(intent({ intent: "update", homeTheater: "EMEA" })).extract,
+      now,
+    });
+    expect(reply).toMatch(/home theater set to EMEA/);
+    expect(store.read().roles[0].homeTheater).toBe("EMEA");
+    expect(parseRoleIntent('{"intent":"update","home_theater":"EMEA"}')?.homeTheater).toBe("EMEA");
+    expect(parseRoleIntent('{"intent":"update","home_theater":"Europe"}')?.homeTheater).toBe("");
+    expect(roleIntentPrompt("x", [])).toContain('"home_theater"');
+    // Only keyword-matched messages reach the role engine in the chat
+    expect(isRoleCandidate("my home theater is EMEA", false)).toBe(true);
   });
 });

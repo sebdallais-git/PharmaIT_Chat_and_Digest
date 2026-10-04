@@ -7,9 +7,11 @@
 // are parsed without it, and the engine alone decides what happens next.
 
 import { getLlmClient } from "./llm-client.js";
+import { THEATERS, type Theater } from "./watchlist-config.js";
 import {
   PORTFOLIO_LINES,
   activeRole,
+  inferHomeTheater,
   isRoleCandidate,
   parsePortfolio,
   portfolioText,
@@ -37,6 +39,8 @@ export interface RoleIntent {
   portfolioAdd: PortfolioLine[];
   portfolioRemove: PortfolioLine[];
   focus: string;
+  // "" when the message names no theater
+  homeTheater: Theater | "";
 }
 
 export interface RoleDeps {
@@ -66,7 +70,7 @@ ${roles}
 Message: ${text}
 
 Return ONLY a JSON object:
-{"intent": "switch" | "update" | "show" | "none", "role": "", "title": "", "company": "", "accounts_add": [], "accounts_remove": [], "portfolio_add": [], "portfolio_remove": [], "focus": ""}
+{"intent": "switch" | "update" | "show" | "none", "role": "", "title": "", "company": "", "accounts_add": [], "accounts_remove": [], "portfolio_add": [], "portfolio_remove": [], "focus": "", "home_theater": ""}
 
 - "switch": they say who they are, or ask to switch to or act as a role. Fill "role" with how they named it, and title/company/accounts_add/portfolio_add/focus with whatever they stated.
 - "update": they change the accounts, portfolio or focus of their current role.
@@ -74,6 +78,7 @@ Return ONLY a JSON object:
 - "none": anything else, including ordinary questions that merely mention a company.
 - portfolio values only from: ${PORTFOLIO_LINES.join(", ")} ("euc" is end-user computing: PCs, laptops, workplace).
 - "title" is their job title as stated; abbreviations count: "GAM" (Global Account Manager), "AE", "HLS principal", "CSM".
+- "home_theater" is the region whose headquartered accounts they focus on, only one of: ${THEATERS.join(", ")} (e.g. "my home theater is EMEA").
 - Leave a field empty when the message does not state it. Never guess.`;
 }
 
@@ -113,6 +118,7 @@ export function parseRoleIntent(reply: string): RoleIntent | null {
     portfolioAdd: lines(r.portfolio_add),
     portfolioRemove: lines(r.portfolio_remove),
     focus: text(r.focus),
+    homeTheater: THEATERS.find((t) => t === text(r.home_theater)) ?? "",
   };
 }
 
@@ -165,6 +171,7 @@ function finishDraft(state: RoleState, draft: RoleDraft, now: Date): { state: Ro
     accounts: draft.accounts,
     portfolio: draft.portfolio,
     focus: draft.focus ?? "",
+    ...(inferHomeTheater(draft.title) ? { homeTheater: inferHomeTheater(draft.title) } : {}),
     updatedAt: now.toISOString(),
   };
   const roles = [...state.roles.filter((r) => r.id !== role.id), role];
@@ -238,6 +245,7 @@ function describeChanges(before: Role, after: Role): string[] {
   if (linesAdded.length) changes.push(`now selling ${portfolioText(linesAdded)}`);
   if (linesRemoved.length) changes.push(`no longer selling ${portfolioText(linesRemoved)}`);
   if (after.focus !== before.focus) changes.push(`focus set to "${after.focus}"`);
+  if (after.homeTheater !== before.homeTheater && after.homeTheater) changes.push(`home theater set to ${after.homeTheater}`);
   return changes;
 }
 
@@ -281,6 +289,7 @@ export async function handleRoleMessage(message: string, deps: RoleDeps): Promis
       accounts: mergeNames(current.accounts, intent.accountsAdd, intent.accountsRemove),
       portfolio: mergeLines(current.portfolio, intent.portfolioAdd, intent.portfolioRemove),
       focus: intent.focus || current.focus,
+      ...(intent.homeTheater || current.homeTheater ? { homeTheater: intent.homeTheater || current.homeTheater } : {}),
       updatedAt: now.toISOString(),
     };
     const changes = describeChanges(current, updated);

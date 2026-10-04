@@ -130,7 +130,8 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   `make_digest`, chat on digest wording): deterministic selection over `watchlist.db`, 4 short
   27B calls whose bullets must cite item numbers, rendered to a budget (Telegram 3,900 chars;
   action items never cut). Framed by the active role. Accounts spanning theaters (no role = all 60 customers)
-  are grouped Americas / EMEA / APAC, size rank first, one 27B call per theater; "digest EMEA" narrows to one.
+  are grouped Americas / EMEA / APAC, size rank first, one 27B call per theater; "digest EMEA" narrows to one. A role's optional
+  `homeTheater` (chat: "my home theater is EMEA", or inferred from the title) leads with double room (6 items / 4 bullets vs 3 / 2).
   The Hermes jobs pass `--email`: the uncut digest is also emailed as HTML (`digest-email.ts`, nodemailer) when the
   gitignored `config/email.local.yaml` exists; SMTP password in `data/run/smtp-password` (600). Email failure never blocks Telegram.
 - Storage: ChromaDB (:8100), Neo4j (`neo4j-driver`), `better-sqlite3`. No Prisma/PostgreSQL.

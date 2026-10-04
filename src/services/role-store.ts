@@ -7,6 +7,7 @@
 
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Theater } from "./watchlist-config.js";
 
 export const PORTFOLIO_LINES = ["storage", "servers", "networking", "backup", "euc", "security"] as const;
 export type PortfolioLine = (typeof PORTFOLIO_LINES)[number];
@@ -27,6 +28,9 @@ export interface Role {
   accounts: string[];
   portfolio: PortfolioLine[];
   focus: string;
+  // Where the seller's strategic influence sits (2026-10-04): the digest leads
+  // with accounts headquartered there and gives them double room
+  homeTheater?: Theater;
   updatedAt: string;
 }
 
@@ -117,10 +121,21 @@ export function portfolioText(lines: readonly PortfolioLine[]): string {
 // Cheap pre-check before any model call: could this message be about the role?
 // A false positive costs one extraction call and then falls through to the chat.
 const ROLE_PATTERN =
-  /\b(my role|roles?\b.*\b(switch|change|use)|switch (to )?(my |the )?[\w\s-]{0,40}\brole|act as|i am now|i'm now|(i am|i'm) (the |a |an )?[\w\s/&-]{0,40}\b(at|for|from) \w|my accounts|to my accounts|from my accounts|i (don't|do not|no longer|also) sell|i sell|my portfolio|my focus|gam\b)/i;
+  /\b(my role|roles?\b.*\b(switch|change|use)|switch (to )?(my |the )?[\w\s-]{0,40}\brole|act as|i am now|i'm now|(i am|i'm) (the |a |an )?[\w\s/&-]{0,40}\b(at|for|from) \w|my accounts|to my accounts|from my accounts|i (don't|do not|no longer|also) sell|i sell|my portfolio|my focus|home theater|gam\b)/i;
 
 export function isRoleCandidate(text: string, onboarding: boolean): boolean {
   return onboarding || ROLE_PATTERN.test(text);
+}
+
+const THEATER_WORDS: Array<[Theater, RegExp]> = [
+  ["Americas", /\bamericas\b/i],
+  ["EMEA", /\bemea\b/i],
+  ["APAC", /\bapac\b/i],
+];
+
+/** "HLS Principal, EMEA" → "EMEA"; undefined when the title names no theater. */
+export function inferHomeTheater(title: string): Theater | undefined {
+  return THEATER_WORDS.find(([, pattern]) => pattern.test(title))?.[0];
 }
 
 export function roleSummary(role: Role): string {
@@ -129,6 +144,7 @@ export function roleSummary(role: Role): string {
     `- Accounts: ${role.accounts.join(", ") || "none yet"}`,
     `- Portfolio: ${portfolioText(role.portfolio) || "none yet"}`,
     `- Focus: ${role.focus || "none"}`,
+    ...(role.homeTheater ? [`- Home theater: ${role.homeTheater}`] : []),
     "",
     `Change anything by telling me, e.g. "add Lonza to my accounts" or "I don't sell networking".`,
   ].join("\n");
@@ -141,6 +157,9 @@ export function rolePreamble(role: Role): string {
     "",
     `The user is ${roleLabel(role)}. Their accounts: ${role.accounts.join(", ")}. They sell: ${portfolioText(role.portfolio)}.`,
     ...(role.focus ? [`Their current focus: ${role.focus}.`] : []),
+    ...(role.homeTheater
+      ? [`Their strategic influence is with accounts headquartered in ${role.homeTheater}: lead with those, then the rest.`]
+      : []),
     `- Answer for this seller: say what the facts mean for their accounts and for selling ${portfolioText(role.portfolio)} there.`,
     `- When recommending solutions, lead with ${role.company}'s products; name competitors plainly, especially where they are installed.`,
   ].join("\n");

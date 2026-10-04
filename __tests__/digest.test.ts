@@ -8,6 +8,7 @@ import {
   renderDigest,
   resolveAccounts,
   selectDigestItems,
+  writeProse,
   type CompleteFn,
   type DigestProse,
 } from "../src/services/digest-builder.js";
@@ -649,5 +650,83 @@ describe("buildDigest with a full render for email", () => {
       3900,
     );
     expect(result.fullMarkdown).toBeUndefined();
+  });
+});
+
+// Home theater (2026-10-04): an HLS principal paid on every life-science deal
+// whose strategic influence is with EMEA-headquartered customers. EMEA leads and
+// gets double room; the other theaters stay, smaller, and give way first.
+describe("digest with a home theater", () => {
+  const ranked = (id: string, theater: "Americas" | "EMEA" | "APAC", rank: number) =>
+    entity(id, "customer", { theater, size: { rank, year: 2025, basis: "FY2024 healthcare revenue" } });
+  const world: Watchlist = {
+    entities: new Map(
+      [ranked("roche", "EMEA", 2), ranked("novartis", "EMEA", 7), ranked("jnj", "Americas", 1), ranked("pfizer", "Americas", 4), ranked("takeda", "APAC", 17)].map((e) => [e.id, e]),
+    ),
+    topics: [],
+    priority: [],
+    notes: [],
+  };
+  const everpure: Role = { ...dellGam, title: "HLS Principal, EMEA", company: "Everpure", accounts: ["Roche", "Novartis", "J&J", "Pfizer", "Takeda"], homeTheater: "EMEA" };
+  const withAliases: Watchlist = { ...world, entities: new Map([...world.entities].map(([id, e]) => [id, id === "jnj" ? { ...e, name: "J&J" } : e])) };
+  const about = (id: string, n: number) => Array.from({ length: n }, (_, i) => item({ title: `${id} news ${i}`, entities: [id], domains: ["ai"] }));
+  const weekly = parseDigestRequest("digest this week", now, []);
+  const items = [...about("roche", 5), ...about("novartis", 5), ...about("jnj", 5), ...about("pfizer", 5), ...about("takeda", 5)];
+
+  it("puts the home theater first with 6 items, the others after with 3 each", () => {
+    const selection = selectDigestItems(items, weekly, withAliases, everpure);
+    expect(selection.accountGroups.map((g) => [g.theater, g.home, g.entries.length])).toEqual([
+      ["EMEA", true, 6],
+      ["Americas", false, 3],
+      ["APAC", false, 3],
+    ]);
+  });
+
+  it("asks for 4 bullets for the home theater and 2 for the others (3 and 1 in the briefing)", async () => {
+    const maxima: Array<[string, number]> = [];
+    const complete: CompleteFn = async (prompt) => {
+      const ns = [...prompt.matchAll(/^\[(\d+)\]/gm)].map((m) => m[1]);
+      return ns.map((n) => `- bullet ${n} [${n}]`).join("\n");
+    };
+    const selection = selectDigestItems(items, weekly, withAliases, everpure);
+    const prose = await writeProse(selection, everpure, withAliases, "this week", complete);
+    for (const t of ["EMEA", "Americas", "APAC"] as const) maxima.push([t, prose.byTheater?.[t]?.length ?? 0]);
+    expect(maxima).toEqual([["EMEA", 4], ["Americas", 2], ["APAC", 2]]);
+    const brief = await writeProse(selection, everpure, withAliases, "yesterday", complete, true);
+    expect([brief.byTheater?.EMEA?.length, brief.byTheater?.Americas?.length, brief.byTheater?.APAC?.length]).toEqual([3, 1, 1]);
+  });
+
+  it("renders EMEA first and, under a tight budget, shrinks the other theaters before EMEA", () => {
+    const selection = selectDigestItems(items, weekly, withAliases, everpure);
+    const long = (n: number) => `${"word ".repeat(25)}[${n}]`;
+    const first = (t: string) => selection.accountGroups.find((g) => g.theater === t)!.entries[0].n;
+    const prose: DigestProse = {
+      headline: [],
+      accounts: [],
+      byTheater: { EMEA: Array(4).fill(long(first("EMEA"))), Americas: Array(2).fill(long(first("Americas"))), APAC: Array(2).fill(long(first("APAC"))) },
+      infrastructure: [],
+      actions: [],
+    };
+    const opts = { period: "this week", role: everpure, now };
+    const roomy = renderDigest(selection, prose, { failingFeeds: [] }, { ...opts, budget: 20_000 });
+    expect(roomy.indexOf("Your accounts · EMEA")).toBeLessThan(roomy.indexOf("Your accounts · Americas"));
+    const bullets = (md: string, t: string) => {
+      const start = md.indexOf(`Your accounts · ${t}`);
+      const rest = md.slice(start).split("\n").slice(1);
+      return rest.slice(0, rest.findIndex((l, i) => i > 0 && !l.startsWith("- ")) === -1 ? rest.length : rest.findIndex((l, i) => i > 0 && !l.startsWith("- "))).filter((l) => l.startsWith("- ")).length;
+    };
+    expect([bullets(roomy, "EMEA"), bullets(roomy, "Americas"), bullets(roomy, "APAC")]).toEqual([4, 2, 2]);
+    // A budget that forces trimming: the others drop to 1 bullet before EMEA loses any
+    const tight = renderDigest(selection, prose, { failingFeeds: [] }, { ...opts, budget: roomy.length - 300 });
+    expect([bullets(tight, "EMEA"), bullets(tight, "Americas"), bullets(tight, "APAC")]).toEqual([4, 1, 1]);
+  });
+
+  it("changes nothing for a role without a home theater", () => {
+    const selection = selectDigestItems(items, weekly, withAliases, { ...everpure, homeTheater: undefined });
+    expect(selection.accountGroups.map((g) => [g.theater, g.home, g.entries.length])).toEqual([
+      ["Americas", false, 4],
+      ["EMEA", false, 4],
+      ["APAC", false, 4],
+    ]);
   });
 });
