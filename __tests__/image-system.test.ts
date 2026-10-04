@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -94,6 +94,42 @@ describe("fileLock", () => {
     const path = join(temp(), "image.lock");
     writeFileSync(path, "999999\n");
     expect(fileLock(path, (pid) => pid !== 999999).acquire()).toBe(true);
+  });
+});
+
+describe("fileLock hardening", () => {
+  it("takes over an empty lock file only once it is older than 10 seconds", () => {
+    const fresh = join(temp(), "image.lock");
+    writeFileSync(fresh, "");
+    expect(fileLock(fresh, () => true).acquire()).toBe(false);
+
+    const old = join(temp(), "image.lock");
+    writeFileSync(old, "");
+    const past = new Date(Date.now() - 60_000);
+    utimesSync(old, past, past);
+    expect(fileLock(old, () => true).acquire()).toBe(true);
+  });
+
+  it("gives a lock back when its owner is alive at verification time", () => {
+    const path = join(temp(), "image.lock");
+    writeFileSync(path, "4242\n");
+    let calls = 0;
+    const lock = fileLock(path, () => ++calls > 1);
+    expect(lock.acquire()).toBe(false);
+    expect(readFileSync(path, "utf-8")).toBe("4242\n");
+    expect(readdirSync(join(path, "..")).sort()).toEqual(["image.lock"]);
+  });
+
+  it("is idempotent for its holder and cannot release another's lock", () => {
+    const path = join(temp(), "image.lock");
+    const a = fileLock(path, () => true);
+    expect(a.acquire()).toBe(true);
+    expect(a.acquire()).toBe(true);
+    expect(readFileSync(path, "utf-8").trim()).toBe(String(process.pid));
+    fileLock(path, () => true).release();
+    expect(existsSync(path)).toBe(true);
+    a.release();
+    expect(existsSync(path)).toBe(false);
   });
 });
 

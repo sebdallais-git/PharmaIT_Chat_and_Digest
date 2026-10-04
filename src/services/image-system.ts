@@ -4,7 +4,8 @@
 // can be tested with fakes and these with captured text.
 
 import { execFile, spawn } from "node:child_process";
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { linkSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 const GIB = 1024 ** 3;
@@ -65,45 +66,94 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/** One drawer at a time across the app and the scripts; a dead owner's lock is taken over. */
+// An unparsable or empty lock file may be another writer mid-write: only a
+// file this old is treated as abandoned.
+const UNPARSABLE_LOCK_STALE_MS = 10_000;
+
+function validPid(text: string): number | null {
+  const pid = Number(text.trim());
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * One drawer at a time across the app and the scripts; a dead owner's lock is
+ * taken over. The lock file never exists without its pid (published by hard
+ * link from a complete temp file) and a stale lock is claimed by rename, so
+ * two racers cannot both end up holding it.
+ */
 export function fileLock(path: string, isAlive: (pid: number) => boolean = processAlive): ImageLock {
   let held = false;
-  const create = (): boolean => {
+  const unique = (tag: string) => `${path}.${tag}.${process.pid}.${randomUUID()}`;
+  const remove = (file: string) => {
     try {
-      const fd = openSync(path, "wx");
-      writeSync(fd, `${process.pid}\n`);
-      closeSync(fd);
+      unlinkSync(file);
+    } catch {
+      // Already gone
+    }
+  };
+  const publish = (): boolean => {
+    const temp = unique("tmp");
+    try {
+      writeFileSync(temp, `${process.pid}\n`, { flag: "wx" });
+      linkSync(temp, path); // EEXIST when a lock exists
       return true;
     } catch {
       return false;
+    } finally {
+      remove(temp);
     }
   };
   return {
     acquire() {
       if (held) return true;
-      if (create()) return (held = true);
-      let owner = Number.NaN;
+      if (publish()) return (held = true);
+      let text: string;
       try {
-        owner = Number(readFileSync(path, "utf-8").trim());
+        text = readFileSync(path, "utf-8");
       } catch {
-        // Gone between our attempt and this read: try once more below
+        return (held = publish()); // Released between our attempt and this read
       }
-      if (Number.isInteger(owner) && owner > 0 && isAlive(owner)) return false;
+      const owner = validPid(text);
+      if (owner !== null) {
+        if (isAlive(owner)) return false;
+      } else {
+        try {
+          if (Date.now() - statSync(path).mtimeMs < UNPARSABLE_LOCK_STALE_MS) return false;
+        } catch {
+          return (held = publish());
+        }
+      }
+      // Claim the stale lock: only one racer's rename succeeds
+      const claimed = unique("stale");
       try {
-        unlinkSync(path);
+        renameSync(path, claimed);
       } catch {
-        // Another process took it over first
+        return false;
       }
-      return (held = create());
+      let claimedText = "";
+      try {
+        claimedText = readFileSync(claimed, "utf-8");
+      } catch {
+        // Treated as stale below
+      }
+      const current = validPid(claimedText);
+      if (current !== null && isAlive(current)) {
+        // The lock changed hands after our first read: put it back
+        try {
+          linkSync(claimed, path);
+        } catch {
+          // A newer lock already exists
+        }
+        remove(claimed);
+        return false;
+      }
+      remove(claimed);
+      return (held = publish());
     },
     release() {
       if (!held) return;
       held = false;
-      try {
-        unlinkSync(path);
-      } catch {
-        // Already gone
-      }
+      remove(path);
     },
   };
 }
