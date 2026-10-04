@@ -83,8 +83,10 @@ async function draw(spec: ImageSpec, deps: GeneratorDeps): Promise<GeneratedImag
 
 export async function generateImage(spec: ImageSpec, deps: GeneratorDeps): Promise<GeneratedImage> {
   const deadline = deps.now() + deps.limits.waitMinutes * 60_000;
+  // Logging is best-effort: a failed write must never change the outcome of a draw
   const record = (outcome: string, image?: GeneratedImage): void => {
-    deps.log(
+    try {
+      deps.log(
       JSON.stringify({
         at: new Date().toISOString(),
         jobId: spec.jobId,
@@ -96,7 +98,10 @@ export async function generateImage(spec: ImageSpec, deps: GeneratorDeps): Promi
         outcome,
         prompt: spec.prompt,
       }),
-    );
+      );
+    } catch {
+      // ignored on purpose
+    }
   };
 
   for (;;) {

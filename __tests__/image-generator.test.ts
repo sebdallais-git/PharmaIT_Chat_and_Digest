@@ -142,4 +142,21 @@ describe("generateImage", () => {
       expect(bad.held()).toBe(false);
     }
   });
+
+  it("a log that throws changes neither a drawn image nor a draw's own error", async () => {
+    const ok = harness();
+    ok.deps.log = () => {
+      throw new Error("ENOSPC");
+    };
+    const image = await generateImage(SPEC, ok.deps);
+    expect(image.png.length).toBeGreaterThan(0);
+
+    const failing = harness({ run: { code: 1, signal: null, stderr: "boom", timedOut: false } });
+    failing.deps.log = () => {
+      throw new Error("ENOSPC");
+    };
+    const err = await generateImage(SPEC, failing.deps).catch((e: unknown) => e);
+    expect(String(err)).toContain("image model failed");
+    expect(String(err)).not.toContain("ENOSPC");
+  });
 });

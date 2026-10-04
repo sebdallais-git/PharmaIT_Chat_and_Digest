@@ -352,7 +352,13 @@ export async function buildImageDeps(jobs: ExportJobStore): Promise<ImageRunnerD
         readFile: (path) => readFile(path),
         sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
         now: () => Date.now(),
-        log: (line) => appendFileSync(join(root, "data", "logs", `image-${new Date().toISOString().slice(0, 10)}.log`), `${line}\n`),
+        log: (line) => {
+          try {
+            appendFileSync(join(root, "data", "logs", `image-${new Date().toISOString().slice(0, 10)}.log`), `${line}\n`);
+          } catch {
+            // best-effort: a full or unwritable log directory must not fail a drawn image
+          }
+        },
       }),
     workDir,
     deliver,
