@@ -54,6 +54,8 @@ mcp_servers:
         - add_knowledge
         # Scheduled jobs must never change who the user is
         - my_role
+        # no scheduled job draws images: the GPU belongs to the 27B overnight
+        - create_image
       resources: false
       prompts: false
 

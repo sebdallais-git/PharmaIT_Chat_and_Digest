@@ -55,4 +55,29 @@ export function registerExportTools(server: McpServer, client: PharmaITChatClien
     // resolveDestinationPath) and read side (export.ts's resolveDownloadPath).
     async ({ job_id }) => runTool("artifact_status", log, () => client.get(`/api/export/${encodeURIComponent(job_id)}`))
   );
+
+  server.registerTool(
+    "create_image",
+    {
+      // The model reads this to decide when to draw and how to describe the
+      // request; text in images is unreliable, so it is told not to ask for it.
+      description:
+        "Generate an image from a text description, locally (FLUX.1-schnell on this machine). Use it for visuals: " +
+        "slide hero images, backgrounds, LinkedIn post images. Images contain no text, words, numbers or logos: put " +
+        "those in the message or document instead. `preset` is a style (none, house, photo, abstract, brand); " +
+        "`size` is square (LinkedIn post), portrait (LinkedIn 4:5), linkedin (landscape link image) or slide (16:9). " +
+        "`destination` defaults to 'download'; use 'telegram' to send the image to the user's chat. " +
+        "Returns a job id; an image takes about a minute, longer while the language model is busy. Poll with artifact_status; " +
+        "its `image.seed` lets the user ask for the same image again with changes.",
+      inputSchema: {
+        prompt: z.string().min(1).max(1000),
+        preset: z.string().optional(),
+        size: z.enum(["square", "portrait", "linkedin", "slide"]).optional(),
+        raw: z.boolean().optional(),
+        seed: z.number().int().min(0).optional(),
+        destination: z.enum(["download", "telegram", "icloud"]).optional(),
+      },
+    },
+    async (args) => runTool("create_image", log, () => client.post("/api/export", { kind: "image", format: "png", ...args }))
+  );
 }
