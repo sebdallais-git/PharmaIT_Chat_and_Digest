@@ -83,8 +83,9 @@ describe("mfluxArgs", () => {
     expect(mfluxArgs(SPEC, deps)).toEqual([
       "-l",
       "/venv/bin/mflux-generate",
-      "--model", "schnell",
-      "--path", "/models/flux-schnell-4bit",
+      // mflux 0.21 (installed 2026-10-04): a saved model is passed as --model <dir> with its base named
+      "--model", "/models/flux-schnell-4bit",
+      "--base-model", "schnell",
       "--prompt", 'a lab "bench"; $(echo hi)',
       "--steps", "4",
       "--seed", "42",

@@ -34,7 +34,7 @@ fi
 # The generator passes exactly these flags (src/services/image-generator.ts):
 # refuse to download 24 GB for an mflux that would reject them
 HELP="$("$VENV/bin/mflux-generate" --help 2>&1 || true)"
-for flag in --model --path --prompt --steps --seed --width --height --output --low-ram; do
+for flag in --model --base-model --prompt --steps --seed --width --height --output --low-ram; do
   if ! grep -q -- "$flag" <<<"$HELP"; then
     echo "mflux-generate does not support $flag: pin an mflux version that does, then re-run" >&2
     exit 1

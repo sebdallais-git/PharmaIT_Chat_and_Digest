@@ -51,8 +51,9 @@ export function mfluxArgs(spec: ImageSpec, deps: Pick<GeneratorDeps, "limits" | 
   return [
     "-l",
     deps.mfluxBin,
-    "--model", "schnell",
-    "--path", deps.modelPath,
+    // mflux 0.21+: a saved (quantized) model folder is the --model, its base named explicitly
+    "--model", deps.modelPath,
+    "--base-model", "schnell",
     "--prompt", spec.prompt,
     "--steps", String(deps.limits.steps),
     "--seed", String(spec.seed),
