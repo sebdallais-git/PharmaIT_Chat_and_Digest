@@ -15,7 +15,7 @@
 import { THEATERS, type Domain, type Entity, type Theater, type Watchlist } from "./watchlist-config.js";
 import type { StoredItem } from "./watchlist-store.js";
 import type { DigestRequest } from "./digest-request.js";
-import { PORTFOLIO_LINES, portfolioText, roleLabel, type PortfolioLine, type Role } from "./role-store.js";
+import { PORTFOLIO_LINES, effectiveHomeTheater, portfolioText, roleLabel, type PortfolioLine, type Role } from "./role-store.js";
 
 export type SectionKey = "accounts" | "infrastructure" | "industry" | "cyber" | "aiCloud" | "rdMfg";
 
@@ -44,6 +44,8 @@ export interface NumberedItem {
 // when the accounts all sit in one theater (or none has a theater).
 export interface AccountGroup {
   theater: Theater | null;
+  // The role's home theater: listed first, with double room
+  home: boolean;
   entries: NumberedItem[];
 }
 
@@ -143,11 +145,18 @@ function roundRobin(items: StoredItem[], accountIds: string[]): StoredItem[] {
 // Per theater when grouped: three theaters at 4 items each stay close to the
 // ungrouped 8 while every theater gets a voice
 const THEATER_CAP = 4;
+// With a home theater (2026-10-04): it gets double room, the others less, so
+// the total stays close to three theaters at 4
+const HOME_THEATER_CAP = 6;
+const OTHER_THEATER_CAP = 3;
 
 const sizeRank = (watchlist: Watchlist, id: string): number => watchlist.entities.get(id)?.size?.rank ?? Number.MAX_SAFE_INTEGER;
 
-/** Accounts per theater in Americas, EMEA, APAC order; one null group unless they span two or more. */
-export function groupAccounts(accountIds: string[], watchlist: Watchlist): { theater: Theater | null; ids: string[] }[] {
+/**
+ * Accounts per theater in Americas, EMEA, APAC order (the home theater first when
+ * given); one null group unless they span two or more.
+ */
+export function groupAccounts(accountIds: string[], watchlist: Watchlist, home?: Theater): { theater: Theater | null; ids: string[] }[] {
   const byTheater = new Map<Theater, string[]>();
   const without: string[] = [];
   for (const id of accountIds) {
@@ -156,7 +165,8 @@ export function groupAccounts(accountIds: string[], watchlist: Watchlist): { the
     else without.push(id);
   }
   if (byTheater.size < 2) return [{ theater: null, ids: accountIds }];
-  const groups: { theater: Theater | null; ids: string[] }[] = THEATERS.filter((t) => byTheater.has(t)).map((t) => ({ theater: t, ids: byTheater.get(t) ?? [] }));
+  const order = home ? [home, ...THEATERS.filter((t) => t !== home)] : [...THEATERS];
+  const groups: { theater: Theater | null; ids: string[] }[] = order.filter((t) => byTheater.has(t)).map((t) => ({ theater: t, ids: byTheater.get(t) ?? [] }));
   // Role accounts the watchlist has no theater for still get covered, last
   if (without.length) groups.push({ theater: null, ids: without });
   return groups;
@@ -193,15 +203,18 @@ export function selectDigestItems(
     numbered.push(entry);
     return entry;
   };
-  const groups = groupAccounts(accountIds, watchlist);
+  const home = role ? effectiveHomeTheater(role) : undefined;
+  const groups = groupAccounts(accountIds, watchlist, home);
   const grouped = groups.length > 1;
+  const capFor = (theater: Theater | null): number =>
+    !grouped ? SECTION_CAPS.accounts : !home ? THEATER_CAP : theater === home ? HOME_THEATER_CAP : OTHER_THEATER_CAP;
   // An item about accounts in two theaters is told once, in the first
   const told = new Set<number>();
   const accountGroups: AccountGroup[] = groups
     .map(({ theater, ids }) => {
-      const picked = roundRobin(buckets.accounts.filter((item) => !told.has(item.id)), ids).slice(0, grouped ? THEATER_CAP : SECTION_CAPS.accounts);
+      const picked = roundRobin(buckets.accounts.filter((item) => !told.has(item.id)), ids).slice(0, capFor(theater));
       for (const item of picked) told.add(item.id);
-      return { theater, entries: picked.map((item) => number(item, "accounts")) };
+      return { theater, home: grouped && home !== undefined && theater === home, entries: picked.map((item) => number(item, "accounts")) };
     })
     .filter((group) => group.entries.length > 0);
   sections.accounts = accountGroups.flatMap((group) => group.entries);
@@ -342,8 +355,13 @@ export async function writeProse(
     const theaters = selection.accountGroups.filter((g): g is AccountGroup & { theater: Theater } => g.theater !== null);
     if (theaters.length === 0) return { accounts: await write(complete, accountsPrompt(sections.accounts, role, watchlist), known(sections.accounts), 5, 450) };
     const byTheater: Partial<Record<Theater, string[]>> = {};
+    const weighted = theaters.some((g) => g.home);
+    // Weekly 3 bullets per theater, briefing 2; with a home theater it gets 4 (3)
+    // and the others 2 (1)
+    const bulletsFor = (group: AccountGroup): number =>
+      !weighted ? (briefing ? 2 : 3) : group.home ? (briefing ? 3 : 4) : briefing ? 1 : 2;
     for (const group of theaters) {
-      byTheater[group.theater] = await write(complete, accountsPrompt(group.entries, role, watchlist), known(group.entries), briefing ? 2 : 3, 300);
+      byTheater[group.theater] = await write(complete, accountsPrompt(group.entries, role, watchlist), known(group.entries), bulletsFor(group), 300);
     }
     // Accounts without a theater (a role's, never the watchlist's customers) keep the plain call
     const rest = selection.accountGroups.find((g) => g.theater === null);
@@ -416,12 +434,21 @@ function theaterCap(accounts: number): number {
   return accounts >= 4 ? 3 : accounts >= 3 ? 2 : 1;
 }
 
+// With a home theater the others give way first: they drop to 1 bullet while the
+// home theater keeps 4, which then shrinks 3 → 2 → 1 as the budget tightens
+function weightedCap(accounts: number, home: boolean): number {
+  if (!home) return accounts >= 5 ? 2 : 1;
+  return accounts >= 4 ? 4 : accounts >= 3 ? 3 : accounts >= 2 ? 2 : 1;
+}
+
 function renderTheaters(selection: DigestSelection, prose: DigestProse, variant: Variant, refs: (text: string) => string): string[] {
   const out: string[] = [];
+  const weighted = selection.accountGroups.some((g) => g.home);
   for (const group of selection.accountGroups) {
     const written = group.theater ? prose.byTheater?.[group.theater] ?? [] : prose.accounts;
+    const cap = weighted ? weightedCap(variant.accounts, group.home) : theaterCap(variant.accounts);
     const lines = written.length
-      ? written.slice(0, theaterCap(variant.accounts)).map((b) => `- ${refs(b)}`)
+      ? written.slice(0, cap).map((b) => `- ${refs(b)}`)
       : renderList(group.entries.slice(0, Math.max(1, variant.listCap)), variant.links);
     out.push("", `**${SECTION_TITLES.accounts}${group.theater ? ` · ${group.theater}` : ""}**`, ...lines);
   }
