@@ -27,16 +27,21 @@
 // the real pipeline.
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { randomInt } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isAudience } from "../services/artifact.js";
 import { hasExternalForm, internalOnlyKindMessage, isArtifactKind } from "../services/export-artifacts.js";
 import { isDestination, resolveContainedPath } from "../services/export-delivery.js";
-import { isExportFormat, openExportJobs } from "../services/export-jobs.js";
+import { isExportFormat, isExportKind, openExportJobs } from "../services/export-jobs.js";
 import type { ExportFormat, ExportJob, ExportJobStore, ExportRequest } from "../services/export-jobs.js";
 import { downloadFilename, runExport } from "../services/export-pipeline.js";
 import type { PipelineDeps } from "../services/export-pipeline.js";
+import { IMAGE_SIZES, isImageSize, loadImagePresets, type ImagePreset } from "../services/image-presets.js";
+import { MAX_PROMPT_CHARS } from "../services/image-prompt.js";
+import { imageModelPath } from "../services/image-system.js";
+import { loadHostConfig } from "../platform/host-config.js";
 import { sweepExpiredExports } from "../services/export-retention.js";
 import { buildPipelineDeps } from "../services/export-wiring.js";
 
@@ -45,15 +50,49 @@ export type ValidationResult = { ok: true; value: ExportRequest } | { ok: false;
 // The body is attacker-controlled shape (this is a trust boundary): every
 // field is checked with the same closed-set guard its storage layer uses,
 // rather than re-declaring the vocabulary here or trusting a field's type.
-export function validateExportRequest(body: unknown): ValidationResult {
+const MAX_SEED = 4294967295;
+
+export function validateExportRequest(
+  body: unknown,
+  presets: Map<string, ImagePreset> = loadImagePresets(),
+  randomSeed: () => number = () => randomInt(0, 2 ** 31),
+): ValidationResult {
   const b = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
 
-  if (!isArtifactKind(b.kind)) {
+  if (!isExportKind(b.kind)) {
     return { ok: false, error: `unknown artifact kind ${JSON.stringify(b.kind)}` };
   }
   if (!isExportFormat(b.format)) {
-    return { ok: false, error: `unknown format ${JSON.stringify(b.format)} (expected xlsx, pdf or pptx)` };
+    return { ok: false, error: `unknown format ${JSON.stringify(b.format)} (expected xlsx, pdf, pptx or png)` };
   }
+  if (b.format === "png" && b.kind !== "image") return { ok: false, error: `format "png" is only for kind "image"` };
+  if (b.kind === "image" && b.format !== "png") return { ok: false, error: `kind "image" is only for format "png"` };
+
+  if (b.kind === "image") {
+    const prompt = typeof b.prompt === "string" ? b.prompt.trim() : "";
+    if (prompt === "" || prompt.length > MAX_PROMPT_CHARS) return { ok: false, error: `prompt is required (1 to ${MAX_PROMPT_CHARS} characters)` };
+    const preset = b.preset ?? "none";
+    if (typeof preset !== "string" || !presets.has(preset)) {
+      return { ok: false, error: `unknown preset ${JSON.stringify(preset)} (known: ${[...presets.keys()].join(", ")})` };
+    }
+    const size = b.size ?? "square";
+    if (!isImageSize(size)) return { ok: false, error: `unknown size ${JSON.stringify(size)} (known: ${Object.keys(IMAGE_SIZES).join(", ")})` };
+    const seed = b.seed ?? randomSeed();
+    if (typeof seed !== "number" || !Number.isInteger(seed) || seed < 0 || seed > MAX_SEED) {
+      return { ok: false, error: `seed must be an integer from 0 to ${MAX_SEED}` };
+    }
+    // An image carries no account text: the audience is optional and only
+    // recorded (the column is NOT NULL); it never reaches the file name
+    const audience = b.audience ?? "internal";
+    if (!isAudience(audience)) return { ok: false, error: `audience must be "internal" or "external"` };
+    const destination = b.destination ?? "download";
+    if (!isDestination(destination)) return { ok: false, error: `unknown destination ${JSON.stringify(destination)}` };
+    return {
+      ok: true,
+      value: { kind: "image", format: "png", audience, destination, image: { prompt, preset, size, raw: b.raw === true, seed } },
+    };
+  }
+
   // Deliberately no default: the two audiences contain different data, so a
   // missing audience must fail loudly rather than guess which one was meant.
   if (!isAudience(b.audience)) {
@@ -91,6 +130,9 @@ export interface ExportRouterDeps {
   // Kicks off the pipeline without the caller waiting on it. Fire-and-forget
   // by design: the route function returns before this settles.
   runPipeline(jobId: string): void;
+  // False until scripts/setup-image-model.sh has saved the model: an image
+  // request is then refused at once instead of queuing a job bound to fail
+  imageModelReady(): boolean;
 }
 
 // Express's ParamsDictionary types a param as string | string[] to account
@@ -124,6 +166,8 @@ const CONTENT_TYPES: Record<ExportFormat, string> = {
 // removes the quote, CR and LF that could otherwise break out of the header
 // value, and the path separators and ".." a client might be tempted to obey.
 function attachmentName(job: ExportJob): string {
+  // Images never carry the audience in their name (spec 2026-10-04)
+  if (job.kind === "image") return `image-${job.image?.preset ?? "none"}-${job.id.slice(0, 8)}.png`;
   const parts = [job.kind, job.account ?? job.vendor ?? "", job.audience].filter((p) => p !== "");
   const stem = parts.join("-").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/\.+/g, ".").replace(/^[.-]+|[.-]+$/g, "");
   return `${stem === "" ? "artifact" : stem}.${job.format}`;
@@ -136,6 +180,10 @@ export function createExportRouter(deps: ExportRouterDeps): Router {
     const result = validateExportRequest(req.body);
     if (!result.ok) {
       res.status(400).json({ error: result.error });
+      return;
+    }
+    if (result.value.kind === "image" && !deps.imageModelReady()) {
+      res.status(503).json({ error: "image model not installed: run scripts/setup-image-model.sh" });
       return;
     }
 
@@ -318,4 +366,5 @@ export default createExportRouter({
   runPipeline: (jobId) => {
     void runPipeline(jobId);
   },
+  imageModelReady: () => existsSync(imageModelPath(process.cwd(), loadHostConfig().resources.image.quantize)),
 });
