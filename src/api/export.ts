@@ -110,6 +110,7 @@ const CONTENT_TYPES: Record<ExportFormat, string> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pdf: "application/pdf",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  png: "image/png",
 };
 
 // The name the browser saves the download as. The file on disk is named

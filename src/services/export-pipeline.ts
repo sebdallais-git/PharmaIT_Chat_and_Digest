@@ -24,14 +24,14 @@
 import type { Artifact } from "./artifact.js";
 import type { GatherDeps, gather as gatherFn } from "./export-artifacts.js";
 import type { DeliveryDeps, deliver as deliverFn } from "./export-delivery.js";
-import type { ExportFormat, ExportJob, ExportJobStore, Stage } from "./export-jobs.js";
+import type { DocumentFormat, ExportJob, ExportJobStore, Stage } from "./export-jobs.js";
 
 export interface PipelineDeps {
   jobs: ExportJobStore;
   gather: typeof gatherFn;
   gatherDeps: GatherDeps;
   narrate(artifact: Artifact): Promise<Artifact>;
-  render: Record<ExportFormat, (artifact: Artifact) => Promise<Buffer>>;
+  render: Record<DocumentFormat, (artifact: Artifact) => Promise<Buffer>>;
   deliver: typeof deliverFn;
   deliveryDeps: DeliveryDeps;
 }
@@ -93,6 +93,12 @@ export function deliveredFilename(job: ExportJob, artifact: Artifact): string {
 export async function runExport(id: string, deps: PipelineDeps): Promise<void> {
   const job = deps.jobs.get(id);
   if (job === null) return;
+  // Images have their own runner (export-image.ts); a png job reaching the
+  // document pipeline is a wiring bug, recorded as such rather than rendered
+  if (job.kind === "image" || job.format === "png") {
+    deps.jobs.fail(id, "queued", "image jobs run in the image runner, not the document pipeline");
+    return;
+  }
 
   let stage: Stage = "gathering";
   try {
