@@ -169,6 +169,10 @@ export interface ProcessResult {
   timedOut: boolean;
 }
 
+// Orphans: an mflux process left behind by an app restart (tsx watch reload,
+// launchd kickstart) keeps drawing without this timeout killer, and the new app
+// may take over the dead pid's lock. The free-memory/GPU gate in the generator
+// is what then stops a second FLUX from starting alongside it.
 /**
  * Runs cmd with args as argv (never through a shell), in its own process
  * group, and kills the whole group at the timeout so no child outlives it.
