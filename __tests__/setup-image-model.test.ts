@@ -52,8 +52,25 @@ describe("scripts/setup-image-model.sh", () => {
     const log = readFileSync(b.calls, "utf-8");
     expect(log).toContain(`uv venv ${join(b.root, ".venv-image")} --python 3.12`);
     expect(log).toMatch(/uv pip install --python .*\.venv-image\/bin\/python mflux/);
-    expect(log).toContain(`mflux-save --model schnell --quantize 4 --path ${join(b.root, "data", "models", "flux-schnell-4bit")}`);
+    expect(log).toContain(`mflux-save --model schnell --quantize 4 --path ${join(b.root, "data", "models", "flux-schnell-4bit.partial")}`);
     expect(existsSync(join(b.root, "data", "models", "flux-schnell-4bit", "model.safetensors"))).toBe(true);
+    expect(existsSync(join(b.root, "data", "models", "flux-schnell-4bit.partial"))).toBe(false);
+    expect(result.stdout).toContain("image model ready");
+  });
+
+  it("redoes the save when an interrupted one left a .partial folder", () => {
+    const b = box();
+    expect(b.run().status).toBe(0);
+    const models = join(b.root, "data", "models");
+    rmSync(join(models, "flux-schnell-4bit"), { recursive: true });
+    mkdirSync(join(models, "flux-schnell-4bit.partial"));
+    writeFileSync(join(models, "flux-schnell-4bit.partial", "half.safetensors"), "x");
+    const result = b.run();
+    expect(result.status).toBe(0);
+    expect(readFileSync(b.calls, "utf-8").match(/mflux-save/g)).toHaveLength(2);
+    expect(existsSync(join(models, "flux-schnell-4bit", "model.safetensors"))).toBe(true);
+    expect(existsSync(join(models, "flux-schnell-4bit", "half.safetensors"))).toBe(false);
+    expect(existsSync(join(models, "flux-schnell-4bit.partial"))).toBe(false);
     expect(result.stdout).toContain("image model ready");
   });
 

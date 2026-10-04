@@ -42,5 +42,9 @@ for flag in --model --path --prompt --steps --seed --width --height --output --l
 done
 
 mkdir -p "$ROOT/data/models"
-"$VENV/bin/mflux-save" --model schnell --quantize "$BITS" --path "$MODEL_DIR"
+# Save beside the final folder and move it in only on success: an interrupted
+# save must not leave a half-written $MODEL_DIR that the check above accepts
+rm -rf "$MODEL_DIR.partial"
+"$VENV/bin/mflux-save" --model schnell --quantize "$BITS" --path "$MODEL_DIR.partial"
+mv "$MODEL_DIR.partial" "$MODEL_DIR"
 echo "image model ready: $MODEL_DIR"
