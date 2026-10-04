@@ -4,7 +4,7 @@ Everything needed to run [Hermes Agent](https://hermes-agent.nousresearch.com/) 
 
 | File | Purpose |
 |---|---|
-| `config.template.yaml` | Hermes config: the app's `/v1` model with 64k context, a `pharmaitchat` MCP server (19 tools, no `start_reindex`), a `pharmaitchat_cron` server for scheduled runs (17 tools, no `my_role`, also no `add_knowledge`), Docker sandbox without network, local SearXNG search, deny approvals when unattended |
+| `config.template.yaml` | Hermes config: the app's `/v1` model with 64k context, a `pharmaitchat` MCP server (20 tools, no `start_reindex`), a `pharmaitchat_cron` server for scheduled runs (17 tools, no `my_role`, also no `add_knowledge`, no `create_image`), Docker sandbox without network, local SearXNG search, deny approvals when unattended |
 | `SOUL.md` | Assistant role and tool policy |
 | `cron/jobs.json` | The seven scheduled jobs: watchlist ingest 02:30, KB canaries 05:00, gap resolution 07:00, weekly digest Monday 07:30, daily briefing Tuesday–Friday 07:30, health watch 09/19 (silent when healthy), feedback digest Monday 08:00 |
 | `scripts/pharmaitchat-watchlist-ingest.sh` | The watchlist ingest job's script body (the canary, weekly-digest and daily-briefing jobs have one each alongside it); `install-cron` copies it into `~/.hermes/scripts/` with the repo's path baked in |

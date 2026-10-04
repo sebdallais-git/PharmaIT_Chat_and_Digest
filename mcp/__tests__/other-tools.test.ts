@@ -19,7 +19,7 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<u
 }
 
 describe("tool list", () => {
-  it("exposes exactly the 20 PharmaITChat tools", async () => {
+  it("exposes exactly the 21 PharmaITChat tools", async () => {
     const { tools } = await harness.client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "add_knowledge",
@@ -27,6 +27,7 @@ describe("tool list", () => {
       "ask_pharmaitchat",
       "competitive_position",
       "create_artifact",
+      "create_image",
       "dashboard_metrics",
       "feedback_report",
       "graph_stats",

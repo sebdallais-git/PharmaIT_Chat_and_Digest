@@ -9,6 +9,7 @@ knowledge/.agent-state.json
 data/
 python/.venv/
 python/venv/
+.venv-image/
 __pycache__/
 *.pyc
 .chromadb-data/

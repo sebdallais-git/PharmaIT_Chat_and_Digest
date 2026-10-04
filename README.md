@@ -27,7 +27,7 @@ PharmaITChat watches the IT and security scene around the **top 60 pharma and me
 <br/>
 [![Hermes Agent](https://img.shields.io/badge/Hermes_Agent-0.21.3-8B5CF6?style=for-the-badge)](#hermes-agent-on-telegram)
 [![Telegram](https://img.shields.io/badge/Telegram-7_scheduled_jobs-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](#hermes-agent-on-telegram)
-[![MCP](https://img.shields.io/badge/MCP-20_tools-D97757?style=for-the-badge)](#the-mcp-server-and-the-model-gateway)
+[![MCP](https://img.shields.io/badge/MCP-21_tools-D97757?style=for-the-badge)](#the-mcp-server-and-the-model-gateway)
 <br/>
 [![open-jev](https://img.shields.io/badge/open--jev-Gemma_3_4B_%C2%B7_4--bit-1e3a8a?style=for-the-badge)](https://github.com/daseinlabs/open-jev)
 [![n8n](https://img.shields.io/badge/n8n-gap_auto--fill-EA4B71?style=for-the-badge&logo=n8n&logoColor=white)](#workflows)
@@ -127,7 +127,7 @@ Account intelligence never leaves the machine and never enters git: `config/acco
 | 📅 | **Dated sources** | Every chunk carries a date and how it is known (published, retrieved, document); the chat prompt starts with today's date |
 | 🔎 | **Hybrid retrieval** | ChromaDB, an in-memory vector + keyword index, the Neo4j graph and live news, queried in parallel |
 | 🛡️ | **Embedding-parity guard** | A stack that shares another's index must prove its embeddings match (cosine ≥ 0.9999) or the switch is refused |
-| 🤖 | **Telegram assistant** | Hermes Agent on the same local model: 19 of the 20 MCP tools, 7 scheduled jobs, a network-less Docker sandbox |
+| 🤖 | **Telegram assistant** | Hermes Agent on the same local model: 20 of the 21 MCP tools, 7 scheduled jobs, a network-less Docker sandbox |
 | 🧰 | **MCP server** | `pharmaitchat-mcp` exposes the knowledge base and the graph to any MCP client over Streamable HTTP, with compacted payloads |
 | 🔌 | **Model gateway** | OpenAI-compatible `/v1` on whichever stack is active, so any agent can borrow the local model |
 | 🩹 | **Self-healing knowledge** | Unanswered in-scope questions trigger an n8n workflow that researches, ingests and re-checks the gap |
@@ -155,7 +155,7 @@ flowchart TB
     subgraph AGENTS["Agents"]
         direction LR
         HER["Hermes gateway<br/>Telegram agent, cron, switch plugin"]
-        MCP["pharmaitchat-mcp :3200<br/>20 tools"]
+        MCP["pharmaitchat-mcp :3200<br/>21 tools"]
     end
 
     subgraph APP["PharmaITChat app :3000 / :3443"]
@@ -354,7 +354,7 @@ flowchart LR
 
 ### Hermes scheduled jobs
 
-Hermes' cron runs these on the local 27B and reports on Telegram. Scheduled runs use a write-limited MCP server (no `start_reindex`, no `add_knowledge`, no `my_role`) and get no web, memory, terminal or file tools. Four of the seven jobs are script mode: no agent step, just a script whose stdout is the message.
+Hermes' cron runs these on the local 27B and reports on Telegram. Scheduled runs use a write-limited MCP server (no `start_reindex`, no `add_knowledge`, no `my_role`, no `create_image`) and get no web, memory, terminal or file tools. Four of the seven jobs are script mode: no agent step, just a script whose stdout is the message.
 
 ```mermaid
 flowchart LR
@@ -1627,6 +1627,40 @@ stateDiagram-v2
 
 `GET /api/export/:id` returns the job's stage and, when done, where the file went. Downloaded files live in `data/exports/` and are swept after 30 days (`RETENTION_DAYS`); the job row stays, so polling an old job says `expired` rather than 404. Telegram and iCloud deliveries are yours to manage and are never swept. Every export route needs the API token: an export carries account intelligence.
 
+## Image generation
+
+"Generate an image of an AI factory at a pharma plant, photo style, for LinkedIn" — from Telegram (Hermes picks `create_image`) or `POST /api/export` with `kind: "image"`, `format: "png"`. The image is drawn **on this Mac** by FLUX.1-schnell (Apache-2.0, so fine for customer decks and LinkedIn) through [mflux](https://github.com/filipstrand/mflux), one process per image, and delivered like any export: download, Telegram or iCloud. The web chat has no image wording (its renderer shows no images or links); decks, PDFs and LinkedIn posts come in later pieces.
+
+```mermaid
+flowchart LR
+    U["Telegram / API<br/>'an image of ...'"] --> R{"Model installed?"}
+    R -- "no" --> E["503 image model not installed:<br/>run scripts/setup-image-model.sh"]
+    R -- "yes" --> J["Export job<br/>kind image · png"]
+    J --> P["narrating: the 27B writes<br/>the visual prompt + style + 'no text'"]
+    P --> G{"Lock free, 10 GB free,<br/>GPU under 30%?"}
+    G -- "no" --> W["re-check every 15 s<br/>(10 min, then fail with the numbers)"]
+    W --> G
+    G -- "yes" --> M["rendering: mflux, FLUX.1-schnell<br/>4-bit, 4 steps, --low-ram"]
+    M --> D["delivering: download · telegram · icloud"]
+```
+
+| Field | Values |
+|---|---|
+| `prompt` | 1-1,000 characters |
+| `preset` | `none` (default), `house`, `photo`, `abstract`, `brand`: style phrases in `config/image-presets.yaml`, editable |
+| `size` | `square` 1088x1088 (LinkedIn post), `portrait` 1088x1360 (LinkedIn 4:5), `linkedin` 1200x624, `slide` 1280x720 |
+| `raw` | `true` skips the 27B's rewrite |
+| `seed` | Reported back; re-run the same seed with a changed prompt to vary one image |
+| `audience` | Optional for images (no account text in a picture); still required for documents |
+| `destination` | `download` (default), `telegram`, `icloud`. The MCP tool warns the model that `icloud` copies the image off this machine, and only when asked |
+
+- **No words in pictures.** Every prompt ends with "no text, no letters, no words, no logos, no watermark": image models garble text. Titles, numbers and charts belong to decks and PDFs.
+- **The 27B comes first.** One image at a time (`data/run/image.lock`), started only with enough free memory and an idle GPU (limits in `config/host.yaml` `resources.image`), and killed after 300 s. Scheduled Hermes runs cannot draw (`create_image` is excluded from `pharmaitchat_cron`).
+- **A crashed run cannot block the next.** The lock is published atomically (temp file, then link); a dead owner's lock is taken over by rename, and an empty or unreadable lock counts as stale only after 10 seconds.
+- **Measured, not guessed.** Each image logs prompt, seed, duration and peak memory to `data/logs/image-<date>.log`.
+- **Stuck lock.** If images keep failing with "another image is being drawn" while none is, a crashed app's pid was reused: delete `data/run/image.lock`.
+- **Setup once:** `scripts/setup-image-model.sh` installs mflux in `.venv-image`, checks that `mflux-generate` supports every flag the generator uses *before* downloading, then downloads ~24 GB once and keeps a ~6 GB 4-bit copy in `data/models/flux-schnell-4bit`. The copy is saved into a `.partial` folder and renamed only when `mflux-save` succeeds, so an interrupted download is redone on the next run instead of being mistaken for an install. Until then an image request answers `503` with that command.
+
 ---
 
 ## Hermes Agent on Telegram
@@ -1652,7 +1686,7 @@ scripts/hermes-setup.sh check           # read-only status; prints variable name
 
 The four script jobs' bodies live in `hermes/scripts/` (`pharmaitchat-watchlist-ingest.sh`, `pharmaitchat-kb-canary.sh`, `pharmaitchat-weekly-digest.sh`, `pharmaitchat-daily-briefing.sh`); `install-cron` copies them into `~/.hermes/scripts/` with the repo path baked in.
 
-- **Tool scope is the control.** Telegram and CLI runs connect to the `pharmaitchat` MCP server with 19 of the 20 tools (no `start_reindex`). Scheduled runs connect to a separate, write-limited `pharmaitchat_cron` server with 17: no `start_reindex`, no `add_knowledge`, no `my_role`. MCP calls are never approval-gated, so the tool list is what enforces this. Scheduled runs also get no web, memory, terminal or file toolsets (`platform_toolsets.cron: [session_search, pharmaitchat_cron]`).
+- **Tool scope is the control.** Telegram and CLI runs connect to the `pharmaitchat` MCP server with 20 of the 21 tools (no `start_reindex`). Scheduled runs connect to a separate, write-limited `pharmaitchat_cron` server with 17 of the 21: no `start_reindex`, no `add_knowledge`, no `my_role`, no `create_image`. MCP calls are never approval-gated, so the tool list is what enforces this. Scheduled runs also get no web, memory, terminal or file toolsets (`platform_toolsets.cron: [session_search, pharmaitchat_cron]`).
 - **Sandbox:** shell commands run in a Docker container with `--network=none`, 512 MB and 1 CPU, no host project or home directory mounted. Verified live: `/Users` is not visible, `host.docker.internal` does not resolve and the app is unreachable from inside.
 - **Web search:** the local SearXNG instance, with the keyless cloud fallbacks turned off. Private and loopback URLs stay blocked for Hermes' web tools, so ChromaDB and Neo4j cannot be reached that way.
 - **Speed:** a warm Telegram round trip takes about 1 min 47 s end to end (Hermes' own timer reports 107.7 s). The first step of a cold session pays the full prefill, about 140–156 s.
@@ -1685,7 +1719,7 @@ PharmaITChat serves AI agents in two ways: as a set of tools, and as a model pro
 
 | | Endpoint | Purpose |
 |---|---|---|
-| 🧰 **MCP tools** | `pharmaitchat-mcp` at `http://<host>:3200/mcp` | 20 tools over Streamable HTTP |
+| 🧰 **MCP tools** | `pharmaitchat-mcp` at `http://<host>:3200/mcp` | 21 tools over Streamable HTTP |
 | 🧠 **Model gateway** | `http://<host>:3000/v1` or `https://<host>:3443/v1` | OpenAI-compatible chat completions on the active stack, tools and streaming supported |
 
 ### The MCP server
@@ -1699,7 +1733,7 @@ PharmaITChat serves AI agents in two ways: as a set of tools, and as a model pro
 | Gaps (`gaps.ts`) | `list_knowledge_gaps`, `resolve_knowledge_gap` |
 | Operations (`operations.ts`) | `system_health`, `dashboard_metrics`, `news_agent_status`, `run_news_agent`, `start_reindex`, `reindex_status` |
 | Feedback (`feedback.ts`) | `record_feedback`, `feedback_report` |
-| Export (`export.ts`) | `create_artifact`, `artifact_status` |
+| Export (`export.ts`) | `create_artifact`, `artifact_status`, `create_image` |
 | Role (`role.ts`) | `my_role` |
 | Digest (`digest.ts`) | `make_digest` |
 
@@ -2003,6 +2037,7 @@ Every file in `scripts/`, one line each. "Writes" means it changes live data; ev
 | `scripts/run-jev.sh` | launchd entry point for the open-jev scorer; refuses non-loopback without a token | No |
 | `scripts/run-mcp.sh` | launchd entry point for `pharmaitchat-mcp`; refuses non-loopback without a token | No |
 | `scripts/run-n8n.sh` | launchd entry point for n8n, with the API token and `$env` access set | No |
+| `scripts/setup-image-model.sh` | Installs mflux in `.venv-image` and saves FLUX.1-schnell quantized (`.partial` folder, renamed on success) | `.venv-image/`, `data/models/` |
 | `scripts/setup-searxng.sh` | (Re)creates the SearXNG container from `config/searxng/settings.yml` | Docker |
 | `scripts/start-services.sh` | ChromaDB, colima containers, the active stack and the dev server (`npm run dev`) | Starts services |
 | `scripts/switch-stack.sh` | Every stack operation: switch, prepare, status, availability, tokens, MCP service | Stacks, `data/run/` |
@@ -2023,7 +2058,7 @@ flowchart TB
         AG["AI agents<br/>Hermes, Claude Desktop"]
     end
 
-    MCP["pharmaitchat-mcp :3200<br/>20 tools, Streamable HTTP<br/>MCP_TOKEN + payload compaction"]
+    MCP["pharmaitchat-mcp :3200<br/>21 tools, Streamable HTTP<br/>MCP_TOKEN + payload compaction"]
 
     subgraph APP["PharmaITChat :3000 / :3443"]
         direction TB
@@ -2209,7 +2244,7 @@ Everything works with defaults. `scripts/switch-stack.sh` and `npm run dev` set 
 
 | File | In git | Read by | What it holds |
 |---|---|---|---|
-| `config/host.yaml` | Yes | `src/platform/host-config.ts`, `scripts/lib/host.sh` | Every endpoint (address, port) and machine-sized limit (`resources`: MLX caches and concurrency, embedder and scorer caps, oMLX SSD cache, Ollama parallelism). Override the path with `PHARMAITCHAT_HOST_CONFIG` |
+| `config/host.yaml` | Yes | `src/platform/host-config.ts`, `scripts/lib/host.sh` | Every endpoint (address, port) and machine-sized limit (`resources`: MLX caches and concurrency, embedder and scorer caps, oMLX SSD cache, Ollama parallelism, `resources.image`: free-memory gate, wait, timeout, steps, quantization). Override the path with `PHARMAITCHAT_HOST_CONFIG` |
 | `config/watchlist.yaml` | Yes | Watchlist ingest, digest, chat name matching | The only definition of watched entities (customers, peers, vendors), their aliases and feeds, and the entity-less topic queries |
 | `config/needs.yaml` | Yes | Graph rebuild (source 2) | Need → segments map (`ADDRESSED_BY`); both sides validated against the closed sets. Documents a known flaw: it can hide an incumbent whose segment no declared need reaches |
 | `config/accounts.example.yaml` | Yes | You (copy it) | Commented template for the accounts file: needs, incumbents, triggers, notes, and the `[]` versus omitted rule |
@@ -2219,6 +2254,7 @@ Everything works with defaults. `scripts/switch-stack.sh` and `npm run dev` set 
 | `config/need-evidence.exclude` | Yes | `extract-need-evidence.ts` | Vendor-authored documents to skip (one file name per line; `vendor-*` files are skipped by name already) |
 | `config/decide.yaml` | Yes | `src/services/decide-config.ts` | Scorer model, timeout (15 s), thresholds (0.85 / 0.5), `shadow_detection`, `page_relevance_skip_below` (0.1) |
 | `config/kb-canaries.yaml` | Yes | `scripts/kb-canary.ts` | 8 canary questions and the term groups each answer must contain |
+| `config/image-presets.yaml` | Yes | `src/services/image-presets.ts` | Image style presets (`house`, `photo`, `abstract`, `brand`), editable |
 | `config/searxng/settings.yml` | Yes | `scripts/setup-searxng.sh` | SearXNG settings (Brave API only); the key is rendered in from `data/run/brave-api-key` |
 | `knowledge/vendors/*.md` | Yes | Graph rebuild (source 1), brief excerpts | One brief per vendor and segment: `vendor`, `segment`, `position`, `confidence`, `as_of`, `products`, `competitors`, `rationale`, `sources` |
 | `hermes/config.template.yaml` | Yes | `scripts/hermes-setup.sh install-config` | Hermes model provider, the two MCP server scopes, sandbox, toolsets, the switch plugin |
@@ -2325,6 +2361,7 @@ PharmaITChat/
 │   │   ├── watchlist-chunks.ts     # Rebuilds a stored item's embedded form
 │   │   ├── role-store.ts · role-dialogue.ts             # Your role
 │   │   ├── digest-request.ts · digest-builder.ts · digest-agent.ts
+│   │   ├── image-*.ts · export-image.ts   # Image generation: presets, prompt, generator, system gate
 │   │   ├── export-*.ts · artifact.ts · render-pdf.ts · render-pptx.ts · render-xlsx.ts
 │   │   ├── stack-switch.ts · stack-availability.ts · telegram-notify.ts · hermes-readiness.ts
 │   │   └── ...                     # health, feedback, request log, response cache, web search, file parser
@@ -2332,7 +2369,7 @@ PharmaITChat/
 ├── config/                         # host, watchlist, needs, decide, kb-canaries, accounts example,
 │                                   # need-evidence.exclude, searxng/; *.local.yaml gitignored
 ├── knowledge/                      # 40 curated documents, vendors/ (6 briefs), per-stack index files
-├── mcp/                            # pharmaitchat-mcp: 20 tools over Streamable HTTP
+├── mcp/                            # pharmaitchat-mcp: 21 tools over Streamable HTTP
 │   ├── src/pharmaitchat-client.ts  # REST client for the app
 │   ├── src/tools/                  # knowledge, graph, gaps, operations, feedback, export, role, digest, compact
 │   ├── src/http.ts                 # auth middleware, /mcp, /healthz

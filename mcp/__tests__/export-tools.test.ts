@@ -85,4 +85,38 @@ describe("export tools", () => {
     expect(isToolError(result)).toBe(true);
     expect(harness.pharma.requests).toHaveLength(0);
   });
+
+  it("requests an image as an export of kind image, format png", async () => {
+    harness.pharma.on("POST", "/api/export", (_req, res) => sendJson(res, 202, { jobId: "img-1" }));
+
+    const result = await call("create_image", { prompt: "AI factory at a pharma plant", preset: "photo", size: "linkedin", destination: "telegram" });
+
+    expect(JSON.parse(toolText(result))).toEqual({ jobId: "img-1" });
+    expect(harness.pharma.requests[0].body).toEqual({
+      kind: "image",
+      format: "png",
+      prompt: "AI factory at a pharma plant",
+      preset: "photo",
+      size: "linkedin",
+      destination: "telegram",
+    });
+  });
+
+  it("refuses an empty prompt before calling PharmaITChat", async () => {
+    const result = await call("create_image", { prompt: "" });
+    expect(isToolError(result)).toBe(true);
+    expect(harness.pharma.requests).toHaveLength(0);
+  });
+
+  // create_image has the same egress concern as create_artifact: the icloud
+  // destination writes to a synced folder that leaves the machine. The description
+  // must say so the model can weigh the choice.
+  it("says what the icloud destination does before the model can choose it", async () => {
+    const { tools } = await harness.client.listTools();
+    const description = tools.find((tool) => tool.name === "create_image")?.description ?? "";
+
+    expect(description).toMatch(/leaves this machine/i);
+    expect(description).toMatch(/defaults to 'download'/i);
+    expect(description).toMatch(/no text/i);
+  });
 });

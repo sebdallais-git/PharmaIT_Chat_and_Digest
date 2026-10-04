@@ -150,6 +150,7 @@ function startApp(overrides: Partial<ExportRouterDeps> = {}): Promise<Fixture> {
     runPipeline: (jobId) => {
       started.push(jobId);
     },
+    imageModelReady: () => true,
     ...overrides,
   };
   const app = express();
@@ -442,6 +443,26 @@ describe("GET /api/export/file/:id", () => {
 // here touches a live service: buildPipelineDeps and runExport are both
 // fakes, and jobs is the same in-memory store the route reads back from.
 describe("createPipelineRunner", () => {
+  it("records a wiring failure for any runner, the image runner included", async () => {
+    const jobs = openExportJobs(":memory:");
+    const id = jobs.create({
+      kind: "image",
+      format: "png",
+      audience: "internal",
+      destination: "download",
+      image: { prompt: "a lab bench", preset: "none", size: "square", raw: false, seed: 1 },
+    });
+    const runner = createPipelineRunner<unknown>({
+      jobs,
+      buildPipelineDeps: async () => {
+        throw new Error("no model");
+      },
+      runExport: async () => {},
+    });
+    await runner(id);
+    expect(jobs.get(id)).toMatchObject({ stage: "failed", error: "queued: export could not be started: no model" });
+  });
+
   it("fails the job with a stage and message when the pipeline runner rejects, readable through the status route", async () => {
     const jobs = openExportJobs(":memory:");
     const runner = createPipelineRunner({
@@ -588,5 +609,86 @@ describe("createPipelineRunner", () => {
     });
 
     await expect(runner("job-1")).resolves.toBeUndefined();
+  });
+});
+
+// Image requests (2026-10-04)
+describe("validateExportRequest for images", () => {
+  const presets = new Map([
+    ["none", { name: "none", style: "" }],
+    ["photo", { name: "photo", style: "photorealistic" }],
+  ]);
+  const seed = () => 7;
+
+  it("accepts a prompt, with preset none, size square, raw false, a seed, and no audience required", () => {
+    expect(validateExportRequest({ kind: "image", format: "png", prompt: "a lab bench" }, presets, seed)).toEqual({
+      ok: true,
+      value: {
+        kind: "image",
+        format: "png",
+        audience: "internal",
+        destination: "download",
+        image: { prompt: "a lab bench", preset: "none", size: "square", raw: false, seed: 7 },
+      },
+    });
+    const full = validateExportRequest(
+      { kind: "image", format: "png", prompt: "x", preset: "photo", size: "slide", raw: true, seed: 99, destination: "telegram", audience: "external" },
+      presets,
+      seed,
+    );
+    expect(full).toMatchObject({ ok: true, value: { audience: "external", destination: "telegram", image: { preset: "photo", size: "slide", raw: true, seed: 99 } } });
+  });
+
+  it("refuses a missing or over-long prompt, an unknown preset or size, a bad seed", () => {
+    const bad = (body: Record<string, unknown>) => validateExportRequest({ kind: "image", format: "png", prompt: "x", ...body }, presets, seed);
+    expect(bad({ prompt: "  " })).toEqual({ ok: false, error: "prompt is required (1 to 1000 characters)" });
+    expect(bad({ prompt: "x".repeat(1001) })).toEqual({ ok: false, error: "prompt is required (1 to 1000 characters)" });
+    expect(bad({ preset: "cartoon" })).toEqual({ ok: false, error: 'unknown preset "cartoon" (known: none, photo)' });
+    expect(bad({ size: "banner" })).toEqual({ ok: false, error: 'unknown size "banner" (known: square, portrait, linkedin, slide)' });
+    expect(bad({ seed: -1 })).toEqual({ ok: false, error: "seed must be an integer from 0 to 4294967295" });
+  });
+
+  it("refuses png for a document and any other format for an image", () => {
+    expect(validateExportRequest({ kind: "account-brief", format: "png", audience: "internal" }, presets, seed)).toEqual({ ok: false, error: 'format "png" is only for kind "image"' });
+    expect(validateExportRequest({ kind: "image", format: "pdf", prompt: "x" }, presets, seed)).toEqual({ ok: false, error: 'kind "image" is only for format "png"' });
+  });
+
+  it("still requires an audience for documents", () => {
+    expect(validateExportRequest({ kind: "account-brief", format: "pdf" }, presets, seed)).toEqual({ ok: false, error: 'audience is required and must be "internal" or "external"' });
+  });
+});
+
+describe("POST /api/export for an image", () => {
+  it("answers 503 when the model is not installed, without creating or starting a job", async () => {
+    const fixture = await startApp({ imageModelReady: () => false });
+    const { status, body } = await postExport(fixture.url, { kind: "image", format: "png", prompt: "a lab bench" });
+    expect(status).toBe(503);
+    expect(body).toEqual({ error: "image model not installed: run scripts/setup-image-model.sh" });
+    expect(fixture.started).toEqual([]);
+  });
+
+  it("queues an image job when the model is installed", async () => {
+    const fixture = await startApp();
+    const { status, body } = await postExport(fixture.url, { kind: "image", format: "png", prompt: "a lab bench", size: "slide" });
+    expect(status).toBe(202);
+    expect(fixture.jobs.get(body.jobId as string)).toMatchObject({ kind: "image", format: "png", stage: "queued", image: { size: "slide" } });
+  });
+});
+
+describe("validateExportRequest preset loading", () => {
+  const throwing = (): never => {
+    throw new Error("bad yaml");
+  };
+
+  it("does not load presets for a document request", () => {
+    const result = validateExportRequest({ kind: "account-brief", format: "pdf", audience: "internal" }, throwing);
+    expect(result.ok).toBe(true);
+  });
+
+  it("reports an invalid presets file for an image request", () => {
+    expect(validateExportRequest({ kind: "image", format: "png", prompt: "x" }, throwing)).toEqual({
+      ok: false,
+      error: "config/image-presets.yaml is invalid: bad yaml",
+    });
   });
 });

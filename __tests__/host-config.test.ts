@@ -50,6 +50,28 @@ describe("parseHostConfig", () => {
     expect(host.resources.omlx.ssdCacheMaxGb).toBe(20);
   });
 
+  // Image generation (2026-10-04): FLUX.1-schnell runs next to the 27B, so its
+  // gate and limits are machine-sized like every other resource
+  it("reads the image limits, and refuses a quantize mflux cannot use", () => {
+    const host = parseHostConfig(fixture, "fixture.yaml");
+    expect(host.resources.image).toEqual({ minFreeGb: 10, waitMinutes: 10, timeoutSeconds: 300, steps: 4, quantize: 4 });
+    expect(problemsOf(fixture.replace("quantize: 4", "quantize: 5"))).toEqual([
+      "resources.image.quantize must be one of 3, 4, 6, 8, got 5",
+    ]);
+    expect(problemsOf(fixture.replace(/^  image: .*\n/m, ""))).toEqual(["resources.image is missing or not a mapping"]);
+  });
+
+  it("reports all missing fields when image is an empty mapping", () => {
+    const problems = problemsOf(fixture.replace(/^  image: .*\n/m, "  image: {}"));
+    expect(problems).toEqual([
+      "resources.image.min_free_gb must be a positive integer, got undefined",
+      "resources.image.wait_minutes must be a positive integer, got undefined",
+      "resources.image.timeout_seconds must be a positive integer, got undefined",
+      "resources.image.steps must be a positive integer, got undefined",
+      "resources.image.quantize must be one of 3, 4, 6, 8, got undefined",
+    ]);
+  });
+
   it("lists every problem at once, not just the first", () => {
     const text = fixture
       .replace("chromadb:  { port: 8100 }", "chromadb:  { port: 99999 }")

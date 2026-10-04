@@ -29,11 +29,29 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isAudience, type Audience } from "./artifact.js";
-import { isArtifactKind, type ArtifactKind } from "./export-artifacts.js";
+import { ARTIFACT_KINDS, isArtifactKind, type ArtifactKind } from "./export-artifacts.js";
 import { isDestination, type Destination } from "./export-delivery.js";
+import { isImageSize, type ImageSize } from "./image-presets.js";
 
-export const EXPORT_FORMATS = ["xlsx", "pdf", "pptx"] as const;
+export const EXPORT_FORMATS = ["xlsx", "pdf", "pptx", "png"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+// The formats a document renderer produces; png is drawn by the image runner
+export type DocumentFormat = Exclude<ExportFormat, "png">;
+
+export const EXPORT_KINDS = [...ARTIFACT_KINDS, "image"] as const;
+export type ExportKind = ArtifactKind | "image";
+
+export function isExportKind(value: unknown): value is ExportKind {
+  return value === "image" || isArtifactKind(value);
+}
+
+export interface ImageRequest {
+  prompt: string;
+  preset: string;
+  size: ImageSize;
+  raw: boolean;
+  seed: number;
+}
 
 export function isExportFormat(value: unknown): value is ExportFormat {
   return typeof value === "string" && (EXPORT_FORMATS as readonly string[]).includes(value);
@@ -62,12 +80,14 @@ export function isStage(value: unknown): value is Stage {
 }
 
 export interface ExportRequest {
-  kind: ArtifactKind;
+  kind: ExportKind;
   format: ExportFormat;
   audience: Audience;
   destination: Destination;
   account?: string;
   vendor?: string;
+  // Present exactly when kind is "image"
+  image?: ImageRequest;
 }
 
 export interface ExportJob extends ExportRequest {
@@ -105,6 +125,11 @@ interface JobRow {
   location: string | null;
   error: string | null;
   created_at: string;
+  prompt: string | null;
+  preset: string | null;
+  size: string | null;
+  raw: number | null;
+  seed: number | null;
 }
 
 // `now` is injected only so a test can create a job that is genuinely old.
@@ -149,11 +174,23 @@ export function openExportJobs(
     );
   `);
 
+  // v1 (2026-10-04): image jobs carry their request on the row. Guarded by
+  // user_version like watchlist-store.ts: a database from before images gains
+  // the nullable columns once; document rows leave them null.
+  const schemaVersion = db.pragma("user_version", { simple: true }) as number;
+  if (schemaVersion < 1) {
+    const columns = (db.prepare(`PRAGMA table_info(export_jobs)`).all() as Array<{ name: string }>).map((c) => c.name);
+    for (const [name, type] of [["prompt", "TEXT"], ["preset", "TEXT"], ["size", "TEXT"], ["raw", "INTEGER"], ["seed", "INTEGER"]] as const) {
+      if (!columns.includes(name)) db.exec(`ALTER TABLE export_jobs ADD COLUMN ${name} ${type}`);
+    }
+    db.pragma("user_version = 1");
+  }
+
   // ---- prepared statements -------------------------------------------------
 
   const insertStmt = db.prepare(`
-    INSERT INTO export_jobs (id, kind, format, audience, destination, account, vendor, stage, location, error, created_at)
-    VALUES (@id, @kind, @format, @audience, @destination, @account, @vendor, 'queued', NULL, NULL, @createdAt)
+    INSERT INTO export_jobs (id, kind, format, audience, destination, account, vendor, stage, location, error, created_at, prompt, preset, size, raw, seed)
+    VALUES (@id, @kind, @format, @audience, @destination, @account, @vendor, 'queued', NULL, NULL, @createdAt, @prompt, @preset, @size, @raw, @seed)
   `);
   const selectStmt = db.prepare(`SELECT * FROM export_jobs WHERE id = ?`);
   const setStageStmt = db.prepare(`UPDATE export_jobs SET stage = ? WHERE id = ?`);
@@ -175,7 +212,7 @@ export function openExportJobs(
   // before any statement runs, so an invalid value never reaches a row.
 
   function assertKnownRequest(request: ExportRequest): void {
-    if (!isArtifactKind(request.kind)) {
+    if (!isExportKind(request.kind)) {
       throw new Error(`unknown kind "${request.kind}"`);
     }
     if (!isExportFormat(request.format)) {
@@ -186,6 +223,14 @@ export function openExportJobs(
     }
     if (!isDestination(request.destination)) {
       throw new Error(`unknown destination "${request.destination}"`);
+    }
+    if (request.format === "png" && request.kind !== "image") throw new Error(`format "png" is only for kind "image"`);
+    if (request.kind === "image" && request.format !== "png") throw new Error(`kind "image" is only for format "png"`);
+    if (request.kind === "image") {
+      const i = request.image;
+      if (i === undefined || i.prompt.trim() === "" || i.preset === "" || !isImageSize(i.size) || !Number.isInteger(i.seed)) {
+        throw new Error("an image job needs its prompt, preset, size, raw and seed");
+      }
     }
   }
 
@@ -200,7 +245,7 @@ export function openExportJobs(
   function hydrateJob(row: JobRow): ExportJob {
     return {
       id: row.id,
-      kind: row.kind as ArtifactKind,
+      kind: row.kind as ExportKind,
       format: row.format as ExportFormat,
       audience: row.audience as Audience,
       destination: row.destination as Destination,
@@ -210,6 +255,9 @@ export function openExportJobs(
       location: row.location,
       error: row.error,
       createdAt: row.created_at,
+      ...(row.prompt !== null
+        ? { image: { prompt: row.prompt, preset: row.preset ?? "none", size: (row.size ?? "square") as ImageSize, raw: row.raw === 1, seed: row.seed ?? 0 } }
+        : {}),
     };
   }
 
@@ -227,6 +275,11 @@ export function openExportJobs(
         account: request.account ?? null,
         vendor: request.vendor ?? null,
         createdAt: now().toISOString(),
+        prompt: request.image?.prompt ?? null,
+        preset: request.image?.preset ?? null,
+        size: request.image?.size ?? null,
+        raw: request.image === undefined ? null : request.image.raw ? 1 : 0,
+        seed: request.image?.seed ?? null,
       });
       return id;
     },

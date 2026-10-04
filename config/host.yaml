@@ -60,3 +60,17 @@ resources:
     # Each parallel slot allocates its own 64k context. Informational: Ollama is
     # a Homebrew service and reads OLLAMA_NUM_PARALLEL from launchctl.
     num_parallel: 1
+  image:
+    # Text to image (FLUX.1-schnell via mflux), one process per image next to the
+    # 27B. A job starts only with this much free memory (vm_stat free + inactive
+    # + purgeable) and the GPU under 30% busy; set from the first measured peak.
+    min_free_gb: 10
+    # How long a job waits for that gate before failing with the numbers.
+    wait_minutes: 10
+    # The image process is killed (whole process group) after this.
+    timeout_seconds: 300
+    # FLUX.1-schnell is distilled for 4 steps.
+    steps: 4
+    # Bits of the saved model (data/models/flux-schnell-<quantize>bit); changing
+    # it means re-running scripts/setup-image-model.sh.
+    quantize: 4

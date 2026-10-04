@@ -35,6 +35,7 @@ function exportsFor(host: HostConfig): Array<[string, string | number]> {
     ["JEV_MLX_CACHE_LIMIT", r.scorer.cacheLimitBytes],
     ["OMLX_CACHE_MAX_GB", r.omlx.ssdCacheMaxGb],
     ["OLLAMA_NUM_PARALLEL", r.ollama.numParallel],
+    ["IMAGE_QUANTIZE", r.image.quantize],
   ];
 }
 

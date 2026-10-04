@@ -1,4 +1,8 @@
 import { describe, expect, it } from "@jest/globals";
+import Database from "better-sqlite3";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { openExportJobs } from "../src/services/export-jobs.js";
 
 const request = {
@@ -135,5 +139,50 @@ describe("export jobs", () => {
 
     expect(() => jobs.fail("nope", "narrating", "boom")).toThrow(/nope/);
     jobs.close();
+  });
+});
+
+// Image jobs (2026-10-04): kind "image", format "png", and the request's
+// prompt, preset, size, raw and seed stored on the row
+describe("image jobs", () => {
+  const image = { prompt: "a lab bench", preset: "photo", size: "square" as const, raw: false, seed: 42 };
+
+  it("stores and returns the image request", () => {
+    const jobs = openExportJobs(":memory:");
+    const id = jobs.create({ kind: "image", format: "png", audience: "internal", destination: "telegram", image });
+    expect(jobs.get(id)).toMatchObject({ kind: "image", format: "png", image });
+  });
+
+  it("refuses png without image, image without png, and image without its request", () => {
+    const jobs = openExportJobs(":memory:");
+    expect(() => jobs.create({ kind: "account-brief", format: "png", audience: "internal", destination: "download" })).toThrow('format "png" is only for kind "image"');
+    expect(() => jobs.create({ kind: "image", format: "pdf", audience: "internal", destination: "download", image })).toThrow('kind "image" is only for format "png"');
+    expect(() => jobs.create({ kind: "image", format: "png", audience: "internal", destination: "download" })).toThrow("an image job needs its prompt, preset, size, raw and seed");
+  });
+
+  it("leaves document jobs without an image request", () => {
+    const jobs = openExportJobs(":memory:");
+    const id = jobs.create({ kind: "account-brief", format: "pdf", audience: "internal", destination: "download", account: "roche" });
+    expect(jobs.get(id)?.image).toBeUndefined();
+  });
+
+  it("migrates a jobs database created before images, keeping its rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "export-jobs-"));
+    try {
+      const path = join(dir, "export-jobs.db");
+      const old = new Database(path);
+      old.exec(`CREATE TABLE export_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, format TEXT NOT NULL, audience TEXT NOT NULL,
+        destination TEXT NOT NULL, account TEXT, vendor TEXT, stage TEXT NOT NULL, location TEXT, error TEXT, created_at TEXT NOT NULL)`);
+      old.prepare(`INSERT INTO export_jobs VALUES ('old-1','account-brief','pdf','internal','download','roche',NULL,'done','/x',NULL,'2026-09-30T10:00:00.000Z')`).run();
+      old.close();
+
+      const jobs = openExportJobs(path);
+      expect(jobs.get("old-1")).toMatchObject({ kind: "account-brief", stage: "done", account: "roche" });
+      const id = jobs.create({ kind: "image", format: "png", audience: "internal", destination: "download", image });
+      expect(jobs.get(id)?.image).toEqual(image);
+      jobs.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

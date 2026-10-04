@@ -36,6 +36,7 @@ npx tsx scripts/extract-need-evidence.ts [--only knowledge/<f>] [--dry-run] | --
                                                # 27B proposes need evidence; approve in config/need-evidence.local.yaml
 npx tsx scripts/extract-install-history.ts [--dry-run] | --status    # 27B proposes install-base changes; approve in config/install-history.local.yaml
 npx tsx scripts/kb-canary.ts [--no-store]     # KB canaries (config/kb-canaries.yaml); daily 05:00 Hermes job, Telegram on failure
+scripts/setup-image-model.sh    # one-time: mflux venv + quantized FLUX.1-schnell (~24 GB download)
 npx tsx scripts/digest.ts [--request "…"] [--briefing] [--email|--email-only]   # digest agent in-process; Hermes sends the weekly digest Mon 07:30,
                                                # the account briefing Tue–Fri 07:30 (silent when nothing is actionable)
 ```
@@ -109,8 +110,13 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   → dedupe **before** the model → sequential tagging → SQLite `data/watchlist.db` + ChromaDB.
   Entity ids and the 12 IT domains (incl. `networking` and `euc` since 2026-09-30) are a closed vocabulary; invented values are dropped. Per-feed
   errors don't advance the watermark; 450-item cap and 75-min budget (raised 2026-10-03 for 60 customers), overflow is deferred.
+- **Image generation** (`image-presets.ts`, `image-prompt.ts`, `image-generator.ts`, `image-system.ts`, `export-image.ts`,
+  MCP `create_image`): export kind `image` / format `png`; the 27B expands the prompt, FLUX.1-schnell (mflux, `.venv-image`,
+  `data/models/flux-schnell-<q>bit`) draws it, one process per image behind `data/run/image.lock` and a free-memory /
+  GPU gate (`config/host.yaml` `resources.image`). No text in images; 503 until `scripts/setup-image-model.sh` has run;
+  not offered in the web chat, scheduled Hermes runs cannot draw. Image log: `data/logs/image-<date>.log`.
 - **Surfaces**: `/api/*` routes, `/v1` OpenAI-compatible gateway onto the active stack
-  (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 20 tools),
+  (`model-gateway.ts`), `mcp/` (separate package, `pharmaitchat-mcp` on :3200, 21 tools),
   `hermes/` (Telegram agent config, cron jobs, plugin), `public/` + `dashboard/` (plain
   HTML/JS/CSS — no React, no bundler).
 - **Auth** (`api/auth.ts`): static files and UI routes open; everything else needs
@@ -190,7 +196,7 @@ ESM TypeScript (`"type": "module"`, `module: Node16`), strict. Source imports si
   spawns a script with its own env adds `...hostTestEnv()` (`__tests__/helpers/host-env.ts`).
 - Logs for failed switches/rebuilds: `data/logs/` (`app.log`, `mlx-*.log`, `omlx.log`,
   `splash.log`, `reindex-<stack>.log`, `watchlist-ingest-<date>.log`, `kb-canary-<date>.log`,
-  `weekly-digest-<date>.log`, `daily-briefing-<date>.log`).
+  `weekly-digest-<date>.log`, `daily-briefing-<date>.log`, `image-<date>.log`).
 
 ## Git
 
