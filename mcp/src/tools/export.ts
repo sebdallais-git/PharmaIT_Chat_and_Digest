@@ -67,6 +67,8 @@ export function registerExportTools(server: McpServer, client: PharmaITChatClien
         "those in the message or document instead. `preset` is a style (none, house, photo, abstract, brand); " +
         "`size` is square (LinkedIn post), portrait (LinkedIn 4:5), linkedin (landscape link image) or slide (16:9). " +
         "`destination` defaults to 'download'; use 'telegram' to send the image to the user's chat. " +
+        "Choose 'icloud' ONLY when the user asked for it: it writes into an iCloud-synced folder, so the image " +
+        "leaves this machine and reaches their other devices. When in doubt use 'download', which stays on this machine. " +
         "Returns a job id; an image takes about a minute, longer while the language model is busy. Poll with artifact_status; " +
         "its `image.seed` lets the user ask for the same image again with changes.",
       inputSchema: {

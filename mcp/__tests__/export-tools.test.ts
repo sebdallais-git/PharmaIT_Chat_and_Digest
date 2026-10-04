@@ -107,4 +107,16 @@ describe("export tools", () => {
     expect(isToolError(result)).toBe(true);
     expect(harness.pharma.requests).toHaveLength(0);
   });
+
+  // create_image has the same egress concern as create_artifact: the icloud
+  // destination writes to a synced folder that leaves the machine. The description
+  // must say so the model can weigh the choice.
+  it("says what the icloud destination does before the model can choose it", async () => {
+    const { tools } = await harness.client.listTools();
+    const description = tools.find((tool) => tool.name === "create_image")?.description ?? "";
+
+    expect(description).toMatch(/leaves this machine/i);
+    expect(description).toMatch(/defaults to 'download'/i);
+    expect(description).toMatch(/no text/i);
+  });
 });
