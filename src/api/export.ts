@@ -55,7 +55,8 @@ const MAX_SEED = 4294967295;
 
 export function validateExportRequest(
   body: unknown,
-  presets: Map<string, ImagePreset> = loadImagePresets(),
+  // A map, or a loader called only for image requests: a broken presets file must not fail document exports
+  presets: Map<string, ImagePreset> | (() => Map<string, ImagePreset>) = loadImagePresets,
   randomSeed: () => number = () => randomInt(0, 2 ** 31),
 ): ValidationResult {
   const b = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
@@ -72,9 +73,15 @@ export function validateExportRequest(
   if (b.kind === "image") {
     const prompt = typeof b.prompt === "string" ? b.prompt.trim() : "";
     if (prompt === "" || prompt.length > MAX_PROMPT_CHARS) return { ok: false, error: `prompt is required (1 to ${MAX_PROMPT_CHARS} characters)` };
+    let known: Map<string, ImagePreset>;
+    try {
+      known = typeof presets === "function" ? presets() : presets;
+    } catch (err) {
+      return { ok: false, error: `config/image-presets.yaml is invalid: ${err instanceof Error ? err.message : String(err)}` };
+    }
     const preset = b.preset ?? "none";
-    if (typeof preset !== "string" || !presets.has(preset)) {
-      return { ok: false, error: `unknown preset ${JSON.stringify(preset)} (known: ${[...presets.keys()].join(", ")})` };
+    if (typeof preset !== "string" || !known.has(preset)) {
+      return { ok: false, error: `unknown preset ${JSON.stringify(preset)} (known: ${[...known.keys()].join(", ")})` };
     }
     const size = b.size ?? "square";
     if (!isImageSize(size)) return { ok: false, error: `unknown size ${JSON.stringify(size)} (known: ${Object.keys(IMAGE_SIZES).join(", ")})` };

@@ -674,3 +674,21 @@ describe("POST /api/export for an image", () => {
     expect(fixture.jobs.get(body.jobId as string)).toMatchObject({ kind: "image", format: "png", stage: "queued", image: { size: "slide" } });
   });
 });
+
+describe("validateExportRequest preset loading", () => {
+  const throwing = (): never => {
+    throw new Error("bad yaml");
+  };
+
+  it("does not load presets for a document request", () => {
+    const result = validateExportRequest({ kind: "account-brief", format: "pdf", audience: "internal" }, throwing);
+    expect(result.ok).toBe(true);
+  });
+
+  it("reports an invalid presets file for an image request", () => {
+    expect(validateExportRequest({ kind: "image", format: "png", prompt: "x" }, throwing)).toEqual({
+      ok: false,
+      error: "config/image-presets.yaml is invalid: bad yaml",
+    });
+  });
+});
